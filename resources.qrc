@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/">
+        <file alias="Toolbar.bmp">res/Toolbar.bmp</file>
+    </qresource>
+</RCC>

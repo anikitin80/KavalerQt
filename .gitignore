@@ -1,0 +1,18 @@
+# build output
+build/
+out/
+cmake-build-*/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+CMakeLists.txt.user*
+CMakeSettings.json
+
+# proprietary PDFTron SDK (not redistributable), put it locally, see README
+PDFLib/
+
+# local tooling
+.claude/
