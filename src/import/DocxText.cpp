@@ -50,7 +50,9 @@ QStringList readDocxParagraphs(const QString& path, QString* error)
             else if (name == QLatin1String("tab"))
                 paragraph += QLatin1Char('\t');
             else if (name == QLatin1String("br") || name == QLatin1String("cr"))
-                paragraph += QLatin1Char('\n');
+                // manual line break stays inside the paragraph as '\v', like Word's
+                // Range.Text: the parser expects "Surname\vName Patronymic" in one line
+                paragraph += QLatin1Char('\v');
         } else if (reader.isCharacters() && inText) {
             paragraph += reader.text();
         } else if (reader.isEndElement()) {
@@ -58,13 +60,11 @@ QStringList readDocxParagraphs(const QString& path, QString* error)
             if (name == QLatin1String("t"))
                 inText = false;
             else if (name == QLatin1String("p")) {
-                const QStringList parts = paragraph.split(QLatin1Char('\n'));
-                for (QString part : parts) {
-                    while (part.endsWith(QLatin1Char('\r')) || part.endsWith(QChar(0x0007)))
-                        part.chop(1);
-                    if (!part.isEmpty())
-                        lines.push_back(part);
-                }
+                while (paragraph.endsWith(QLatin1Char('\r')) || paragraph.endsWith(QChar(0x0007))
+                       || paragraph.endsWith(QLatin1Char('\v')))
+                    paragraph.chop(1);
+                if (!paragraph.isEmpty())
+                    lines.push_back(paragraph);
             }
         }
     }

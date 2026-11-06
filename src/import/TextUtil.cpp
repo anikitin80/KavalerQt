@@ -19,6 +19,8 @@ QDate ParseDate(std::wstring strDate, bool russian)
 {
     StrTrim(strDate);
     strDate.erase(std::remove(strDate.begin(), strDate.end(), L' '), strDate.end());
+    if (!russian) // "лiпеня" typed with Latin i
+        std::replace(strDate.begin(), strDate.end(), L'i', L'і');
 
     const size_t sep1 = strDate.find_first_not_of(L"0123456789");
     const size_t sep2 = strDate.find_last_not_of(L"0123456789");

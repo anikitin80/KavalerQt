@@ -141,6 +141,7 @@ bool CNameConverter::ApplyRules(std::wstring& name, RulesList& rules, SexType se
 	if (lang == LangBY)
 	{
 		// replace Latin letters with Belorussian
+		// (capital Latin "I" is kept: the catalog has ~1000 such names, see tst_nameconverter)
 		std::replace(name.begin(), name.end(), L'i', L'і');
 	}
 

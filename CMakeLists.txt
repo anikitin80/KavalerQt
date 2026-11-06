@@ -6,7 +6,26 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets Sql Network PrintSupport)
+option(KAVALER_BUILD_TESTS "Build the decree parser tests" ON)
+
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets Sql Network PrintSupport)
+
+# decree parser: text of docx/PDF -> persons; no GUI, shared with the tests
+add_library(KavalerParser STATIC
+    src/import/TextUtil.h
+    src/import/TextUtil.cpp
+    src/import/ParserTypes.h
+    src/import/NameConverter.h
+    src/import/NameConverter.cpp
+    src/import/ProfessionConverter.h
+    src/import/ProfessionConverter.cpp
+    src/import/DocumentParser.h
+    src/import/DocumentParser.cpp
+    src/import/DocxText.h
+    src/import/DocxText.cpp
+)
+target_include_directories(KavalerParser PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src/import")
+target_link_libraries(KavalerParser PUBLIC Qt6::Core)
 
 add_executable(Kavaler WIN32
     src/main.cpp
@@ -18,11 +37,6 @@ add_executable(Kavaler WIN32
     src/EditDialog.cpp
     src/MainWindow.h
     src/MainWindow.cpp
-    src/import/TextUtil.cpp
-    src/import/NameConverter.cpp
-    src/import/ProfessionConverter.cpp
-    src/import/DocumentParser.cpp
-    src/import/DocxText.cpp
     src/import/PdfText.cpp
     src/import/Translator.cpp
     src/import/ImportDialog.cpp
@@ -35,10 +49,15 @@ target_include_directories(Kavaler PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/PDFLib/Headers"
 )
 target_link_directories(Kavaler PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/PDFLib/Lib/x64")
-target_link_libraries(Kavaler PRIVATE Qt6::Widgets Qt6::Sql Qt6::Network Qt6::PrintSupport PDFNetC)
+target_link_libraries(Kavaler PRIVATE KavalerParser Qt6::Widgets Qt6::Sql Qt6::Network Qt6::PrintSupport PDFNetC)
 
 add_custom_command(TARGET Kavaler POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/PDFLib/Lib/x64/PDFNetC.dll"
         "$<TARGET_FILE_DIR:Kavaler>"
 )
+
+if(KAVALER_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
