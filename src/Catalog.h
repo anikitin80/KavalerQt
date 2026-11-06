@@ -120,6 +120,8 @@ public:
     const QVector<DictEntry>& dictionary() const;
     int yearMin() const { return 1990; }
     int yearMax() const;
+    // year of the latest decree (0 for an empty catalog), without the statistics
+    int latestYear() const;
 
 signals:
     // emitted after the database was changed, right before the in-memory data

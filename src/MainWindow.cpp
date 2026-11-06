@@ -462,8 +462,8 @@ void MainWindow::fillFilters()
     m_year->clear();
     m_year->addItem(QStringLiteral("<Все>"), -1);
     int latestYear = 0;
-    for (const StatMonth& row : m_catalog.stats())
-        latestYear = qMax(latestYear, row.year);
+    // not stats(): that would build all derived data at startup
+    latestYear = qMax(latestYear, m_catalog.latestYear());
     const int currentYear = QDate::currentDate().year();
     for (int year = m_catalog.yearMin(); year <= currentYear; ++year) {
         m_year->addItem(QString::number(year), year);
@@ -577,11 +577,27 @@ void MainWindow::restorePeopleState()
         return index.isValid() && (!index.parent().isValid() || m_peopleView->isExpanded(index.parent()));
     };
 
-    QItemSelection selection;
+    // neighbouring rows become one range: the view checks every painted cell
+    // against all ranges, one range per row makes a big selection crawl
+    QModelIndexList rows;
     for (int id : state.selectedIds) {
         const QModelIndex index = found.value(id);
         if (index.isValid())
-            selection.select(index, index.siblingAtColumn(lastColumn));
+            rows.push_back(index);
+    }
+    std::sort(rows.begin(), rows.end(), [](const QModelIndex& a, const QModelIndex& b) {
+        if (a.parent() != b.parent())
+            return a.parent().row() < b.parent().row();
+        return a.row() < b.row();
+    });
+    QItemSelection selection;
+    for (qsizetype i = 0; i < rows.size();) {
+        qsizetype j = i;
+        while (j + 1 < rows.size() && rows.at(j + 1).parent() == rows.at(i).parent()
+               && rows.at(j + 1).row() == rows.at(j).row() + 1)
+            ++j;
+        selection.select(rows.at(i), rows.at(j).siblingAtColumn(lastColumn));
+        i = j + 1;
     }
 
     // the current person may be gone (deleted, filtered out): take a neighbour
@@ -783,17 +799,19 @@ void MainWindow::translateSelectedCloud(CloudScope scope)
 void MainWindow::translateSelectedByDictionary()
 {
     QVector<Person> changed;
+    QHash<int, QStringList> suggestions;
     for (Person person : selectedPeople()) {
         if (!person.needTranslation() || !person.name.isEmpty())
             continue;
         const QStringList names = m_catalog.translateName(person.nameBy);
         if (names.size() != 1) {
-            m_people->setSuggestions(person.id, names);
+            suggestions.insert(person.id, names);
             continue;
         }
         person.name = names.first();
         changed.push_back(person);
     }
+    m_people->setSuggestions(suggestions);
     if (saveChanged(changed)) {
         for (const Person& person : changed)
             m_people->clearSuggestions(person.id);

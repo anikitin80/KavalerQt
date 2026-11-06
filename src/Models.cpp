@@ -17,14 +17,24 @@ bool hasBelarusianLetters(const QString& text)
     return text.contains(QChar(0x0406)) || text.contains(QChar(0x045E)) || text.contains(QStringLiteral("шч"));
 }
 
-QVector<QChar> collectChars(const QString& text, const QString& chars)
+// the same sequence of these characters in both texts ("«»" and "«»" yes,
+// "«»" and "" no), without building the sequences
+template <typename IsChar>
+bool sameChars(const QString& left, const QString& right, IsChar isChar)
 {
-    QVector<QChar> result;
-    for (const QChar c : text) {
-        if (chars.contains(c))
-            result.push_back(c);
+    qsizetype l = 0, r = 0;
+    for (;;) {
+        while (l < left.size() && !isChar(left.at(l).unicode()))
+            ++l;
+        while (r < right.size() && !isChar(right.at(r).unicode()))
+            ++r;
+        if (l == left.size() || r == right.size())
+            return l == left.size() && r == right.size();
+        if (left.at(l) != right.at(r))
+            return false;
+        ++l;
+        ++r;
     }
-    return result;
 }
 
 bool markCanContain(const QString& quick)
@@ -52,7 +62,9 @@ const QStringList kMonths = {
 PersonModel::PersonModel(Catalog* catalog, QObject* parent)
     : QAbstractItemModel(parent)
     , m_catalog(catalog)
+    , m_collator(QLocale(QLocale::Russian, QLocale::Belarus))
 {
+    m_collator.setNumericMode(true);
 }
 
 bool PersonModel::isGroup(const QModelIndex& index) const
@@ -85,7 +97,7 @@ void PersonModel::sortGroups()
         return descending ? a.awardId > b.awardId : a.awardId < b.awardId;
     });
     for (Group& group : m_groups)
-        std::stable_sort(group.people.begin(), group.people.end(), [this](int a, int b) { return less(a, b); });
+        sortPeople(group.people);
     rebuildGroupLookup();
 }
 
@@ -174,10 +186,14 @@ QString PersonModel::displayPersonal(const Person& person) const
 
 QString PersonModel::displayUkase(const Person& person) const
 {
-    const QString number = QStringLiteral("№ %1").arg(person.ukaseNo);
+    // "dd.MM.yyyy № N" by hand: QDate::toString with a format parses it every call
+    const auto twoDigits = [](int value) { return QString::number(value).rightJustified(2, QLatin1Char('0')); };
+    const QString number = QChar(0x2116) + QLatin1Char(' ') + QString::number(person.ukaseNo);
     if (!person.ukaseDate.isValid())
         return number;
-    return person.ukaseDate.toString(QStringLiteral("dd.MM.yyyy")) + QLatin1Char(' ') + number;
+    const QDate& date = person.ukaseDate;
+    return twoDigits(date.day()) + QLatin1Char('.') + twoDigits(date.month()) + QLatin1Char('.')
+        + QString::number(date.year()).rightJustified(4, QLatin1Char('0')) + QLatin1Char(' ') + number;
 }
 
 PersonModel::Mark PersonModel::translationMark(const Person& person) const
@@ -202,16 +218,15 @@ PersonModel::Mark PersonModel::translationMark(const Person& person) const
     if (!m_checkQuotes)
         return mark;
 
-    const QString dashes = QStringLiteral("-–");
-    const auto dashRu = collectChars(person.personal, dashes);
-    const auto dashBy = collectChars(person.personalBy, dashes);
-    if (dashRu != dashBy && !person.personal.contains(QStringLiteral("молочно-товар"))) {
+    const auto isDash = [](char16_t c) { return c == u'-' || c == u'\u2013'; };
+    const auto isQuote = [](char16_t c) { return c == u'\u00AB' || c == u'\u00BB' || c == u'"'; };
+    if (!sameChars(person.personal, person.personalBy, isDash)
+        && !person.personal.contains(QStringLiteral("молочно-товар"))) {
         mark.quotes = true;
         mark.text = QStringLiteral("Тире");
     }
     if (!mark.quotes) {
-        const QString quoteChars = QStringLiteral("«»\"");
-        if (collectChars(person.personal, quoteChars) != collectChars(person.personalBy, quoteChars)) {
+        if (!sameChars(person.personal, person.personalBy, isQuote)) {
             mark.quotes = true;
             mark.text = QStringLiteral("Кавычки");
         }
@@ -354,12 +369,9 @@ bool PersonModel::less(int left, int right) const
     case 4:
         cmp = a.posthumous - b.posthumous;
         break;
-    case 5: {
-        const QString leftText = m_sortMarks ? m_sortMarks->value(left) : translationMark(a).text;
-        const QString rightText = m_sortMarks ? m_sortMarks->value(right) : translationMark(b).text;
-        cmp = QString::compare(leftText, rightText);
+    case 5:
+        cmp = m_collator.compare(translationMark(a).text, translationMark(b).text);
         break;
-    }
     default:
         break;
     }
@@ -368,48 +380,95 @@ bool PersonModel::less(int left, int right) const
     return m_sortOrder == Qt::AscendingOrder ? cmp < 0 : cmp > 0;
 }
 
-bool PersonModel::matchesQuick(const Person& person, const QString& quick) const
+PersonModel::QuickFilter PersonModel::makeQuickFilter(const QString& quick) const
 {
-    const auto has = [&](const QString& text) {
-        return text.contains(quick, Qt::CaseInsensitive);
-    };
-    if (has(displayAward(person)) || has(displayName(person)) || has(displayPersonal(person))
-        || has(displayUkase(person)))
-        return true;
-    if (person.posthumous && has(QStringLiteral("X")))
-        return true;
-    return markCanContain(quick) && has(translationMark(person).text);
+    QuickFilter filter;
+    filter.text = quick;
+    for (const Award& award : m_catalog->awards()) {
+        if (award.name.contains(quick, Qt::CaseInsensitive))
+            filter.awards.insert(award.id);
+    }
+    // displayUkase() has only digits, dots, spaces and "№"
+    filter.ukase = std::all_of(quick.cbegin(), quick.cend(), [](QChar c) {
+        return c.isDigit() || c == QLatin1Char('.') || c == QLatin1Char(' ') || c == QChar(0x2116);
+    });
+    filter.comma = quick.contains(QLatin1Char(','));
+    filter.posthumous = QStringLiteral("X").contains(quick, Qt::CaseInsensitive);
+    filter.mark = markCanContain(quick);
+    return filter;
 }
 
-void PersonModel::fillSortMarks(QHash<int, QString>& marks) const
+// the same result as searching the shown column texts, without building them
+bool PersonModel::matchesQuick(const Person& person, const QuickFilter& filter) const
 {
-    const auto& people = m_catalog->people();
-    const auto add = [&](int index) {
-        marks.insert(index, translationMark(people.at(index)).text);
+    const auto has = [&](const QString& text) {
+        return text.contains(filter.text, Qt::CaseInsensitive);
     };
-    if (m_grouped) {
-        for (const Group& group : m_groups) {
-            for (int index : group.people)
-                add(index);
-        }
+    if (filter.awards.contains(person.awardId) || has(displayName(person)))
+        return true;
+    if (filter.comma) {
+        if (has(displayPersonal(person)))
+            return true;
+    } else {
+        // without a comma the text cannot span the ", " between position and rank
+        if (has(person.personal.isEmpty() ? person.personalBy : person.personal)
+            || has(!person.rank.isEmpty() ? person.rank : person.rankBy))
+            return true;
+    }
+    if (filter.ukase && has(displayUkase(person)))
+        return true;
+    if (person.posthumous && filter.posthumous)
+        return true;
+    return filter.mark && has(translationMark(person).text);
+}
+
+// text of the sort column for the text columns, empty for the others
+QString PersonModel::sortText(const Person& person) const
+{
+    switch (m_sortColumn) {
+    case 1: return displayName(person);
+    case 2: return displayPersonal(person);
+    case 5: return translationMark(person).text;
+    default: return {};
+    }
+}
+
+// text columns: the collation key of every row is made once per sort, not in
+// each of the ~1.3 million comparisons; equal keys keep the order by id
+void PersonModel::sortPeople(QVector<int>& rows) const
+{
+    if (m_sortColumn != 1 && m_sortColumn != 2 && m_sortColumn != 5) {
+        std::stable_sort(rows.begin(), rows.end(), [this](int a, int b) { return less(a, b); });
         return;
     }
-    for (int index : m_rows)
-        add(index);
+    struct Item
+    {
+        int row;
+        int id;
+        QCollatorSortKey key;
+    };
+    const auto& people = m_catalog->people();
+    std::vector<Item> items;
+    items.reserve(size_t(rows.size()));
+    for (int row : rows)
+        items.push_back({row, people.at(row).id, m_collator.sortKey(sortText(people.at(row)))});
+    const bool ascending = m_sortOrder == Qt::AscendingOrder;
+    std::sort(items.begin(), items.end(), [ascending](const Item& a, const Item& b) {
+        int cmp = a.key.compare(b.key);
+        if (cmp == 0)
+            cmp = a.id - b.id;
+        return ascending ? cmp < 0 : cmp > 0;
+    });
+    for (int i = 0; i < rows.size(); ++i)
+        rows[i] = items[size_t(i)].row;
 }
 
 void PersonModel::sortRows()
 {
-    QHash<int, QString> marks;
-    if (m_sortColumn == 5) {
-        fillSortMarks(marks);
-        m_sortMarks = &marks;
-    }
     if (m_grouped)
         sortGroups();
     else
-        std::stable_sort(m_rows.begin(), m_rows.end(), [this](int a, int b) { return less(a, b); });
-    m_sortMarks = nullptr;
+        sortPeople(m_rows);
 }
 
 void PersonModel::sort(int column, Qt::SortOrder order)
@@ -458,6 +517,7 @@ void PersonModel::apply(int awardId, int year, const QString& name, const QStrin
     m_groupOfPerson.clear();
     QHash<int, int> groupByAwardId;
     const auto& people = m_catalog->people();
+    const QuickFilter quickFilter = makeQuickFilter(quick);
     m_rows.reserve(people.size());
     for (int i = 0; i < people.size(); ++i) {
         const Person& person = people.at(i);
@@ -470,7 +530,7 @@ void PersonModel::apply(int awardId, int year, const QString& name, const QStrin
         if (!name.isEmpty() && !person.name.contains(name, Qt::CaseInsensitive)
             && !person.nameBy.contains(name, Qt::CaseInsensitive))
             continue;
-        if (!quick.isEmpty() && !matchesQuick(person, quick))
+        if (!quick.isEmpty() && !matchesQuick(person, quickFilter))
             continue;
         if (!m_grouped) {
             m_rows.push_back(i);
@@ -578,28 +638,21 @@ QStringList PersonModel::suggestions(int personId) const
     return m_suggestions.value(personId);
 }
 
-void PersonModel::setSuggestions(int personId, const QStringList& values)
+void PersonModel::setSuggestions(const QHash<int, QStringList>& suggestions)
 {
-    m_suggestions.insert(personId, values);
-    const auto& people = m_catalog->people();
+    if (suggestions.isEmpty())
+        return;
+    m_suggestions.insert(suggestions);
     if (!m_grouped) {
-        for (int row = 0; row < m_rows.size(); ++row) {
-            if (people.at(m_rows.at(row)).id == personId) {
-                emit dataChanged(index(row, 1), index(row, 1));
-                return;
-            }
-        }
+        if (!m_rows.isEmpty())
+            emit dataChanged(index(0, 1), index(m_rows.size() - 1, 1));
         return;
     }
     for (int group = 0; group < m_groups.size(); ++group) {
         const QModelIndex parent = index(group, 0);
-        for (int row = 0; row < m_groups.at(group).people.size(); ++row) {
-            if (people.at(m_groups.at(group).people.at(row)).id == personId) {
-                const QModelIndex cell = index(row, 1, parent);
-                emit dataChanged(cell, cell);
-                return;
-            }
-        }
+        const int count = m_groups.at(group).people.size();
+        if (count > 0)
+            emit dataChanged(index(0, 1, parent), index(count - 1, 1, parent));
     }
 }
 

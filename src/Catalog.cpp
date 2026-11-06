@@ -174,6 +174,16 @@ int Catalog::yearMax() const
     return QDate::currentDate().year();
 }
 
+int Catalog::latestYear() const
+{
+    int latest = 0;
+    for (const Person& person : m_people) {
+        if (person.ukaseDate.isValid())
+            latest = qMax(latest, person.ukaseDate.year());
+    }
+    return latest;
+}
+
 bool Catalog::exec(QSqlQuery& query, QString* error) const
 {
     if (query.exec())
@@ -280,6 +290,7 @@ bool Catalog::load(QString* error)
     }
 
     QSqlQuery people(m_db);
+    people.setForwardOnly(true); // rows are read once: no cache of all 78k rows
     if (!people.exec(QStringLiteral(
             "SELECT ID, Award_ID, Name, Name_BY, Personal_Info, Personal_Info_BY, "
             "Awarded_For, Rank, Rank_BY, Ukase_No, Ukase_Date, Posthumous, Ukase_Lang "
@@ -302,7 +313,7 @@ bool Catalog::load(QString* error)
         person.rank = people.value(7).toString();
         person.rankBy = people.value(8).toString();
         person.ukaseNo = people.value(9).toInt();
-        person.ukaseDate = QDate::fromString(people.value(10).toString(), QStringLiteral("yyyy-MM-dd"));
+        person.ukaseDate = QDate::fromString(people.value(10).toString(), Qt::ISODate); // "yyyy-MM-dd"
         person.posthumous = people.value(11).toInt();
         person.language = people.value(12).toInt();
         m_people.push_back(person);
@@ -702,14 +713,17 @@ bool Catalog::remove(const QList<int>& ids, QString* error)
 
     emit aboutToChange();
     const QSet<int> drop(ids.begin(), ids.end());
-    QVector<Person> kept;
-    kept.reserve(m_people.size());
+    // the identity counts do not depend on positions: only the dropped people
+    // leave them (no 156k name normalisations); positions by id are renumbered
     for (const Person& person : m_people) {
-        if (!drop.contains(person.id))
-            kept.push_back(person);
+        if (drop.contains(person.id))
+            removeIdentity(person);
     }
-    m_people.swap(kept);
-    rebuildIdentity(); // indexes of the remaining people have shifted
+    m_people.removeIf([&drop](const Person& person) { return drop.contains(person.id); });
+    m_personById.clear();
+    m_personById.reserve(m_people.size());
+    for (int index = 0; index < m_people.size(); ++index)
+        m_personById.insert(m_people.at(index).id, index);
     invalidateDerived();
     emit dataChanged();
     return true;

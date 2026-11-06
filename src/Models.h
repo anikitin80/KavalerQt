@@ -4,7 +4,9 @@
 
 #include <QAbstractItemModel>
 #include <QAbstractTableModel>
+#include <QCollator>
 #include <QHash>
+#include <QSet>
 #include <QColor>
 
 class PersonModel : public QAbstractItemModel
@@ -35,7 +37,8 @@ public:
     int groupAwardId(const QModelIndex& index) const;
     QModelIndex groupIndex(int awardId) const;
     QStringList suggestions(int personId) const;
-    void setSuggestions(int personId, const QStringList& values);
+    // names to choose from, by person id; the name column is repainted once
+    void setSuggestions(const QHash<int, QStringList>& suggestions);
     void clearSuggestions(int personId);
 
 private:
@@ -54,8 +57,20 @@ private:
     Mark translationMark(const Person& person) const;
     QString columnText(const Person& person, int column) const;
     bool less(int left, int right) const;
-    bool matchesQuick(const Person& person, const QString& quick) const;
-    void fillSortMarks(QHash<int, QString>& marks) const;
+    // what does not depend on the person is decided once per filter
+    struct QuickFilter
+    {
+        QString text;
+        QSet<int> awards;        // awards whose name contains the text
+        bool ukase = false;      // the text can be part of "dd.MM.yyyy № N"
+        bool comma = false;      // the text can span "position, rank"
+        bool posthumous = false; // the text is "X"
+        bool mark = false;       // the text can be part of a translation mark
+    };
+    QuickFilter makeQuickFilter(const QString& quick) const;
+    bool matchesQuick(const Person& person, const QuickFilter& filter) const;
+    QString sortText(const Person& person) const;
+    void sortPeople(QVector<int>& rows) const;
     void sortRows();
     bool isGroup(const QModelIndex& index) const;
     int catalogIndex(const QModelIndex& index) const;
@@ -78,7 +93,9 @@ private:
     Qt::SortOrder m_sortOrder = Qt::AscendingOrder;
     bool m_checkQuotes = false;
     bool m_grouped = false;
-    const QHash<int, QString>* m_sortMarks = nullptr;
+    // Russian collation: "Ё" after "Е", Belarusian "і"/"ў" next to "и"/"у",
+    // numbers by value ("5-й" before "12-й")
+    QCollator m_collator;
     QHash<int, QStringList> m_suggestions;
 };
 
