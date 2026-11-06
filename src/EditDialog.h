@@ -9,6 +9,7 @@ class QDateEdit;
 class QLineEdit;
 class QPlainTextEdit;
 class QCheckBox;
+class QSpinBox;
 
 class EditDialog : public QDialog
 {
@@ -20,11 +21,12 @@ public:
 
 private:
     void accept() override;
+    void done(int result) override;
 
     Catalog* m_catalog;
     Person m_person;
     QComboBox* m_award;
-    QLineEdit* m_ukaseNo;
+    QSpinBox* m_ukaseNo;
     QDateEdit* m_date;
     QCheckBox* m_posthumous;
     QLineEdit* m_name;
