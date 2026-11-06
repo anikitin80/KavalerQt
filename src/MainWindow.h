@@ -5,6 +5,7 @@
 #include "Translator.h"
 
 #include <QHash>
+#include <functional>
 #include <QMainWindow>
 #include <QSet>
 
@@ -51,6 +52,9 @@ private:
     QString storedDatabasePath() const;
     void rememberDatabasePath(const QString& path);
     bool saveChanged(QVector<Person>& people);
+    // change() edits a copy of each selected person and says whether it changed;
+    // the changed ones are saved together (saved: what was saved)
+    bool modifySelected(const std::function<bool(Person&)>& change, QVector<Person>* saved = nullptr);
     QVector<Person> selectedPeople() const;
     void capturePeopleState();
     void restorePeopleState();

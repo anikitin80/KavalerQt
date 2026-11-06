@@ -194,7 +194,8 @@ const std::vector<std::wstring> searchFinishRU = { L"Президент Респ
 const std::vector<std::wstring> searchUkazStart = { L"УКАЗ ПР", L"УКАЗ ПР", L"УКАЗПР" };
 const std::vector<std::wstring> searchActionsBY = { L"знагародзіць", L"прысвоіць", L"Прысвоіць" };
 const std::vector<std::wstring> searchActionsRU = { L"наградить", L"присвоить", L"Присвоить" };
-const std::vector<std::wstring> searchGroup = { L"группу", L"группы", L"работников", L"работнікаў", L"супрацоўнікаў", L"сотрудникам" };
+const std::vector<std::wstring> searchGroup = { L"группу", L"группы", L"работников", L"работнікаў", L"супрацоўнікаў", L"сотрудникам",
+	L"сотрудников", L"ваеннаслужачых", L"военнослужащих" };
 const std::vector<std::wstring> searchGroupEnd = { L"государственными", L"орденом", L"медалью", L"дзяржаўнымі", L"ордэнам", L"медалём", L"почетные", L"почетное", L"почетных" };
 
 } // namespace
@@ -215,6 +216,28 @@ void CDocumentParser::ParseDecreeHeader(const std::wstring& strLine)
 	}
 }
 
+// a section of a list ("па Брэсцкай вобласці", "па г. Мінску"): people of a city
+// section may have no place in the decree, it is the city ("г. Мінск")
+void CDocumentParser::ParseSection(const std::wstring& strLine)
+{
+	std::wstring line = strLine;
+	std::replace(line.begin(), line.end(), L' ', L' '); // "па г. Мінску"
+	StrTrim(line);
+	if (line.length() > 40 || line.find(L'–') != std::wstring::npos
+		|| (line.compare(0, 3, L"па ") != 0 && line.compare(0, 3, L"по ") != 0))
+		return;
+	const std::wstring rest = line.substr(3);
+	if (rest.compare(0, 3, L"г. ") == 0 && rest.length() > 4 && rest.find(L' ', 3) == std::wstring::npos)
+	{
+		std::wstring city = rest.substr(3); // dative: "Мінску", "Минску"
+		if (city.back() == L'у')
+			city.pop_back();
+		m_SectionCity = L"г. " + city;
+	}
+	else if (rest.find(L"вобласці") != std::wstring::npos || rest.find(L"области") != std::wstring::npos)
+		m_SectionCity.clear();
+}
+
 // info about a group: text after the group token up to the end of the sentence
 // or up to the award type ("орденом", "медалью", ...)
 void CDocumentParser::ParseGroupInfo(const std::wstring& strLine)
@@ -228,6 +251,21 @@ void CDocumentParser::ParseGroupInfo(const std::wstring& strLine)
 		groupInfo.erase(posEnd);
 	if (FindTokens(groupInfo, searchGroupEnd, posStart, posEnd) && posStart > 0)
 		groupInfo.erase(posStart - 1);
+	// the purpose after the organisation is not part of it: "«Мінскі трактарны
+	// завод» у развіццё трактарабудавання", "органаў пракуратуры ва ўмацаванне ..."
+	for (const wchar_t* preposition : { L" у ", L" ў ", L" в ", L" ва ", L" во ", L" за " })
+	{
+		for (size_t pos = groupInfo.find(preposition); pos != std::wstring::npos; pos = groupInfo.find(preposition, pos + 1))
+		{
+			// not inside quotes: the next quote after it is an opening one (or none)
+			const size_t posQuote = groupInfo.find_first_of(L"«»", pos);
+			if (posQuote == std::wstring::npos || groupInfo[posQuote] == L'«')
+			{
+				groupInfo.erase(pos);
+				break;
+			}
+		}
+	}
 
 	AddGroupInfo(m_UkazInfo, m_FileName, groupInfo);
 }
@@ -260,6 +298,7 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 			bAwardStarted = bAwardTypeFound = bPossibleGroupStart = bMultiplePochet = false;
 			m_UkazInfo.Clear();
 			m_UkazInfo.RussianLang = ((*itrLine)[posEnd] == L'Е');
+			m_SectionCity.clear();
 			continue;
 		}
 
@@ -287,6 +326,7 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 
 		if (m_UkazInfo.Number)
 			ParseGroupInfo(strLine);
+		ParseSection(strLine);
 
 		if (bAwardStarted)
 		{
@@ -637,6 +677,15 @@ void CDocumentParser::NormalizePersonInfo(PersonInfo& person)
 	person.Description = professions[0];
 	for (size_t i = 1; i < professions.size(); i++)
 		person.Description += L" – " + professions[i];
+
+	// a housewife in the city section of a list has no place in the decree:
+	// "па г. Мінску ... хатнюю гаспадыню" -> "хатняя гаспадыня, г. Мінск"
+	if (!m_SectionCity.empty())
+	{
+		const std::wstring description = ToLower(person.Description);
+		if (description == L"хатняя гаспадыня" || description == L"домохозяйка")
+			person.Description += L", " + m_SectionCity;
+	}
 }
 
 bool CDocumentParser::ExtractMilitaryRank(PersonInfo& person, LangType lang, NounCase nounCase)
@@ -753,9 +802,10 @@ std::wstring CDocumentParser::GetPersonDescription(PersonInfo& person, bool bGet
 	std::wstring strGroupInfo;
 	if (GetGroupInfo(person.Ukaz, strGroupInfo))
 	{
-		if (!strGroupInfo.empty())
+		StrTrim(strGroupInfo);
+		// not twice: "дырэктар ААТ «Белкард»" already names the organisation
+		if (!strGroupInfo.empty() && strDesc.find(strGroupInfo) == std::wstring::npos)
 		{
-			StrTrim(strGroupInfo);
 			if(!strDesc.empty())
 				strDesc += L' ';
 			strDesc += strGroupInfo;

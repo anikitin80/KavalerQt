@@ -125,51 +125,41 @@ MainWindow::MainWindow(QWidget* parent)
     m_stats = new StatsModel(&m_catalog, this);
     m_dictionary = new DictionaryModel(&m_catalog, this);
 
-    auto* openDb = new QAction(toolbarIcon(0), QStringLiteral("Открыть базу..."), this);
-    openDb->setIconText(QStringLiteral("База данных"));
-    openDb->setToolTip(QStringLiteral("Сменить базу данных"));
-    connect(openDb, &QAction::triggered, this, &MainWindow::chooseDatabase);
-
-    auto* importDecrees = new QAction(toolbarIcon(1), QStringLiteral("Импорт указов..."), this);
-    importDecrees->setIconText(QStringLiteral("Импорт указов"));
-    importDecrees->setToolTip(QStringLiteral("Импорт указов из файлов Word (docx)"));
-    connect(importDecrees, &QAction::triggered, this, [this] {
+    // a toolbar/menu action: icon from the toolbar strip, menu text, short text
+    // under the icon (the menu text when empty), tool tip
+    const auto makeAction = [this](int icon, const QString& text, const QString& iconText, const QString& toolTip,
+                                   auto&& slot) {
+        auto* action = new QAction(toolbarIcon(icon), text, this);
+        if (!iconText.isEmpty())
+            action->setIconText(iconText);
+        action->setToolTip(toolTip);
+        connect(action, &QAction::triggered, this, std::forward<decltype(slot)>(slot));
+        return action;
+    };
+    auto* openDb = makeAction(0, QStringLiteral("Открыть базу..."), QStringLiteral("База данных"),
+                              QStringLiteral("Сменить базу данных"), &MainWindow::chooseDatabase);
+    auto* importDecrees = makeAction(1, QStringLiteral("Импорт указов..."), QStringLiteral("Импорт указов"),
+                                     QStringLiteral("Импорт указов из файлов Word (docx)"), [this] {
         if (!m_catalog.isOpen())
             return;
         ImportDialog dialog(&m_catalog, this);
         dialog.exec();
     });
-
-    auto* exportCsv = new QAction(toolbarIcon(2), QStringLiteral("Экспорт награждений..."), this);
-    exportCsv->setIconText(QStringLiteral("Экспорт награждений"));
-    exportCsv->setToolTip(QStringLiteral("Экспорт награждений в csv файл"));
-    connect(exportCsv, &QAction::triggered, this, &MainWindow::exportCsv);
-
-    auto* addRecord = new QAction(toolbarIcon(3), QStringLiteral("Добавить запись"), this);
-    addRecord->setIconText(QStringLiteral("Добавить"));
-    addRecord->setToolTip(QStringLiteral("Добавить запись"));
-    connect(addRecord, &QAction::triggered, this, [this] { addPerson(nullptr); });
-
-    auto* deleteRecord = new QAction(toolbarIcon(4), QStringLiteral("Удалить запись"), this);
-    deleteRecord->setIconText(QStringLiteral("Удалить"));
-    deleteRecord->setToolTip(QStringLiteral("Удалить запись"));
-    connect(deleteRecord, &QAction::triggered, this, &MainWindow::deleteSelected);
-
-    auto* editRecord = new QAction(toolbarIcon(5), QStringLiteral("Редактировать запись"), this);
-    editRecord->setIconText(QStringLiteral("Редактировать"));
-    editRecord->setToolTip(QStringLiteral("Редактировать запись"));
-    connect(editRecord, &QAction::triggered, this, &MainWindow::editCurrent);
-
-    auto* copyUkase = new QAction(toolbarIcon(6), QStringLiteral("Копия указа"), this);
-    copyUkase->setToolTip(QStringLiteral("Создать копию указа о награждении"));
-    connect(copyUkase, &QAction::triggered, this, [this] {
+    auto* exportCsv = makeAction(2, QStringLiteral("Экспорт награждений..."), QStringLiteral("Экспорт награждений"),
+                                 QStringLiteral("Экспорт награждений в csv файл"), &MainWindow::exportCsv);
+    auto* addRecord = makeAction(3, QStringLiteral("Добавить запись"), QStringLiteral("Добавить"),
+                                 QStringLiteral("Добавить запись"), [this] { addPerson(nullptr); });
+    auto* deleteRecord = makeAction(4, QStringLiteral("Удалить запись"), QStringLiteral("Удалить"),
+                                    QStringLiteral("Удалить запись"), &MainWindow::deleteSelected);
+    auto* editRecord = makeAction(5, QStringLiteral("Редактировать запись"), QStringLiteral("Редактировать"),
+                                  QStringLiteral("Редактировать запись"), &MainWindow::editCurrent);
+    auto* copyUkase = makeAction(6, QStringLiteral("Копия указа"), QString(),
+                                 QStringLiteral("Создать копию указа о награждении"), [this] {
         const auto index = m_peopleView->currentIndex();
         addPerson(index.isValid() ? m_people->personAt(index) : nullptr);
     });
-
-    auto* printAction = new QAction(toolbarIcon(7), QStringLiteral("Печать..."), this);
-    printAction->setToolTip(QStringLiteral("Печать"));
-    connect(printAction, &QAction::triggered, this, &MainWindow::printCurrent);
+    auto* printAction = makeAction(7, QStringLiteral("Печать..."), QString(), QStringLiteral("Печать"),
+                                   &MainWindow::printCurrent);
 
     auto* fileMenu = menuBar()->addMenu(QStringLiteral("Файл"));
     fileMenu->addAction(openDb);
@@ -391,16 +381,8 @@ MainWindow::MainWindow(QWidget* parent)
 
 QString MainWindow::storedDatabasePath() const
 {
-    QSettings settings;
-    QString path = settings.value(QStringLiteral("Database")).toString();
-    if (path.endsWith(QStringLiteral(".mdb"), Qt::CaseInsensitive)) {
-        const QString sqlitePath = path.left(path.size() - 4) + QStringLiteral(".sqlite");
-        if (QFileInfo::exists(sqlitePath))
-            path = sqlitePath;
-    }
-    if (path.isEmpty())
-        path = QStringLiteral("D:/Awards/DB/Kavaler.sqlite");
-    return path;
+    // empty on the first start: the window asks to open a database
+    return QSettings().value(QStringLiteral("Database")).toString();
 }
 
 void MainWindow::rememberDatabasePath(const QString& path)
@@ -796,23 +778,36 @@ void MainWindow::translateSelectedCloud(CloudScope scope)
     }
 }
 
-void MainWindow::translateSelectedByDictionary()
+bool MainWindow::modifySelected(const std::function<bool(Person&)>& change, QVector<Person>* saved)
 {
     QVector<Person> changed;
-    QHash<int, QStringList> suggestions;
     for (Person person : selectedPeople()) {
+        if (change(person))
+            changed.push_back(person);
+    }
+    const bool ok = saveChanged(changed);
+    if (saved)
+        *saved = changed;
+    return ok;
+}
+
+void MainWindow::translateSelectedByDictionary()
+{
+    QHash<int, QStringList> suggestions;
+    QVector<Person> changed;
+    const bool saved = modifySelected([&](Person& person) {
         if (!person.needTranslation() || !person.name.isEmpty())
-            continue;
+            return false;
         const QStringList names = m_catalog.translateName(person.nameBy);
         if (names.size() != 1) {
             suggestions.insert(person.id, names);
-            continue;
+            return false;
         }
         person.name = names.first();
-        changed.push_back(person);
-    }
+        return true;
+    }, &changed);
     m_people->setSuggestions(suggestions);
-    if (saveChanged(changed)) {
+    if (saved) {
         for (const Person& person : changed)
             m_people->clearSuggestions(person.id);
     }
@@ -820,49 +815,40 @@ void MainWindow::translateSelectedByDictionary()
 
 void MainWindow::translateSelectedProfession()
 {
-    QVector<Person> changed;
-    for (Person person : selectedPeople()) {
+    modifySelected([this](Person& person) {
         if (!person.needTranslation() || !person.personal.isEmpty())
-            continue;
+            return false;
         const QString profession = m_catalog.professionRu(person.personalBy);
         if (profession.isEmpty())
-            continue;
+            return false;
         person.personal = profession;
         if (!person.rankBy.isEmpty() && person.rank.isEmpty()) {
             const QString rank = m_catalog.rankRu(person.rankBy);
             if (rank.isEmpty())
-                continue;
+                return false;
             person.rank = rank;
         }
-        changed.push_back(person);
-    }
-    saveChanged(changed);
+        return true;
+    });
 }
 
 void MainWindow::applySuggestion(int personId, const QString& name)
 {
-    for (const Person& person : m_catalog.people()) {
-        if (person.id != personId)
-            continue;
-        Person updated = person;
-        updated.name = name;
-        QString error;
-        if (!m_catalog.save(updated, &error))
-            QMessageBox::critical(this, windowTitle(), error);
-        else
-            m_people->clearSuggestions(personId);
+    const Person* person = m_catalog.person(personId);
+    if (!person)
         return;
-    }
+    Person updated = *person;
+    updated.name = name;
+    QString error;
+    if (!m_catalog.save(updated, &error))
+        QMessageBox::critical(this, windowTitle(), error);
+    else
+        m_people->clearSuggestions(personId);
 }
 
 void MainWindow::fixSelectedQuotes()
 {
-    QVector<Person> changed;
-    for (Person person : selectedPeople()) {
-        if (m_catalog.fixQuotes(person))
-            changed.push_back(person);
-    }
-    saveChanged(changed);
+    modifySelected([this](Person& person) { return m_catalog.fixQuotes(person); });
 }
 
 bool MainWindow::eventFilter(QObject* watched, QEvent* event)
@@ -1096,14 +1082,7 @@ void MainWindow::replaceText()
     else if (infoBy->isChecked())
         field = TextField::PersonalBy;
 
-    int matches = 0;
-    for (const Person& person : m_catalog.people()) {
-        const QString* text = person.field(field);
-        if (!text)
-            continue;
-        if (exact->isChecked() ? *text == find->text() : text->contains(find->text()))
-            ++matches;
-    }
+    const int matches = m_catalog.countMatches(field, exact->isChecked(), find->text());
     if (matches == 0) {
         QMessageBox::information(this, windowTitle(), QStringLiteral("Совпадений не найдено!"));
         return;

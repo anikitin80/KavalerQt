@@ -410,7 +410,20 @@ void CProfessionConverter::ConvertAfterComma(std::wstring& strSource, size_t pos
 				const std::wstring part = ToLower(GetNextWord(strSource, posPart));
 				compoundAdjective = EndsWithAny(part, { L"ай", L"ой", L"ых", L"іх", L"их", L"ым", L"ае", L"ое", L"ыя", L"ые" });
 			}
-			if (Lookup(dictionary, next, lang) != dictionary.end() && !compoundAdjective)
+			// an adjective from the dictionary before "і"/"и" is part of a list of
+			// adjectives, not a profession: "грамадзянскага, працоўнага і сацыяльнага
+			// заканадаўства" (but "заведующего кафедрой" is one)
+			const auto found = Lookup(dictionary, next, lang);
+			bool beforeConjunction = false;
+			if (found != dictionary.end() && IsAdjective(found->second))
+			{
+				size_t posAfter = posWord;
+				const std::wstring after = ToLower(GetNextWord(strSource, posAfter));
+				beforeConjunction = after == L"і" || after == L"и" || after == L"i";
+			}
+			if (beforeConjunction)
+				break;
+			if (found != dictionary.end() && !compoundAdjective)
 				profession = true;
 			else if (!CNameConverter::ApplyRules(next, RulesAdjectives, SexAny, lang, nounCase, false))
 				break;

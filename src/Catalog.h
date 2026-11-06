@@ -82,6 +82,10 @@ public:
     const QVector<Award>& awards() const { return m_awards; }
     const QVector<Person>& people() const { return m_people; }
     const Award* award(int id) const;
+    // the order of awards everywhere: priority, then name, then id (<0, 0, >0)
+    int compareAwards(int left, int right) const;
+    // the record with this id, nullptr if there is none; valid until the next change
+    const Person* person(int id) const;
 
     bool save(Person& person, QString* error);
     bool saveMany(QVector<Person>& people, QString* error);
@@ -111,6 +115,8 @@ public:
     bool backup(const QString& filePath, QString* error) const;
 
     int exportCsv(const QString& filePath, bool fromDate, const QDate& from, QString* error);
+    // records whose field would change (exact: the whole field equals find)
+    int countMatches(TextField field, bool exact, const QString& find) const;
     int replaceText(TextField field, bool exact, const QString& find, const QString& replace, QString* error);
 
     // Derived data (statistics, name dictionary, profession/rank translations)

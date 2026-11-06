@@ -298,7 +298,7 @@ int main(int argc, char** argv)
     filesOut.setEncoding(QStringConverter::Utf8);
     persons << "file\tyear\tindex\tstatus\taward\tdb_id\tname\tdescription\trank\tposthumous"
                "\tdb_description\tdb_rank\tdb_posthumous\tdiff_fields\tdecree_no\tdecree_date\tlanguage\tsource_name\tsource_case\n";
-    filesOut << "file\tyear\tpersons\texact\tdiff\tother_award\tnew\tbad_header\terror\texact_index\n";
+    filesOut << "file\tyear\tpersons\texact\tdiff\tother_award\tnew\tbad_header\terror\texact_index\tgroup_used\tgroup_info\n";
     const bool allPersons = cli.isSet(allOption);
 
     QMap<QString, int> totals;
@@ -325,9 +325,12 @@ int main(int argc, char** argv)
         // import dialog by a check box per file: use it when more people match
         const std::wstring fileName = QFileInfo(path).fileName().toStdWString();
         bool useGroup = false;
+        QString groupText;
         {
             GroupInfo group;
             std::wstring name = fileName;
+            if (parser.GetGroupInfo(name, group))
+                groupText = QString::fromStdWString(group.Info);
             if (parser.GetGroupInfo(name, group) && !group.Info.empty()) {
                 int with = 0, without = 0;
                 QHash<QString, int> seen;
@@ -423,7 +426,7 @@ int main(int argc, char** argv)
                  << fileCounts.value(QStringLiteral("EXACT")) << '\t' << fileCounts.value(QStringLiteral("DIFF")) << '\t'
                  << fileCounts.value(QStringLiteral("OTHER_AWARD")) << '\t' << fileCounts.value(QStringLiteral("NEW")) << '\t'
                  << fileCounts.value(QStringLiteral("BAD_HEADER")) << '\t' << cell(readError) << '\t'
-                 << indexRanges(exactIndexes) << '\n';
+                 << indexRanges(exactIndexes) << '\t' << (useGroup ? 1 : 0) << '\t' << cell(groupText) << '\n';
         if ((f + 1) % 100 == 0 || f + 1 == files.size())
             console() << (f + 1) << "/" << files.size() << " files, " << timer.elapsed() / 1000 << " s\n" << Qt::flush;
     }

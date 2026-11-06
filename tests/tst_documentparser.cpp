@@ -49,12 +49,14 @@ private slots:
     void singleAwardPersonBeforeAward();
     void singleAwardPosthumous();
     void listWithLineBreaks();
+    void housewifeGetsTheCityOfTheSection();
     void listEndingWithDashDoesNotCrash();
     void listStartingWithDashDoesNotCrash();
     void belarusianDecree();
     void dashInsideQuotesIsNotSecondProfession();
     void twoDecreesInOneFile();
     void groupInfoBelongsToItsDecree();
+    void groupInfoIsTheOrganisationOnly();
     void resetClearsEverything();
 
 private:
@@ -263,6 +265,28 @@ void TestDocumentParser::listWithLineBreaks()
     QVERIFY(second.MilitaryRank.empty());
 }
 
+// the city section of a list ("па г. Мінску") gives the place of a housewife,
+// a region section has the place in the decree text and resets it
+void TestDocumentParser::housewifeGetsTheCityOfTheSection()
+{
+    parse({kUkazBy, QStringLiteral("24 лютага 2023 г. № 56"),
+           QStringLiteral("За нараджэнне і выхаванне пяці і больш дзяцей узнагародзіць ордэнам Маці:"),
+           QStringLiteral("па г. Мінску"),
+           QStringLiteral("Абрамук\vТаццяну Мікалаеўну"), QStringLiteral("–"),
+           QStringLiteral("хатнюю гаспадыню"),
+           QStringLiteral("Аксененка\vКацярыну Мікалаеўну"), QStringLiteral("–"),
+           QStringLiteral("хатнюю гаспадыню, г. Мінск"),
+           QStringLiteral("па Брэсцкай вобласці"),
+           QStringLiteral("Алейнікаву\vІрыну Мікалаеўну"), QStringLiteral("–"),
+           QStringLiteral("хатнюю гаспадыню"),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QCOMPARE(int(m_parser->m_Persons.size()), 3);
+    QCOMPARE(m_parser->m_Persons[0].AwardId, 13);
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[0], false)), QStringLiteral("хатняя гаспадыня, г. Мінск"));
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[1], false)), QStringLiteral("хатняя гаспадыня, г. Мінск"));
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[2], false)), QStringLiteral("хатняя гаспадыня"));
+}
+
 void TestDocumentParser::listEndingWithDashDoesNotCrash()
 {
     parse({kUkazRu, QStringLiteral("9 апреля 1999 г.№ 206"),
@@ -360,6 +384,35 @@ void TestDocumentParser::groupInfoBelongsToItsDecree()
              QStringLiteral("водитель работников ОАО «Нафтан»"));
     QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[1], false)),
              QStringLiteral("водитель работников ОАО «Гродно Азот»"));
+}
+
+// the purpose after the organisation is cut ("у развіццё ..."), the organisation
+// is not added a second time, "ваеннаслужачых" starts group info too
+void TestDocumentParser::groupInfoIsTheOrganisationOnly()
+{
+    parse({kUkazBy, QStringLiteral("31 ліпеня 2001 г. № 412"),
+           QStringLiteral("За плённую працу, вялікі асабісты ўклад работнікаў рэспубліканскага унітарнага прадпрыемства "
+                          "«Беларускі металургічны завод» у развіццё металургіі ўзнагародзіць:"),
+           QStringLiteral("медалём «За адвагу»"),
+           QStringLiteral("Зотава\vВалерыя Уладзіміравіча"), QStringLiteral("–"), QStringLiteral("слесара"),
+           QStringLiteral("Кайко\vАляксандра Іванавіча"), QStringLiteral("–"),
+           QStringLiteral("слесара рэспубліканскага унітарнага прадпрыемства «Беларускі металургічны завод»"),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")}, QStringLiteral("412.docx"));
+    m_parser->CheckGroupInfo(L"412.docx", true);
+    QCOMPARE(int(m_parser->m_Persons.size()), 2);
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[0], false)),
+             QStringLiteral("слесар рэспубліканскага унітарнага прадпрыемства «Беларускі металургічны завод»"));
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[1], false)),
+             QStringLiteral("слесар рэспубліканскага унітарнага прадпрыемства «Беларускі металургічны завод»"));
+
+    parse({kUkazBy, QStringLiteral("4 жніўня 2005 г. № 351"),
+           QStringLiteral("За ўзорнае выкананне службовых абавязкаў узнагародзіць медалём «За адвагу» "
+                          "ваеннаслужачых Службы бяспекі Прэзідэнта Рэспублікі Беларусь:"),
+           QStringLiteral("Грыба\vСяргея Іванавіча"), QStringLiteral("–"), QStringLiteral("старшага інспектара аддзела, маёра"),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")}, QStringLiteral("351.docx"));
+    m_parser->CheckGroupInfo(L"351.docx", true);
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons.back(), false)),
+             QStringLiteral("старшы інспектар аддзела Службы бяспекі Прэзідэнта Рэспублікі Беларусь"));
 }
 
 void TestDocumentParser::resetClearsEverything()

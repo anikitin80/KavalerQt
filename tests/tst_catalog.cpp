@@ -132,6 +132,7 @@ private slots:
     void derivedDataFollowsChanges();
     void savingDeletedRecordFails();
     void failedOpenKeepsCurrentDatabase();
+    void replaceTextSavesLikeAnEdit();
 
 private:
     QTemporaryDir m_dir;
@@ -502,6 +503,27 @@ void TestCatalog::failedOpenKeepsCurrentDatabase()
     }
     QCOMPARE(changed.count(), 0);
     QVERIFY(!QFile::exists(m_dir.filePath(QStringLiteral("missing.sqlite"))));
+}
+
+// the first occurrence in each matching field is replaced, saved and normalised
+// like an edit, and the duplicate search follows the new name
+void TestCatalog::replaceTextSavesLikeAnEdit()
+{
+    QString error;
+    QCOMPARE(m_catalog->countMatches(TextField::NameBy, false, QStringLiteral("Шульга")), 1);
+    QCOMPARE(m_catalog->countMatches(TextField::NameBy, true, QStringLiteral("Шульга")), 0);
+    const int count = m_catalog->replaceText(TextField::NameBy, false, QStringLiteral("Шульга"),
+                                             QStringLiteral("Шульгa"), &error); // Latin "a"
+    QCOMPARE(count, 1);
+    const Person* renamed = byNameBy(*m_catalog, QStringLiteral("Шульга Валерый Ігаравіч"));
+    QVERIFY(renamed); // the Latin "a" was normalised on save
+    QCOMPARE(stored(m_path, renamed->id, QStringLiteral("Name_BY")), QStringLiteral("Шульга Валерый Ігаравіч"));
+    QVERIFY(m_catalog->contains(*renamed));
+
+    QCOMPARE(m_catalog->replaceText(TextField::NameBy, true, QStringLiteral("Шульга Валерый Ігаравіч"),
+                                    QStringLiteral("Шульга Валерый Пятровіч"), &error), 1);
+    QVERIFY(byNameBy(*m_catalog, QStringLiteral("Шульга Валерый Пятровіч")));
+    QCOMPARE(m_catalog->replaceText(TextField::NameBy, false, QStringLiteral("няма такога"), QString(), &error), 0);
 }
 
 QTEST_GUILESS_MAIN(TestCatalog)

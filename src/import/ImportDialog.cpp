@@ -113,8 +113,8 @@ ImportDialog::ImportDialog(Catalog* catalog, QWidget* parent)
     : QDialog(parent)
     , m_catalog(catalog)
 {
-    setWindowTitle(QStringLiteral("Импорт указов"));
-    resize(1100, 720);
+    setWindowTitle(QStringLiteral("Парсинг документов о награждении"));
+    resize(1100, 760);
 
     std::map<long, DecreeAward> awards;
     for (const Award& award : catalog->awards()) {
@@ -129,12 +129,12 @@ ImportDialog::ImportDialog(Catalog* catalog, QWidget* parent)
     m_parser.Initialize(awards);
 
     m_fileMode = new QRadioButton(QStringLiteral("Файл"));
-    auto* folderMode = new QRadioButton(QStringLiteral("Папка"));
+    auto* folderMode = new QRadioButton(QStringLiteral("Каталог"));
     m_fileMode->setChecked(true);
     m_path = new QLineEdit;
     auto* browse = new QPushButton(QStringLiteral("Обзор..."));
-    m_rename = new QCheckBox(QStringLiteral("Переименовать файл по номеру указа"));
-    auto* start = new QPushButton(QStringLiteral("Разобрать"));
+    m_rename = new QCheckBox(QStringLiteral("Добавить дату и номер указа в имя файла"));
+    auto* start = new QPushButton(QStringLiteral("Старт"));
     auto* dictionaries = new QPushButton(QStringLiteral("Словари..."));
     dictionaries->setToolTip(QStringLiteral("Файлы словарей профессий"));
     m_progress = new QLabel;
@@ -150,7 +150,7 @@ ImportDialog::ImportDialog(Catalog* catalog, QWidget* parent)
     m_persons->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_persons->verticalHeader()->setVisible(false);
     m_personCount = new QLabel(QStringLiteral("Награжденные (0):"));
-    m_useGroup = new QCheckBox(QStringLiteral("Добавлять сведения о группе"));
+    m_useGroup = new QCheckBox(QStringLiteral("Добавить к должности данные группы"));
     m_useGroup->setEnabled(false);
     m_group = new QLineEdit;
     m_group->setEnabled(false);
@@ -159,31 +159,41 @@ ImportDialog::ImportDialog(Catalog* catalog, QWidget* parent)
     auto* importAll = new QPushButton(QStringLiteral("Импорт всех"));
     auto* close = new QPushButton(QStringLiteral("Закрыть"));
 
+    // the layout of the original dialog (IDD_DOC_PARSER): file/folder, path,
+    // start with the rename option, progress, awards, persons, group info, import
+    auto* modeRow = new QHBoxLayout;
+    modeRow->addWidget(m_fileMode);
+    modeRow->addWidget(folderMode);
+    modeRow->addStretch();
+
     auto* pathRow = new QHBoxLayout;
-    pathRow->addWidget(m_fileMode);
-    pathRow->addWidget(folderMode);
     pathRow->addWidget(m_path, 1);
     pathRow->addWidget(browse);
-    pathRow->addWidget(m_rename);
-    pathRow->addWidget(start);
-    pathRow->addWidget(dictionaries);
+
+    auto* startRow = new QHBoxLayout;
+    startRow->addWidget(start);
+    startRow->addWidget(m_rename);
+    startRow->addStretch();
+    startRow->addWidget(dictionaries);
 
     auto* groupRow = new QHBoxLayout;
     groupRow->addWidget(m_useGroup);
     groupRow->addWidget(m_group, 1);
 
     auto* buttons = new QHBoxLayout;
-    buttons->addWidget(m_personCount);
     buttons->addStretch();
     buttons->addWidget(importSelected);
     buttons->addWidget(importAll);
     buttons->addWidget(close);
 
     auto* layout = new QVBoxLayout(this);
+    layout->addLayout(modeRow);
     layout->addLayout(pathRow);
+    layout->addLayout(startRow);
     layout->addWidget(m_progress);
-    layout->addWidget(m_awards, 2);
-    layout->addWidget(m_persons, 3);
+    layout->addWidget(m_awards, 88);   // heights as in the original: 88 and 153
+    layout->addWidget(m_personCount);
+    layout->addWidget(m_persons, 153);
     layout->addLayout(groupRow);
     layout->addLayout(buttons);
 

@@ -91,10 +91,9 @@ void PersonModel::rebuildGroupLookup()
 void PersonModel::sortGroups()
 {
     const bool descending = m_sortColumn == 0 && m_sortOrder == Qt::DescendingOrder;
-    std::stable_sort(m_groups.begin(), m_groups.end(), [descending](const Group& a, const Group& b) {
-        if (a.priority != b.priority)
-            return descending ? a.priority > b.priority : a.priority < b.priority;
-        return descending ? a.awardId > b.awardId : a.awardId < b.awardId;
+    std::stable_sort(m_groups.begin(), m_groups.end(), [this, descending](const Group& a, const Group& b) {
+        const int cmp = m_catalog->compareAwards(a.awardId, b.awardId);
+        return descending ? cmp > 0 : cmp < 0;
     });
     for (Group& group : m_groups)
         sortPeople(group.people);
@@ -341,19 +340,12 @@ bool PersonModel::less(int left, int right) const
 {
     const Person& a = m_catalog->people().at(left);
     const Person& b = m_catalog->people().at(right);
-    const Award* awardA = m_catalog->award(a.awardId);
-    const Award* awardB = m_catalog->award(b.awardId);
 
     int cmp = 0;
     switch (m_sortColumn) {
-    case 0: {
-        const int pa = awardA ? awardA->priority : 0;
-        const int pb = awardB ? awardB->priority : 0;
-        cmp = pa - pb;
-        if (cmp == 0)
-            cmp = QString::compare(displayAward(a), displayAward(b));
+    case 0:
+        cmp = m_catalog->compareAwards(a.awardId, b.awardId);
         break;
-    }
     case 1:
         cmp = QString::compare(displayName(a), displayName(b));
         break;
@@ -756,13 +748,7 @@ void StatsModel::reload(bool byMonth)
         }
         m_awardIds = awards.values();
         std::sort(m_awardIds.begin(), m_awardIds.end(), [this](int a, int b) {
-            const Award* aa = m_catalog->award(a);
-            const Award* bb = m_catalog->award(b);
-            const int pa = aa ? aa->priority : 0;
-            const int pb = bb ? bb->priority : 0;
-            if (pa != pb)
-                return pa < pb;
-            return QString::compare(aa ? aa->name : QString(), bb ? bb->name : QString()) < 0;
+            return m_catalog->compareAwards(a, b) < 0;
         });
     }
     endResetModel();

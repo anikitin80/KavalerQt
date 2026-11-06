@@ -59,6 +59,7 @@ protected:
 
 	void ParseDecreeHeader(const std::wstring& strLine);
 	void ParseGroupInfo(const std::wstring& strLine);
+	void ParseSection(const std::wstring& strLine);
 	void UpdateAwardStat(int id, std::wstring& award, int nCount);
 	void ExtractPersonInfo(std::wstring& curAward, std::wstring& strAwardedInfo);
 	void NormalizePersonInfo(PersonInfo& person);
@@ -70,5 +71,6 @@ protected:
 
 	std::map<std::wstring, int> m_mapFileMonth;
 	std::wstring m_FileName;
+	std::wstring m_SectionCity; // "г. Мінск" in the city section of a list
 };
 

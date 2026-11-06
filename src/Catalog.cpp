@@ -184,6 +184,28 @@ int Catalog::latestYear() const
     return latest;
 }
 
+int Catalog::compareAwards(int left, int right) const
+{
+    if (left == right)
+        return 0;
+    const Award* a = award(left);
+    const Award* b = award(right);
+    const int priorityLeft = a ? a->priority : 0;
+    const int priorityRight = b ? b->priority : 0;
+    if (priorityLeft != priorityRight)
+        return priorityLeft < priorityRight ? -1 : 1;
+    const int byName = QString::compare(a ? a->name : QString(), b ? b->name : QString());
+    if (byName != 0)
+        return byName;
+    return left < right ? -1 : 1;
+}
+
+const Person* Catalog::person(int id) const
+{
+    const auto it = m_personById.constFind(id);
+    return it == m_personById.cend() ? nullptr : &m_people.at(*it);
+}
+
 bool Catalog::exec(QSqlQuery& query, QString* error) const
 {
     if (query.exec())
@@ -410,14 +432,8 @@ void Catalog::rebuildDerived() const
     appendDict(m_middle, QStringLiteral("Отчество"));
 
     std::sort(m_stats.begin(), m_stats.end(), [this](const StatMonth& a, const StatMonth& b) {
-        const Award* left = award(a.awardId);
-        const Award* right = award(b.awardId);
-        const int priorityLeft = left ? left->priority : 0;
-        const int priorityRight = right ? right->priority : 0;
-        if (priorityLeft != priorityRight)
-            return priorityLeft < priorityRight;
-        if (a.awardId != b.awardId)
-            return a.awardId < b.awardId;
+        if (const int cmp = compareAwards(a.awardId, b.awardId))
+            return cmp < 0;
         return a.year < b.year;
     });
 }
@@ -897,79 +913,54 @@ int Catalog::exportCsv(const QString& filePath, bool fromDate, const QDate& from
     return count;
 }
 
+// the field text after the replacement; false if nothing matches. Exact: the
+// whole field equals the text; otherwise the first occurrence is replaced
+static bool replacedText(const QString& text, bool exact, const QString& find, const QString& replace, QString* result)
+{
+    if (exact) {
+        if (text != find)
+            return false;
+        if (result)
+            *result = replace;
+        return true;
+    }
+    const int pos = text.indexOf(find);
+    if (pos < 0)
+        return false;
+    if (result)
+        *result = QString(text).replace(pos, find.size(), replace);
+    return true;
+}
+
+int Catalog::countMatches(TextField field, bool exact, const QString& find) const
+{
+    if (find.isEmpty())
+        return 0;
+    int count = 0;
+    for (const Person& person : m_people) {
+        const QString* text = person.field(field);
+        if (text && replacedText(*text, exact, find, QString(), nullptr))
+            ++count;
+    }
+    return count;
+}
+
+// saved like any edit (saveMany): one transaction, text normalisation, identity
 int Catalog::replaceText(TextField field, bool exact, const QString& find, const QString& replace, QString* error)
 {
     if (find.isEmpty())
         return 0;
-
-    if (!m_db.transaction()) {
-        if (error)
-            *error = m_db.lastError().text();
-        return -1;
-    }
-
-    struct Change
-    {
-        int index = 0;
-        QString text;
-    };
-    QVector<Change> changes;
-
-    int count = 0;
-    for (int index = 0; index < m_people.size(); ++index) {
-        Person& person = m_people[index];
-        QString* text = person.field(field);
-        if (!text)
+    QVector<Person> changed;
+    for (const Person& person : m_people) {
+        const QString* text = person.field(field);
+        QString updated;
+        if (!text || !replacedText(*text, exact, find, replace, &updated))
             continue;
-
-        QString updated = *text;
-        if (exact) {
-            if (updated != find)
-                continue;
-            updated = replace;
-        } else {
-            const int pos = updated.indexOf(find);
-            if (pos < 0)
-                continue;
-            updated.replace(pos, find.size(), replace);
-        }
-
         Person copy = person;
         *copy.field(field) = updated;
-        QSqlQuery query(m_db);
-        query.prepare(QStringLiteral(
-            "UPDATE Kavalers SET Name=?, Name_BY=?, Personal_Info=?, Personal_Info_BY=? WHERE ID=?"));
-        bindText(query, copy.name);
-        bindText(query, copy.nameBy);
-        bindText(query, copy.personal);
-        bindText(query, copy.personalBy);
-        query.addBindValue(copy.id);
-        if (!exec(query, error)) {
-            m_db.rollback();
-            return -1;
-        }
-        changes.push_back({index, updated});
-        ++count;
+        changed.push_back(copy);
     }
-
-    if (!m_db.commit()) {
-        if (error)
-            *error = m_db.lastError().text();
-        m_db.rollback();
+    if (!saveMany(changed, error))
         return -1;
-    }
-
-    if (changes.isEmpty())
-        return count;
-
-    emit aboutToChange();
-    for (const Change& change : changes) {
-        Person& person = m_people[change.index];
-        removeIdentity(person);
-        *person.field(field) = change.text;
-        addIdentity(person);
-    }
-    invalidateDerived();
-    emit dataChanged();
-    return count;
+    return changed.size();
 }
