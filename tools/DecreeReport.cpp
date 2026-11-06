@@ -6,8 +6,9 @@
 //
 // The database is opened read-only. Output in --out:
 //   summary.txt  totals, by year, which fields differ, comparison with --compare
-//   persons.tsv  every parsed person with its status and the catalog record
-//   files.tsv    per decree file
+//   persons.tsv  parsed persons that differ from the catalog (all with --all)
+//   files.tsv    per decree file, with the indexes of the persons that matched
+//                exactly ("0-12,14"): --compare needs them, persons.tsv omits them
 //   changes.tsv  (with --compare) persons whose status or parsed values changed
 //
 // Status of a parsed person (same matching as ImportMatch: decree, award and
@@ -34,6 +35,7 @@
 #include <QFileInfo>
 #include <QHash>
 #include <QMap>
+#include <QSet>
 #include <QSettings>
 #include <QTextStream>
 
@@ -103,6 +105,50 @@ QString rowKey(const QString& file, int index)
     return file + QChar(0x1F) + QString::number(index);
 }
 
+// "0-3,5" for {0, 1, 2, 3, 5}
+QString indexRanges(const QVector<int>& sorted)
+{
+    QStringList parts;
+    for (int i = 0; i < sorted.size();) {
+        int j = i;
+        while (j + 1 < sorted.size() && sorted.at(j + 1) == sorted.at(j) + 1)
+            ++j;
+        parts << (i == j ? QString::number(sorted.at(i))
+                         : QString::number(sorted.at(i)) + QLatin1Char('-') + QString::number(sorted.at(j)));
+        i = j + 1;
+    }
+    return parts.join(QLatin1Char(','));
+}
+
+// files.tsv of an earlier run: keys (file|index) of the persons that matched
+// exactly; reports written before the exact_index column give an empty set
+QSet<QString> readExactKeys(const QString& path)
+{
+    QSet<QString> keys;
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return keys;
+    QTextStream in(&file);
+    in.setEncoding(QStringConverter::Utf8);
+    const QStringList header = in.readLine().split(QLatin1Char('\t'));
+    const int column = header.indexOf(QStringLiteral("exact_index"));
+    if (column < 0)
+        return keys;
+    while (!in.atEnd()) {
+        const QStringList c = in.readLine().split(QLatin1Char('\t'));
+        if (c.size() <= column)
+            continue;
+        for (const QString& range : c.at(column).split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+            const int dash = range.indexOf(QLatin1Char('-'));
+            const int from = range.left(dash < 0 ? range.size() : dash).toInt();
+            const int to = dash < 0 ? from : range.mid(dash + 1).toInt();
+            for (int index = from; index <= to; ++index)
+                keys.insert(rowKey(c.at(0), index));
+        }
+    }
+    return keys;
+}
+
 // persons.tsv of an earlier run: file|index -> row
 QHash<QString, Row> readRows(const QString& path)
 {
@@ -160,7 +206,8 @@ int main(int argc, char** argv)
     const QCommandLineOption dictByOption(QStringLiteral("dict-by"), QStringLiteral("Belarusian profession dictionary (default: from Kavaler settings)."), QStringLiteral("file"));
     const QCommandLineOption filterOption(QStringLiteral("filter"), QStringLiteral("Only files whose path contains this text."), QStringLiteral("text"));
     const QCommandLineOption limitOption(QStringLiteral("limit"), QStringLiteral("Only the first N files."), QStringLiteral("N"));
-    for (const auto& option : {dbOption, docsOption, outOption, compareOption, dictRuOption, dictByOption, filterOption, limitOption})
+    const QCommandLineOption allOption(QStringLiteral("all"), QStringLiteral("Write every person to persons.tsv, not only the differing ones."));
+    for (const auto& option : {dbOption, docsOption, outOption, compareOption, dictRuOption, dictByOption, filterOption, limitOption, allOption})
         cli.addOption(option);
     cli.process(app);
     if (!cli.isSet(dbOption) || !cli.isSet(docsOption) || !cli.isSet(outOption)) {
@@ -251,7 +298,8 @@ int main(int argc, char** argv)
     filesOut.setEncoding(QStringConverter::Utf8);
     persons << "file\tyear\tindex\tstatus\taward\tdb_id\tname\tdescription\trank\tposthumous"
                "\tdb_description\tdb_rank\tdb_posthumous\tdiff_fields\tdecree_no\tdecree_date\tlanguage\tsource_name\tsource_case\n";
-    filesOut << "file\tyear\tpersons\texact\tdiff\tother_award\tnew\tbad_header\terror\n";
+    filesOut << "file\tyear\tpersons\texact\tdiff\tother_award\tnew\tbad_header\terror\texact_index\n";
+    const bool allPersons = cli.isSet(allOption);
 
     QMap<QString, int> totals;
     QMap<int, QMap<QString, int>> perYear;
@@ -308,6 +356,7 @@ int main(int argc, char** argv)
 
         QMap<QString, int> fileCounts;
         QHash<QString, int> ordinal;
+        QVector<int> exactIndexes;
         for (size_t i = 0; i < parser.m_Persons.size(); ++i) {
             PersonInfo& info = parser.m_Persons[i];
             const bool belarusian = !info.Ukaz.RussianLang;
@@ -354,6 +403,11 @@ int main(int argc, char** argv)
             ++perYear[row.year][row.status];
             ++fileCounts[row.status];
             current.insert(rowKey(row.file, row.index), row);
+            if (row.status == QLatin1String("EXACT")) {
+                exactIndexes.push_back(row.index);
+                if (!allPersons)
+                    continue;
+            }
             persons << cell(row.file) << '\t' << row.year << '\t' << row.index << '\t' << row.status << '\t'
                     << row.awardId << '\t' << row.dbId << '\t' << cell(row.name) << '\t' << cell(row.description)
                     << '\t' << cell(row.rank) << '\t' << (row.posthumous ? 1 : 0) << '\t' << cell(row.dbDescription)
@@ -368,7 +422,8 @@ int main(int argc, char** argv)
         filesOut << cell(relative) << '\t' << year << '\t' << parser.m_Persons.size() << '\t'
                  << fileCounts.value(QStringLiteral("EXACT")) << '\t' << fileCounts.value(QStringLiteral("DIFF")) << '\t'
                  << fileCounts.value(QStringLiteral("OTHER_AWARD")) << '\t' << fileCounts.value(QStringLiteral("NEW")) << '\t'
-                 << fileCounts.value(QStringLiteral("BAD_HEADER")) << '\t' << cell(readError) << '\n';
+                 << fileCounts.value(QStringLiteral("BAD_HEADER")) << '\t' << cell(readError) << '\t'
+                 << indexRanges(exactIndexes) << '\n';
         if ((f + 1) % 100 == 0 || f + 1 == files.size())
             console() << (f + 1) << "/" << files.size() << " files, " << timer.elapsed() / 1000 << " s\n" << Qt::flush;
     }
@@ -405,6 +460,8 @@ int main(int argc, char** argv)
 
     if (cli.isSet(compareOption)) {
         const QHash<QString, Row> previous = readRows(QDir(cli.value(compareOption)).filePath(QStringLiteral("persons.tsv")));
+        // persons that matched exactly last time are not in its persons.tsv
+        const QSet<QString> previousExact = readExactKeys(QDir(cli.value(compareOption)).filePath(QStringLiteral("files.tsv")));
         QFile changesFile(QDir(outDir).filePath(QStringLiteral("changes.tsv")));
         changesFile.open(QIODevice::WriteOnly | QIODevice::Text);
         QTextStream changes(&changesFile);
@@ -416,6 +473,17 @@ int main(int argc, char** argv)
         for (auto it = current.cbegin(); it != current.cend(); ++it) {
             const Row& now = it.value();
             const auto was = previous.constFind(it.key());
+            if (was == previous.cend() && previousExact.contains(it.key())) {
+                if (now.status == QLatin1String("EXACT"))
+                    continue;
+                // matched the catalog last time: the old values were the catalog's
+                ++worse;
+                ++transitions[QStringLiteral("EXACT -> ") + now.status];
+                changes << "worse\t" << cell(now.file) << '\t' << now.index << "\tEXACT\t" << now.status << "\t\t"
+                        << cell(now.name) << '\t' << cell(now.dbDescription) << '\t' << cell(now.description) << '\t'
+                        << cell(now.dbRank) << '\t' << cell(now.rank) << '\n';
+                continue;
+            }
             if (was == previous.cend()) {
                 ++appeared;
                 changes << "appeared\t" << cell(now.file) << '\t' << now.index << "\t\t" << now.status << "\t\t" << cell(now.name) << "\t\t" << cell(now.description) << "\t\t" << cell(now.rank) << '\n';
@@ -439,6 +507,12 @@ int main(int argc, char** argv)
             changes << kind << '\t' << cell(now.file) << '\t' << now.index << '\t' << was->status << '\t' << now.status << '\t'
                     << was->name << '\t' << cell(now.name) << '\t' << was->description << '\t' << cell(now.description) << '\t'
                     << was->rank << '\t' << cell(now.rank) << '\n';
+        }
+        for (const QString& key : previousExact) {
+            if (!current.contains(key)) {
+                ++vanished;
+                changes << "vanished\t" << key.section(QChar(0x1F), 0, 0) << '\t' << key.section(QChar(0x1F), 1) << "\tEXACT\t\t\t\t\t\t\t\n";
+            }
         }
         for (auto it = previous.cbegin(); it != previous.cend(); ++it) {
             if (!current.contains(it.key())) {
