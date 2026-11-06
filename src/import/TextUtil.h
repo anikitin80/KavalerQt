@@ -3,7 +3,6 @@
 #include <string>
 #include <vector>
 
-bool IsWordDivision(wchar_t character);
 bool IsCapital(wchar_t character);
 class QDate;
 QDate ParseDate(std::wstring strDate, bool russian);

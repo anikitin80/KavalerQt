@@ -112,7 +112,7 @@ const TestDecrees::Parsed& TestDecrees::parsed(const QString& id)
     std::vector<std::wstring> lines = TestData::toWide(
         TestData::readLines(TestData::path(QStringLiteral("decrees/%1.txt").arg(id))));
     m_parser->ResetData();
-    m_parser->ProcessFile(false, (id + QStringLiteral(".docx")).toStdWString(), lines);
+    m_parser->ProcessFile((id + QStringLiteral(".docx")).toStdWString(), lines);
 
     Parsed result;
     result.persons = m_parser->m_Persons;

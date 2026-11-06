@@ -271,7 +271,7 @@ int main(int argc, char** argv)
             lines.push_back(paragraph.toStdWString());
         parser.ResetData();
         if (!lines.empty())
-            parser.ProcessFile(false, QFileInfo(path).fileName().toStdWString(), lines);
+            parser.ProcessFile(QFileInfo(path).fileName().toStdWString(), lines);
 
         // group info ("работнікаў ... завода") is added to the description in the
         // import dialog by a check box per file: use it when more people match

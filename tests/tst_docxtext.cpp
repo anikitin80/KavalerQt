@@ -65,7 +65,7 @@ void TestDocxText::parseDocx()
 {
     auto parser = TestData::makeParser();
     std::vector<std::wstring> lines = TestData::toWide(readDocxParagraphs(TestData::path(kDecree), nullptr));
-    QVERIFY(parser->ProcessFile(false, L"ru-1997-282.docx", lines));
+    QVERIFY(parser->ProcessFile(L"ru-1997-282.docx", lines));
     QCOMPARE(int(parser->m_Persons.size()), 25);
     QCOMPARE(QString::fromStdWString(parser->m_Persons.front().Name), QStringLiteral("Бодялова Мария Николаевна"));
 }

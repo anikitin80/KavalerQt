@@ -194,12 +194,11 @@ bool CDocumentParser::IsMilitaryAward(int awardId)
 	return false;
 }
 
-bool CDocumentParser::ProcessFile(bool bPDF, const std::wstring& fileName, std::vector<std::wstring>& arrLines)
+bool CDocumentParser::ProcessFile(const std::wstring& fileName, std::vector<std::wstring>& arrLines)
 {
 	bool bResult = false;
 
 	m_FileName = fileName;
-	m_bPDF = bPDF;
 
 	std::vector<std::wstring> searchTargetsRU = { L"медалью", L"орденом", L"почетное звание", L"почетные звания" };
 	std::vector<std::wstring> searchTargetsBY = { L"медалём", L"ордэнам", L"ганаровае званн", L"ганаровыя званн" };
@@ -251,19 +250,6 @@ bool CDocumentParser::ProcessFile(bool bPDF, const std::wstring& fileName, std::
 					m_UkazInfo.Date = ParseDate(strLine.substr(0, pos), m_UkazInfo.RussianLang);
 					m_mapFileMonth[m_FileName] = m_UkazInfo.Date.isValid() ? m_UkazInfo.Date.month() : 0;
 				}
-			}
-		}
-
-		// process line break
-		if (bPDF && strLine.length() > 5 && itrLine + 1 != arrLines.end() && IsWordDivision(strLine.back()))
-		{
-			size_t posNextWordEnd = (itrLine + 1)->find_first_of(L" :");
-			if (posNextWordEnd != -1)
-			{
-				std::wstring nextWord = (itrLine + 1)->substr(0, posNextWordEnd);
-				strLine.erase(strLine.end() - 1);
-				strLine += nextWord;
-				(itrLine + 1)->erase(0, posNextWordEnd + 1);
 			}
 		}
 
@@ -390,7 +376,7 @@ bool CDocumentParser::ProcessFile(bool bPDF, const std::wstring& fileName, std::
 
 					if(pos == 0)
 					{
-						// new format of persons list in the docx/PDF:
+						// new format of persons list in the docx:
 						// name on the previous line, description on the next one
 						if (itrLine == arrLines.begin() || itrLine + 1 == arrLines.end())
 							continue;

@@ -11,8 +11,5 @@ cmake-build-*/
 CMakeLists.txt.user*
 CMakeSettings.json
 
-# proprietary PDFTron SDK (not redistributable), put it locally, see README
-PDFLib/
-
 # local tooling
 .claude/

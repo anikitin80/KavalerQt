@@ -75,7 +75,7 @@ void TestDocumentParser::init()
 void TestDocumentParser::parse(const QStringList& lines, const QString& fileName)
 {
     std::vector<std::wstring> wide = TestData::toWide(lines);
-    m_parser->ProcessFile(false, fileName.toStdWString(), wide);
+    m_parser->ProcessFile(fileName.toStdWString(), wide);
 }
 
 void TestDocumentParser::awardId_data()
@@ -277,7 +277,7 @@ void TestDocumentParser::listStartingWithDashDoesNotCrash()
 {
     // award line directly followed by a dash: there is no name line before it
     std::vector<std::wstring> lines = {L"– водителя"};
-    m_parser->ProcessFile(false, L"test.docx", lines);
+    m_parser->ProcessFile(L"test.docx", lines);
     QVERIFY(m_parser->m_Persons.empty());
 }
 

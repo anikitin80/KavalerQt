@@ -10,7 +10,7 @@ option(KAVALER_BUILD_TESTS "Build the decree parser tests" ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets Sql Network PrintSupport)
 
-# decree parser: text of docx/PDF -> persons; no GUI, shared with the tests
+# decree parser: text of docx -> persons; no GUI, shared with the tests
 add_library(KavalerParser STATIC
     src/import/TextUtil.h
     src/import/TextUtil.cpp
@@ -37,7 +37,6 @@ add_executable(Kavaler WIN32
     src/EditDialog.cpp
     src/MainWindow.h
     src/MainWindow.cpp
-    src/import/PdfText.cpp
     src/import/Translator.cpp
     src/import/ImportDialog.cpp
     src/import/ImportMatch.h
@@ -48,16 +47,8 @@ add_executable(Kavaler WIN32
 target_include_directories(Kavaler PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/import"
-    "${CMAKE_CURRENT_SOURCE_DIR}/PDFLib/Headers"
 )
-target_link_directories(Kavaler PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/PDFLib/Lib/x64")
-target_link_libraries(Kavaler PRIVATE KavalerParser Qt6::Widgets Qt6::Sql Qt6::Network Qt6::PrintSupport PDFNetC)
-
-add_custom_command(TARGET Kavaler POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/PDFLib/Lib/x64/PDFNetC.dll"
-        "$<TARGET_FILE_DIR:Kavaler>"
-)
+target_link_libraries(Kavaler PRIVATE KavalerParser Qt6::Widgets Qt6::Sql Qt6::Network Qt6::PrintSupport)
 
 if(KAVALER_BUILD_TESTS)
     enable_testing()

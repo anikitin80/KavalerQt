@@ -2,7 +2,6 @@
 
 #include "DocxText.h"
 #include "ImportMatch.h"
-#include "PdfText.h"
 
 #include <QAction>
 #include <QCheckBox>
@@ -255,7 +254,7 @@ void ImportDialog::choosePath()
 {
     const QString selected = m_fileMode->isChecked()
         ? QFileDialog::getOpenFileName(this, QStringLiteral("Указ"), m_path->text(),
-            QStringLiteral("Указы (*.docx *.pdf);;Word (*.docx);;PDF (*.pdf)"))
+            QStringLiteral("Указы Word (*.docx)"))
         : QFileDialog::getExistingDirectory(this, QStringLiteral("Папка с указами"), m_path->text());
     if (!selected.isEmpty())
         m_path->setText(QDir::toNativeSeparators(selected));
@@ -277,8 +276,7 @@ void ImportDialog::startParse()
         for (const QFileInfo& info : found) {
             if (info.fileName().startsWith(QStringLiteral("~$")))
                 continue;
-            const QString suffix = info.suffix().toLower();
-            if (suffix == QLatin1String("docx") || suffix == QLatin1String("pdf"))
+            if (info.suffix().compare(QLatin1String("docx"), Qt::CaseInsensitive) == 0)
                 files.push_back(info.absoluteFilePath());
         }
         if (files.isEmpty()) {
@@ -294,15 +292,10 @@ void ImportDialog::startParse()
         m_progress->setText(info.fileName());
         QApplication::processEvents();
 
-        QString error;
-        QStringList paragraphs;
-        const bool pdf = info.suffix().compare(QLatin1String("pdf"), Qt::CaseInsensitive) == 0;
-        if (pdf)
-            paragraphs = readPdfLines(filePath, &error);
-        else if (info.suffix().compare(QLatin1String("docx"), Qt::CaseInsensitive) == 0)
-            paragraphs = readDocxParagraphs(filePath, &error);
-        else
+        if (info.suffix().compare(QLatin1String("docx"), Qt::CaseInsensitive) != 0)
             continue;
+        QString error;
+        const QStringList paragraphs = readDocxParagraphs(filePath, &error);
 
         std::vector<std::wstring> lines;
         lines.reserve(size_t(paragraphs.size()));
@@ -310,7 +303,7 @@ void ImportDialog::startParse()
             lines.push_back(toWide(paragraph));
 
         QString storedName = info.fileName();
-        const bool foundAwards = !lines.empty() && m_parser.ProcessFile(pdf, toWide(storedName), lines);
+        const bool foundAwards = !lines.empty() && m_parser.ProcessFile(toWide(storedName), lines);
         if (!foundAwards) {
             QMessageBox::warning(this, windowTitle(),
                 error.isEmpty() ? QStringLiteral("В файле %1 награждений не найдено.").arg(info.fileName()) : error);
@@ -318,7 +311,7 @@ void ImportDialog::startParse()
         }
         ++parsed;
 
-        if (!pdf && m_rename->isChecked() && m_parser.m_UkazInfo.Number && m_parser.m_UkazInfo.Date.isValid()
+        if (m_rename->isChecked() && m_parser.m_UkazInfo.Number && m_parser.m_UkazInfo.Date.isValid()
             && !storedName.startsWith(QLatin1Char('P'))) {
             QString renamed = QDir(m_folder).filePath(QStringLiteral("P%1_%2 %3")
                 .arg(m_parser.m_UkazInfo.Date.toString(QStringLiteral("yyyyMMdd")))

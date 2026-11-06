@@ -24,7 +24,7 @@ public:
 	void Initialize(std::map<long, DecreeAward>& awards);
 	void ResetData();
 
-	bool ProcessFile(bool bPDF, const std::wstring& fileName, std::vector<std::wstring>& arrLines);
+	bool ProcessFile(const std::wstring& fileName, std::vector<std::wstring>& arrLines);
 	int  GetFileMonth(const std::wstring& fileName) { return m_mapFileMonth[fileName];  }
 	bool SpltPersonInfo(PersonInfo& person);
 	NounCase GetNounCaseByAwardId(int awardId);
@@ -72,6 +72,5 @@ protected:
 			
 	std::map<std::wstring, int> m_mapFileMonth;
 	std::wstring m_FileName;
-	bool m_bPDF;	
 };
 

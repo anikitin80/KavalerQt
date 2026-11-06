@@ -131,7 +131,7 @@ MainWindow::MainWindow(QWidget* parent)
 
     auto* importDecrees = new QAction(toolbarIcon(1), QStringLiteral("Импорт указов..."), this);
     importDecrees->setIconText(QStringLiteral("Импорт указов"));
-    importDecrees->setToolTip(QStringLiteral("Импорт данных из docx/PDF файлов"));
+    importDecrees->setToolTip(QStringLiteral("Импорт указов из файлов Word (docx)"));
     connect(importDecrees, &QAction::triggered, this, [this] {
         if (!m_catalog.isOpen())
             return;
@@ -232,7 +232,7 @@ MainWindow::MainWindow(QWidget* parent)
         QMessageBox::about(this, QStringLiteral("Кавалер"),
             QStringLiteral("Каталог государственных наград Беларуси.\n"
                            "База SQLite, интерфейс Qt.\n\n"
-                           "Импорт указов из Word и PDF, перевод через Яндекс."));
+                           "Импорт указов из Word (docx), перевод через Яндекс."));
     });
 
     m_award = new QComboBox;

@@ -4,12 +4,6 @@
 #include <QString>
 #include <algorithm>
 
-bool IsWordDivision(wchar_t character)
-{
-    static const std::wstring divisions = {L'-', 57389, L'*', L';', L'('};
-    return divisions.find(character) != std::wstring::npos;
-}
-
 bool IsCapital(wchar_t character)
 {
     return character >= L'А' && character <= L'Я' || character == L'І' || character == 'I' || character == L'Ё';

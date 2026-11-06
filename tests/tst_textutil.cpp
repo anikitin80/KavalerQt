@@ -17,7 +17,6 @@ private slots:
     void splitString();
     void findTokens();
     void isCapital();
-    void isWordDivision();
     void toLower();
     void normalizeBelarusianI_data();
     void normalizeBelarusianI();
@@ -115,15 +114,6 @@ void TestTextUtil::isCapital()
         QVERIFY2(IsCapital(c), qPrintable(QString(QChar(c))));
     for (wchar_t c : std::wstring(L"абяёі1 -"))
         QVERIFY2(!IsCapital(c), qPrintable(QString(QChar(c))));
-}
-
-void TestTextUtil::isWordDivision()
-{
-    QVERIFY(IsWordDivision(L'-'));
-    QVERIFY(IsWordDivision(L';'));
-    QVERIFY(IsWordDivision(L'('));
-    QVERIFY(!IsWordDivision(L'а'));
-    QVERIFY(!IsWordDivision(L' '));
 }
 
 void TestTextUtil::toLower()
