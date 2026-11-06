@@ -18,6 +18,8 @@
 #include <QHBoxLayout>
 #include <QImage>
 #include <QInputDialog>
+#include <QItemSelectionModel>
+#include <QScrollBar>
 #include <QPixmap>
 #include <QEvent>
 #include <QHeaderView>
@@ -214,10 +216,10 @@ MainWindow::MainWindow(QWidget* parent)
     auto* groupAction = viewMenu->addAction(QStringLiteral("Группировать по награде"));
     groupAction->setCheckable(true);
     groupAction->setChecked(true);
+    // only keeps the menu item and the check box in sync: the check box refreshes
     connect(groupAction, &QAction::toggled, this, [this](bool checked) {
         if (m_group && m_group->isChecked() != checked)
             m_group->setChecked(checked);
-        refreshPeople();
     });
 
     auto* helpMenu = menuBar()->addMenu(QStringLiteral("Справка"));
@@ -276,6 +278,12 @@ MainWindow::MainWindow(QWidget* parent)
     m_peopleView->viewport()->installEventFilter(this);
     connect(m_peopleView->header(), &QHeaderView::sectionResized, this,
             [this](int logical, int, int newSize) { adjustPeopleColumn(logical, newSize); });
+    // filters, grouping and sorting reset the model; catalog changes are
+    // captured earlier (Catalog::aboutToChange) while people() is still old
+    connect(m_people, &QAbstractItemModel::modelAboutToBeReset, this, [this] {
+        if (!m_peopleState.valid && !m_openingDatabase)
+            capturePeopleState();
+    });
     connect(m_people, &QAbstractItemModel::modelReset, this, [this] {
         const bool grouped = m_people->isGrouped();
         m_peopleView->setRootIsDecorated(grouped);
@@ -287,6 +295,7 @@ MainWindow::MainWindow(QWidget* parent)
         if (grouped && m_people->shownCount() <= 10000)
             m_peopleView->expandAll();
         layoutPeopleColumns();
+        restorePeopleState();
     });
     connect(m_peopleView, &QTableView::doubleClicked, this, [this] { editCurrent(); });
     connect(m_peopleView, &QWidget::customContextMenuRequested, this, &MainWindow::showContextMenu);
@@ -353,11 +362,18 @@ MainWindow::MainWindow(QWidget* parent)
     connect(quickTimer, &QTimer::timeout, this, refresh);
     connect(m_statsByMonth, &QCheckBox::toggled, this, [this] { refreshStats(); });
     connect(m_dictFilter, &QLineEdit::textChanged, this, [this] { refreshDictionary(); });
+    connect(&m_catalog, &Catalog::aboutToChange, this, [this] {
+        if (!m_openingDatabase)
+            capturePeopleState();
+    });
     connect(&m_catalog, &Catalog::dataChanged, this, [this] {
         refreshPeople();
-        refreshStats();
-        refreshDictionary();
+        // statistics and the name dictionary are rebuilt only when looked at
+        m_statsStale = true;
+        m_dictionaryStale = true;
+        refreshVisibleTab();
     });
+    connect(m_tabs, &QTabWidget::currentChanged, this, [this] { refreshVisibleTab(); });
 
     const QString path = storedDatabasePath();
     if (!path.isEmpty() && QFileInfo::exists(path))
@@ -398,16 +414,24 @@ void MainWindow::chooseDatabase()
 void MainWindow::openDatabase(const QString& path)
 {
     QString error;
-    if (!m_catalog.open(path, &error)) {
+    // another database: ids of the old one mean nothing, start with a fresh view
+    m_openingDatabase = true;
+    m_peopleState = {};
+    const bool opened = m_catalog.open(path, &error);
+    m_openingDatabase = false;
+    if (!opened) {
         QMessageBox::critical(this, windowTitle(), error);
         return;
     }
     rememberDatabasePath(path);
     setWindowTitle(QStringLiteral("Кавалер — %1").arg(path));
     fillFilters();
+    m_openingDatabase = true;
     refreshPeople();
-    refreshStats();
-    refreshDictionary();
+    m_openingDatabase = false;
+    m_statsStale = true;
+    m_dictionaryStale = true;
+    refreshVisibleTab();
 }
 
 void MainWindow::fillFilters()
@@ -457,6 +481,7 @@ void MainWindow::refreshStats()
     if (!m_catalog.isOpen())
         return;
     m_stats->reload(m_statsByMonth->isChecked());
+    m_statsStale = false;
 }
 
 void MainWindow::refreshDictionary()
@@ -464,6 +489,149 @@ void MainWindow::refreshDictionary()
     if (!m_catalog.isOpen())
         return;
     m_dictionary->reload(m_dictFilter->text().trimmed());
+    m_dictionaryStale = false;
+}
+
+void MainWindow::refreshVisibleTab()
+{
+    if (m_tabs->currentIndex() == 1 && m_statsStale)
+        refreshStats();
+    else if (m_tabs->currentIndex() == 2 && m_dictionaryStale)
+        refreshDictionary();
+}
+
+void MainWindow::capturePeopleState()
+{
+    PeopleViewState state;
+    state.valid = true;
+
+    // nearest person row from index (group rows are skipped)
+    const auto personId = [this](QModelIndex index, bool down) {
+        for (int step = 0; index.isValid() && step < 64; ++step) {
+            if (const Person* person = m_people->personAt(index))
+                return person->id;
+            index = down ? m_peopleView->indexBelow(index) : m_peopleView->indexAbove(index);
+        }
+        return 0;
+    };
+
+    const QModelIndex current = m_peopleView->currentIndex();
+    if (const Person* person = current.isValid() ? m_people->personAt(current) : nullptr) {
+        state.currentId = person->id;
+        state.currentColumn = current.column();
+        state.currentVisible = m_peopleView->viewport()->rect().intersects(m_peopleView->visualRect(current));
+        state.nextId = personId(m_peopleView->indexBelow(current), true);
+        state.previousId = personId(m_peopleView->indexAbove(current), false);
+    }
+    for (const QModelIndex& row : m_peopleView->selectionModel()->selectedRows()) {
+        if (const Person* person = m_people->personAt(row))
+            state.selectedIds.insert(person->id);
+    }
+    state.topId = personId(m_peopleView->indexAt(QPoint(1, 1)), true);
+    state.scrollValue = m_peopleView->verticalScrollBar()->value();
+    if (m_people->isGrouped()) {
+        for (int row = 0; row < m_people->rowCount(); ++row) {
+            const QModelIndex group = m_people->index(row, 0);
+            state.expandedGroups.insert(m_people->groupAwardId(group), m_peopleView->isExpanded(group));
+        }
+    }
+    m_peopleState = state;
+}
+
+void MainWindow::restorePeopleState()
+{
+    if (!m_peopleState.valid)
+        return;
+    const PeopleViewState state = m_peopleState;
+    m_peopleState = {};
+
+    if (m_people->isGrouped()) {
+        for (auto it = state.expandedGroups.cbegin(); it != state.expandedGroups.cend(); ++it) {
+            const QModelIndex group = m_people->groupIndex(it.key());
+            if (group.isValid())
+                m_peopleView->setExpanded(group, it.value());
+        }
+    }
+
+    QSet<int> wanted = state.selectedIds;
+    for (int id : {state.currentId, state.nextId, state.previousId, state.topId}) {
+        if (id > 0)
+            wanted.insert(id);
+    }
+    const QHash<int, QModelIndex> found = m_people->indexesOfPersons(wanted);
+    const int lastColumn = m_people->columnCount() - 1;
+    const auto shown = [this](const QModelIndex& index) {
+        return index.isValid() && (!index.parent().isValid() || m_peopleView->isExpanded(index.parent()));
+    };
+
+    QItemSelection selection;
+    for (int id : state.selectedIds) {
+        const QModelIndex index = found.value(id);
+        if (index.isValid())
+            selection.select(index, index.siblingAtColumn(lastColumn));
+    }
+
+    // the current person may be gone (deleted, filtered out): take a neighbour
+    QModelIndex current = found.value(state.currentId);
+    const bool replaced = !current.isValid();
+    if (replaced) {
+        current = found.value(state.nextId);
+        if (!current.isValid())
+            current = found.value(state.previousId);
+    }
+    QItemSelectionModel* selectionModel = m_peopleView->selectionModel();
+    if (current.isValid()) {
+        int column = state.currentColumn;
+        if (m_peopleView->isColumnHidden(column))
+            column = 1;
+        selectionModel->setCurrentIndex(current.siblingAtColumn(column), QItemSelectionModel::NoUpdate);
+        if (replaced && selection.isEmpty() && !state.selectedIds.isEmpty())
+            selection.select(current, current.siblingAtColumn(lastColumn));
+    }
+    selectionModel->select(selection, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+
+    const QModelIndex top = found.value(state.topId);
+    if (shown(top))
+        m_peopleView->scrollTo(top, QAbstractItemView::PositionAtTop);
+    else
+        m_peopleView->verticalScrollBar()->setValue(state.scrollValue);
+    if (shown(current) && (state.currentVisible || replaced))
+        m_peopleView->scrollTo(current, QAbstractItemView::EnsureVisible);
+}
+
+void MainWindow::selectPerson(int personId)
+{
+    const QModelIndex index = m_people->indexesOfPersons({personId}).value(personId);
+    if (!index.isValid())
+        return;
+    if (index.parent().isValid())
+        m_peopleView->setExpanded(index.parent(), true);
+    const QModelIndex current = index.siblingAtColumn(1);
+    m_peopleView->selectionModel()->setCurrentIndex(current,
+        QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+    m_peopleView->scrollTo(current, QAbstractItemView::EnsureVisible);
+}
+
+QVector<Person> MainWindow::selectedPeople() const
+{
+    QVector<Person> people;
+    for (const QModelIndex& index : m_peopleView->selectionModel()->selectedRows()) {
+        if (const Person* person = m_people->personAt(index))
+            people.push_back(*person);
+    }
+    return people;
+}
+
+// one transaction and one refresh for the whole selection
+bool MainWindow::saveChanged(QVector<Person>& people)
+{
+    if (people.isEmpty())
+        return true;
+    QString error;
+    if (m_catalog.saveMany(people, &error))
+        return true;
+    QMessageBox::critical(this, windowTitle(), error);
+    return false;
 }
 
 void MainWindow::updateStatus()
@@ -504,7 +672,8 @@ void MainWindow::addPerson(const Person* copyFrom)
             person.awardId = m_award->currentData().toInt();
     }
     EditDialog dialog(&m_catalog, person, this);
-    dialog.exec();
+    if (dialog.exec() == QDialog::Accepted)
+        selectPerson(dialog.person().id);
 }
 
 void MainWindow::deleteSelected()
@@ -567,76 +736,65 @@ void MainWindow::showContextMenu(const QPoint& pos)
 
 void MainWindow::translateSelectedCloud(CloudScope scope)
 {
-    const QModelIndexList rows = m_peopleView->selectionModel()->selectedRows();
-    QVector<Person> people;
-    for (const QModelIndex& index : rows) {
-        if (const Person* person = m_people->personAt(index))
-            people.push_back(*person);
-    }
-    for (Person person : people) {
+    QVector<Person> changed;
+    QString failure;
+    for (Person person : selectedPeople()) {
         const Person original = person;
-        QString error;
-        if (!translateWithCloud(person, scope, false, &error)) {
-            QMessageBox::critical(this, windowTitle(), error);
-            return;
-        }
+        if (!translateWithCloud(person, scope, false, &failure))
+            break;
         m_catalog.fixQuotes(person);
         if (person.name == original.name && person.personal == original.personal && person.rank == original.rank)
             continue;
-        if (!m_catalog.save(person, &error)) {
-            QMessageBox::critical(this, windowTitle(), error);
-            return;
-        }
+        changed.push_back(person);
+    }
+    // keep what was translated before a network error
+    const bool saved = saveChanged(changed);
+    if (!failure.isEmpty()) {
+        QMessageBox::critical(this, windowTitle(), saved && !changed.isEmpty()
+            ? QStringLiteral("%1\n\nПереведено и сохранено записей: %2.").arg(failure).arg(changed.size())
+            : failure);
     }
 }
 
 void MainWindow::translateSelectedByDictionary()
 {
-    const QModelIndexList rows = m_peopleView->selectionModel()->selectedRows();
-    for (const QModelIndex& index : rows) {
-        const Person* person = m_people->personAt(index);
-        if (!person || !person->needTranslation() || !person->name.isEmpty())
+    QVector<Person> changed;
+    for (Person person : selectedPeople()) {
+        if (!person.needTranslation() || !person.name.isEmpty())
             continue;
-        const QStringList names = m_catalog.translateName(person->nameBy);
+        const QStringList names = m_catalog.translateName(person.nameBy);
         if (names.size() != 1) {
-            m_people->setSuggestions(person->id, names);
+            m_people->setSuggestions(person.id, names);
             continue;
         }
-        Person updated = *person;
-        updated.name = names.first();
-        QString error;
-        if (!m_catalog.save(updated, &error)) {
-            QMessageBox::critical(this, windowTitle(), error);
-            return;
-        }
-        m_people->clearSuggestions(updated.id);
+        person.name = names.first();
+        changed.push_back(person);
+    }
+    if (saveChanged(changed)) {
+        for (const Person& person : changed)
+            m_people->clearSuggestions(person.id);
     }
 }
 
 void MainWindow::translateSelectedProfession()
 {
-    const QModelIndexList rows = m_peopleView->selectionModel()->selectedRows();
-    for (const QModelIndex& index : rows) {
-        const Person* person = m_people->personAt(index);
-        if (!person || !person->needTranslation() || !person->personal.isEmpty())
+    QVector<Person> changed;
+    for (Person person : selectedPeople()) {
+        if (!person.needTranslation() || !person.personal.isEmpty())
             continue;
-        const QString profession = m_catalog.professionRu(person->personalBy);
+        const QString profession = m_catalog.professionRu(person.personalBy);
         if (profession.isEmpty())
             continue;
-        Person updated = *person;
-        updated.personal = profession;
-        if (!updated.rankBy.isEmpty() && updated.rank.isEmpty()) {
-            const QString rank = m_catalog.rankRu(updated.rankBy);
+        person.personal = profession;
+        if (!person.rankBy.isEmpty() && person.rank.isEmpty()) {
+            const QString rank = m_catalog.rankRu(person.rankBy);
             if (rank.isEmpty())
                 continue;
-            updated.rank = rank;
+            person.rank = rank;
         }
-        QString error;
-        if (!m_catalog.save(updated, &error)) {
-            QMessageBox::critical(this, windowTitle(), error);
-            return;
-        }
+        changed.push_back(person);
     }
+    saveChanged(changed);
 }
 
 void MainWindow::applySuggestion(int personId, const QString& name)
@@ -657,20 +815,12 @@ void MainWindow::applySuggestion(int personId, const QString& name)
 
 void MainWindow::fixSelectedQuotes()
 {
-    const QModelIndexList rows = m_peopleView->selectionModel()->selectedRows();
-    for (const QModelIndex& index : rows) {
-        const Person* person = m_people->personAt(index);
-        if (!person)
-            continue;
-        Person updated = *person;
-        if (!m_catalog.fixQuotes(updated))
-            continue;
-        QString error;
-        if (!m_catalog.save(updated, &error)) {
-            QMessageBox::critical(this, windowTitle(), error);
-            return;
-        }
+    QVector<Person> changed;
+    for (Person person : selectedPeople()) {
+        if (m_catalog.fixQuotes(person))
+            changed.push_back(person);
     }
+    saveChanged(changed);
 }
 
 bool MainWindow::eventFilter(QObject* watched, QEvent* event)

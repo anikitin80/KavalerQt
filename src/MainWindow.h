@@ -4,7 +4,9 @@
 #include "Models.h"
 #include "Translator.h"
 
+#include <QHash>
 #include <QMainWindow>
+#include <QSet>
 
 class QEvent;
 
@@ -47,6 +49,27 @@ private:
     bool eventFilter(QObject* watched, QEvent* event) override;
     QString storedDatabasePath() const;
     void rememberDatabasePath(const QString& path);
+    bool saveChanged(QVector<Person>& people);
+    QVector<Person> selectedPeople() const;
+    void capturePeopleState();
+    void restorePeopleState();
+    void selectPerson(int personId);
+    void refreshVisibleTab();
+
+    // what the user sees in the people list, by person id: survives model resets
+    struct PeopleViewState
+    {
+        bool valid = false;
+        int currentId = 0;
+        int currentColumn = 1;
+        bool currentVisible = false;
+        int nextId = 0;     // neighbours of the current row: used when it disappears
+        int previousId = 0;
+        int topId = 0;      // first visible row
+        int scrollValue = 0;
+        QSet<int> selectedIds;
+        QHash<int, bool> expandedGroups; // award id -> expanded
+    };
 
     Catalog m_catalog;
     PersonModel* m_people = nullptr;
@@ -70,4 +93,8 @@ private:
     QLabel* m_count = nullptr;
     bool m_filling = false;
     bool m_adjustingColumns = false;
+    bool m_openingDatabase = false;
+    bool m_statsStale = true;
+    bool m_dictionaryStale = true;
+    PeopleViewState m_peopleState;
 };

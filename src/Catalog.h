@@ -94,19 +94,47 @@ public:
     int exportCsv(const QString& filePath, bool fromDate, const QDate& from, QString* error);
     int replaceText(TextField field, bool exact, const QString& find, const QString& replace, QString* error);
 
-    const QVector<StatMonth>& stats() const { return m_stats; }
-    const QVector<DictEntry>& dictionary() const { return m_dictionary; }
+    // Derived data (statistics, name dictionary, profession/rank translations)
+    // is rebuilt on first use after a change. Callers must not keep these
+    // references across a change of the catalog: copy what you show.
+    const QVector<StatMonth>& stats() const;
+    const QVector<DictEntry>& dictionary() const;
     int yearMin() const { return 1990; }
     int yearMax() const;
 
 signals:
+    // emitted after the database was changed, right before the in-memory data
+    // changes: people() still has the old content (views save their state here)
+    void aboutToChange();
     void dataChanged();
 
 private:
+    // a person is identified by decree number, decree date and name
+    struct IdentityKey
+    {
+        int ukaseNo = 0;
+        qint64 day = 0;
+        QString name;
+
+        bool operator==(const IdentityKey& other) const
+        {
+            return ukaseNo == other.ukaseNo && day == other.day && name == other.name;
+        }
+        friend size_t qHash(const IdentityKey& key, size_t seed = 0) noexcept
+        {
+            return qHashMulti(seed, key.ukaseNo, key.day, key.name);
+        }
+    };
+    using IdentityCount = QHash<IdentityKey, int>;
+
     void clear();
     bool load(QString* error);
-    void rebuildDerived();
+    void invalidateDerived();
+    void ensureDerived() const;
+    void rebuildDerived() const;
     void rebuildIdentity();
+    void addIdentity(const Person& person);
+    void removeIdentity(const Person& person);
     bool writePerson(Person& person, QString* error);
     void storePerson(const Person& person);
     void bindText(class QSqlQuery& query, const QString& text) const;
@@ -118,14 +146,16 @@ private:
     QHash<int, int> m_awardById;
     QVector<Person> m_people;
     QHash<int, int> m_personById;
-    QSet<QString> m_identityName;
-    QSet<QString> m_identityNameBy;
-    QVector<StatMonth> m_stats;
-    QVector<DictEntry> m_dictionary;
-    QHash<QString, QStringList> m_first;
-    QHash<QString, QStringList> m_last;
-    QHash<QString, QStringList> m_middle;
-    QHash<QString, QString> m_profRu;
-    QHash<QString, QDate> m_profDate;
-    QHash<QString, QString> m_rankRu;
+    IdentityCount m_identityName;
+    IdentityCount m_identityNameBy;
+
+    mutable bool m_derivedDirty = true;
+    mutable QVector<StatMonth> m_stats;
+    mutable QVector<DictEntry> m_dictionary;
+    mutable QHash<QString, QStringList> m_first;
+    mutable QHash<QString, QStringList> m_last;
+    mutable QHash<QString, QStringList> m_middle;
+    mutable QHash<QString, QString> m_profRu;
+    mutable QHash<QString, QDate> m_profDate;
+    mutable QHash<QString, QString> m_rankRu;
 };

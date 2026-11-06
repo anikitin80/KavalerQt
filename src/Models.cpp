@@ -427,18 +427,32 @@ void PersonModel::sort(int column, Qt::SortOrder order)
     }
     if (m_rows.isEmpty())
         return;
-    layoutAboutToBeChanged();
+    emit layoutAboutToBeChanged({}, QAbstractItemModel::VerticalSortHint);
+    // selection and current row are persistent indexes: move them with their people
+    const QModelIndexList before = persistentIndexList();
     sortRows();
-    layoutChanged();
+    QHash<int, int> rowOfCatalogIndex;
+    rowOfCatalogIndex.reserve(m_rows.size());
+    for (int row = 0; row < m_rows.size(); ++row)
+        rowOfCatalogIndex.insert(m_rows.at(row), row);
+    QModelIndexList after;
+    after.reserve(before.size());
+    for (const QModelIndex& index : before) {
+        const int row = rowOfCatalogIndex.value(catalogIndex(index), -1);
+        after.push_back(row < 0 ? QModelIndex() : createIndex(row, index.column(), index.internalId()));
+    }
+    changePersistentIndexList(before, after);
+    emit layoutChanged({}, QAbstractItemModel::VerticalSortHint);
 }
 
 void PersonModel::apply(int awardId, int year, const QString& name, const QString& quick,
                         bool needTranslationOnly, bool checkQuotes, bool groupByAward)
 {
+    // the model must look unchanged until beginResetModel(): views and the
+    // selection model still read it while handling modelAboutToBeReset
+    beginResetModel();
     m_checkQuotes = checkQuotes;
     m_grouped = groupByAward && awardId == -1;
-
-    beginResetModel();
     m_rows.clear();
     m_groups.clear();
     m_groupOfPerson.clear();
@@ -514,6 +528,50 @@ const Person* PersonModel::personAt(const QModelIndex& index) const
     return &m_catalog->people().at(personIndex);
 }
 
+QHash<int, QModelIndex> PersonModel::indexesOfPersons(const QSet<int>& personIds) const
+{
+    QHash<int, QModelIndex> result;
+    if (personIds.isEmpty())
+        return result;
+    const auto& people = m_catalog->people();
+    const auto visit = [&](int catalogRow, int row, const QModelIndex& parent) {
+        if (catalogRow < 0 || catalogRow >= people.size())
+            return;
+        const int id = people.at(catalogRow).id;
+        if (personIds.contains(id))
+            result.insert(id, index(row, 0, parent));
+    };
+    if (!m_grouped) {
+        for (int row = 0; row < m_rows.size() && result.size() < personIds.size(); ++row)
+            visit(m_rows.at(row), row, QModelIndex());
+        return result;
+    }
+    for (int group = 0; group < m_groups.size() && result.size() < personIds.size(); ++group) {
+        const QModelIndex parent = index(group, 0);
+        const QVector<int>& members = m_groups.at(group).people;
+        for (int row = 0; row < members.size(); ++row)
+            visit(members.at(row), row, parent);
+    }
+    return result;
+}
+
+int PersonModel::groupAwardId(const QModelIndex& index) const
+{
+    if (!isGroup(index))
+        return 0;
+    const int group = int(index.internalId() & ~kGroupFlag);
+    return group >= 0 && group < m_groups.size() ? m_groups.at(group).awardId : 0;
+}
+
+QModelIndex PersonModel::groupIndex(int awardId) const
+{
+    for (int group = 0; group < m_groups.size(); ++group) {
+        if (m_groups.at(group).awardId == awardId)
+            return index(group, 0);
+    }
+    return {};
+}
+
 QStringList PersonModel::suggestions(int personId) const
 {
     return m_suggestions.value(personId);
@@ -559,7 +617,7 @@ int StatsModel::rowCount(const QModelIndex& parent) const
 {
     if (parent.isValid())
         return 0;
-    return m_byMonth ? m_catalog->stats().size() : m_awardIds.size();
+    return m_byMonth ? m_months.size() : m_awardIds.size();
 }
 
 int StatsModel::columnCount(const QModelIndex& parent) const
@@ -575,7 +633,7 @@ QVariant StatsModel::data(const QModelIndex& index, int role) const
         return {};
 
     if (m_byMonth) {
-        const StatMonth& row = m_catalog->stats().at(index.row());
+        const StatMonth& row = m_months.at(index.row());
         if (index.column() == 0) {
             const Award* award = m_catalog->award(row.awardId);
             return award ? award->name : QString::number(row.awardId);
@@ -630,6 +688,7 @@ void StatsModel::reload(bool byMonth)
 {
     beginResetModel();
     m_byMonth = byMonth;
+    m_months = m_catalog->stats();
     m_awardIds.clear();
     m_yearCount.clear();
     m_years.clear();
@@ -637,7 +696,7 @@ void StatsModel::reload(bool byMonth)
         QSet<int> awards;
         for (int year = m_catalog->yearMin(); year <= m_catalog->yearMax(); ++year)
             m_years.push_back(year);
-        for (const StatMonth& row : m_catalog->stats()) {
+        for (const StatMonth& row : m_months) {
             awards.insert(row.awardId);
             m_yearCount.insert(qMakePair(row.awardId, row.year), row.total);
         }
@@ -675,7 +734,7 @@ QVariant DictionaryModel::data(const QModelIndex& index, int role) const
 {
     if (!index.isValid() || role != Qt::DisplayRole || index.row() >= m_rows.size())
         return {};
-    const DictEntry& entry = m_catalog->dictionary().at(m_rows.at(index.row()));
+    const DictEntry& entry = m_rows.at(index.row());
     switch (index.column()) {
     case 0: return entry.type;
     case 1: return entry.by;
@@ -702,15 +761,13 @@ void DictionaryModel::reload(const QString& filter)
 {
     beginResetModel();
     m_rows.clear();
-    const auto& entries = m_catalog->dictionary();
-    for (int i = 0; i < entries.size(); ++i) {
-        const DictEntry& entry = entries.at(i);
+    for (const DictEntry& entry : m_catalog->dictionary()) {
         if (!filter.isEmpty()
             && !entry.by.contains(filter, Qt::CaseInsensitive)
             && !entry.ru.contains(filter, Qt::CaseInsensitive)
             && !entry.alt.contains(filter, Qt::CaseInsensitive))
             continue;
-        m_rows.push_back(i);
+        m_rows.push_back(entry);
     }
     endResetModel();
 }

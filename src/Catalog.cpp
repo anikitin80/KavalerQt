@@ -60,15 +60,6 @@ QString joinAlt(const QStringList& values)
     return values.mid(1).join(QStringLiteral(", "));
 }
 
-QString identityKey(int ukaseNo, const QDate& date, const QString& name)
-{
-    return QString::number(ukaseNo)
-        + QChar(0x1F)
-        + (date.isValid() ? date.toString(Qt::ISODate) : QString())
-        + QChar(0x1F)
-        + name;
-}
-
 } // namespace
 
 bool Person::needTranslation() const
@@ -141,6 +132,30 @@ void Catalog::clear()
     m_profRu.clear();
     m_profDate.clear();
     m_rankRu.clear();
+    m_derivedDirty = true;
+}
+
+void Catalog::invalidateDerived()
+{
+    m_derivedDirty = true;
+}
+
+void Catalog::ensureDerived() const
+{
+    if (m_derivedDirty)
+        rebuildDerived();
+}
+
+const QVector<StatMonth>& Catalog::stats() const
+{
+    ensureDerived();
+    return m_stats;
+}
+
+const QVector<DictEntry>& Catalog::dictionary() const
+{
+    ensureDerived();
+    return m_dictionary;
 }
 
 const Award* Catalog::award(int id) const
@@ -255,12 +270,14 @@ bool Catalog::load(QString* error)
         m_people.push_back(person);
     }
 
-    rebuildDerived();
+    rebuildIdentity();
+    invalidateDerived();
     return true;
 }
 
-void Catalog::rebuildDerived()
+void Catalog::rebuildDerived() const
 {
+    m_derivedDirty = false;
     m_stats.clear();
     m_dictionary.clear();
     m_first.clear();
@@ -354,8 +371,6 @@ void Catalog::rebuildDerived()
             return a.awardId < b.awardId;
         return a.year < b.year;
     });
-
-    rebuildIdentity();
 }
 
 void Catalog::rebuildIdentity()
@@ -369,20 +384,40 @@ void Catalog::rebuildIdentity()
     for (int index = 0; index < m_people.size(); ++index) {
         const Person& person = m_people.at(index);
         m_personById.insert(person.id, index);
-        if (!person.name.isEmpty())
-            m_identityName.insert(identityKey(person.ukaseNo, person.ukaseDate, person.name));
-        if (!person.nameBy.isEmpty())
-            m_identityNameBy.insert(identityKey(person.ukaseNo, person.ukaseDate, person.nameBy));
+        addIdentity(person);
     }
+}
+
+// counts, not a set: two records may share a key, editing one must keep the other
+void Catalog::addIdentity(const Person& person)
+{
+    const qint64 day = person.ukaseDate.toJulianDay();
+    if (!person.name.isEmpty())
+        ++m_identityName[IdentityKey{person.ukaseNo, day, person.name}];
+    if (!person.nameBy.isEmpty())
+        ++m_identityNameBy[IdentityKey{person.ukaseNo, day, person.nameBy}];
+}
+
+void Catalog::removeIdentity(const Person& person)
+{
+    const qint64 day = person.ukaseDate.toJulianDay();
+    const auto drop = [](IdentityCount& counts, IdentityKey key) {
+        auto it = counts.find(key);
+        if (it != counts.end() && --it.value() <= 0)
+            counts.erase(it);
+    };
+    if (!person.name.isEmpty())
+        drop(m_identityName, IdentityKey{person.ukaseNo, day, person.name});
+    if (!person.nameBy.isEmpty())
+        drop(m_identityNameBy, IdentityKey{person.ukaseNo, day, person.nameBy});
 }
 
 bool Catalog::contains(const Person& probe) const
 {
-    if (!probe.name.isEmpty()
-        && m_identityName.contains(identityKey(probe.ukaseNo, probe.ukaseDate, probe.name)))
+    const qint64 day = probe.ukaseDate.toJulianDay();
+    if (!probe.name.isEmpty() && m_identityName.contains(IdentityKey{probe.ukaseNo, day, probe.name}))
         return true;
-    if (!probe.nameBy.isEmpty()
-        && m_identityNameBy.contains(identityKey(probe.ukaseNo, probe.ukaseDate, probe.nameBy)))
+    if (!probe.nameBy.isEmpty() && m_identityNameBy.contains(IdentityKey{probe.ukaseNo, day, probe.nameBy}))
         return true;
     return false;
 }
@@ -452,19 +487,22 @@ void Catalog::storePerson(const Person& person)
 {
     const auto it = m_personById.constFind(person.id);
     if (it != m_personById.cend()) {
+        removeIdentity(m_people.at(*it));
         m_people[*it] = person;
-        return;
+    } else {
+        m_personById.insert(person.id, m_people.size());
+        m_people.push_back(person);
     }
-    m_personById.insert(person.id, m_people.size());
-    m_people.push_back(person);
+    addIdentity(person);
 }
 
 bool Catalog::save(Person& person, QString* error)
 {
     if (!writePerson(person, error))
         return false;
+    emit aboutToChange();
     storePerson(person);
-    rebuildDerived();
+    invalidateDerived();
     emit dataChanged();
     return true;
 }
@@ -490,9 +528,10 @@ bool Catalog::saveMany(QVector<Person>& people, QString* error)
         m_db.rollback();
         return false;
     }
+    emit aboutToChange();
     for (const Person& person : people)
         storePerson(person);
-    rebuildDerived();
+    invalidateDerived();
     emit dataChanged();
     return true;
 }
@@ -514,6 +553,7 @@ bool Catalog::remove(const QList<int>& ids, QString* error)
     if (!exec(query, error))
         return false;
 
+    emit aboutToChange();
     const QSet<int> drop(ids.begin(), ids.end());
     QVector<Person> kept;
     kept.reserve(m_people.size());
@@ -522,13 +562,15 @@ bool Catalog::remove(const QList<int>& ids, QString* error)
             kept.push_back(person);
     }
     m_people.swap(kept);
-    rebuildDerived();
+    rebuildIdentity(); // indexes of the remaining people have shifted
+    invalidateDerived();
     emit dataChanged();
     return true;
 }
 
 QStringList Catalog::translateName(const QString& nameBy) const
 {
+    ensureDerived();
     const QStringList parts = nameBy.split(QLatin1Char(' '), Qt::SkipEmptyParts);
     if (parts.size() < 3)
         return {};
@@ -552,11 +594,13 @@ QStringList Catalog::translateName(const QString& nameBy) const
 
 QString Catalog::professionRu(const QString& professionBy) const
 {
+    ensureDerived();
     return m_profRu.value(professionBy);
 }
 
 QString Catalog::rankRu(const QString& rankBy) const
 {
+    ensureDerived();
     return m_rankRu.value(rankBy);
 }
 
@@ -754,12 +798,17 @@ int Catalog::replaceText(TextField field, bool exact, const QString& find, const
         return -1;
     }
 
-    for (const Change& change : changes)
-        *m_people[change.index].field(field) = change.text;
+    if (changes.isEmpty())
+        return count;
 
-    if (count > 0) {
-        rebuildDerived();
-        emit dataChanged();
+    emit aboutToChange();
+    for (const Change& change : changes) {
+        Person& person = m_people[change.index];
+        removeIdentity(person);
+        *person.field(field) = change.text;
+        addIdentity(person);
     }
+    invalidateDerived();
+    emit dataChanged();
     return count;
 }

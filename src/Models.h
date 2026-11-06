@@ -29,6 +29,11 @@ public:
     bool isGrouped() const { return m_grouped; }
     int shownCount() const;
     const Person* personAt(const QModelIndex& index) const;
+    // indexes (column 0) of the shown people with these ids, by id
+    QHash<int, QModelIndex> indexesOfPersons(const QSet<int>& personIds) const;
+    // award id of a group row (grouped view), 0 for other rows
+    int groupAwardId(const QModelIndex& index) const;
+    QModelIndex groupIndex(int awardId) const;
     QStringList suggestions(int personId) const;
     void setSuggestions(int personId, const QStringList& values);
     void clearSuggestions(int personId);
@@ -93,6 +98,7 @@ public:
 private:
     Catalog* m_catalog;
     bool m_byMonth = true;
+    QVector<StatMonth> m_months; // own copy: the catalog rebuilds its statistics lazily
     QVector<int> m_awardIds;
     QHash<QPair<int, int>, int> m_yearCount;
     QVector<int> m_years;
@@ -113,5 +119,5 @@ public:
 
 private:
     Catalog* m_catalog;
-    QVector<int> m_rows;
+    QVector<DictEntry> m_rows; // own copy, see StatsModel
 };
