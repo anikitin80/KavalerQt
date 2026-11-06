@@ -5,10 +5,13 @@
 #include "Translator.h"
 
 #include <QAction>
+#include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDate>
 #include <QDateEdit>
+#include <QDateTime>
+#include <QDir>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <functional>
@@ -183,6 +186,8 @@ MainWindow::MainWindow(QWidget* parent)
     editMenu->addAction(deleteRecord);
     editMenu->addSeparator();
     editMenu->addAction(QStringLiteral("Поиск и замена..."), this, &MainWindow::replaceText);
+    editMenu->addAction(QStringLiteral("Исправить латинские «i» в белорусских полях..."), this,
+                        &MainWindow::fixLatinBelarusianI);
     editMenu->addSeparator();
     editMenu->addAction(QStringLiteral("API-ключ Яндекса..."), this, [this] {
         bool ok = false;
@@ -1073,4 +1078,56 @@ void MainWindow::replaceText()
         QMessageBox::critical(this, windowTitle(), error);
     else
         QMessageBox::information(this, windowTitle(), QStringLiteral("%1 записей были обновлены.").arg(count));
+}
+
+// one-off clean-up of old records; new and edited ones are fixed on save
+void MainWindow::fixLatinBelarusianI()
+{
+    if (!m_catalog.isOpen())
+        return;
+
+    QVector<Person> fixed;
+    const Catalog::LetterFix found = m_catalog.findLatinBelarusianI(&fixed, 50);
+    if (found.records == 0) {
+        QMessageBox::information(this, windowTitle(),
+            QStringLiteral("Латинских «i» в белорусских полях нет."));
+        return;
+    }
+
+    QStringList fields;
+    for (auto it = found.fields.cbegin(); it != found.fields.cend(); ++it)
+        fields.push_back(QStringLiteral("    %1: %2").arg(it.key()).arg(it.value()));
+    const QFileInfo database(m_catalog.path());
+    const QString backupPath = database.dir().filePath(QStringLiteral("%1.before-i-fix-%2.sqlite")
+        .arg(database.completeBaseName(), QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"))));
+
+    QMessageBox question(QMessageBox::Question, windowTitle(),
+        QStringLiteral("Латинские «i»/«I» вместо белорусских «і»/«І» найдены в %1 записях:\n%2\n\n"
+                       "Меняются только буквы внутри белорусских слов и союз «і»; "
+                       "римские цифры («I класа») и латинские слова не трогаются.\n\n"
+                       "Перед исправлением будет сделана копия базы:\n%3\n\nИсправить?")
+            .arg(found.records).arg(fields.join(QLatin1Char('\n')), QDir::toNativeSeparators(backupPath)),
+        QMessageBox::Yes | QMessageBox::No, this);
+    question.setDefaultButton(QMessageBox::No);
+    question.setDetailedText(QStringLiteral("Примеры:\n") + found.samples.join(QLatin1Char('\n')));
+    if (question.exec() != QMessageBox::Yes)
+        return;
+
+    QString error;
+    if (!m_catalog.backup(backupPath, &error)) {
+        QMessageBox::critical(this, windowTitle(),
+            QStringLiteral("Не удалось сделать копию базы, ничего не изменено.\n%1").arg(error));
+        return;
+    }
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    const bool saved = m_catalog.saveMany(fixed, &error);
+    QApplication::restoreOverrideCursor();
+    if (!saved) {
+        QMessageBox::critical(this, windowTitle(),
+            QStringLiteral("Исправление не сохранено (база не изменена):\n%1").arg(error));
+        return;
+    }
+    QMessageBox::information(this, windowTitle(),
+        QStringLiteral("Исправлено записей: %1.\nКопия базы до исправления:\n%2")
+            .arg(fixed.size()).arg(QDir::toNativeSeparators(backupPath)));
 }

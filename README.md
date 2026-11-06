@@ -44,6 +44,7 @@ ctest --test-dir build -C Release --output-on-failure
 | `tst_documentparser` | награды, звания, «посмертно», форматы списков, сведения о группе |
 | `tst_decrees` | реальные указы из `tests/data/decrees` против записей каталога |
 | `tst_docxtext` | чтение docx (нужен `tar.exe` из Windows 10+) |
+| `tst_catalog` | каталог на временной базе: поиск дубликатов, латинская «i» в белорусских полях, резервная копия |
 
 В `tests/data/decrees` лежат тексты указов (`<id>.txt`, `\v` означает разрыв строки
 Word) и ожидаемые записи (`<id>.expected.tsv`) в том виде, в котором они хранятся в

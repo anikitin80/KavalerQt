@@ -76,6 +76,76 @@ std::vector<std::wstring> SplitString(const std::wstring& str, wchar_t sep)
     return result;
 }
 
+namespace {
+
+bool isCyrillicLetter(QChar c)
+{
+    const char16_t code = c.unicode();
+    return code >= 0x0400 && code <= 0x04FF && c.isLetter();
+}
+
+// nearest letter before/after position (skipping spaces and punctuation) is Cyrillic
+bool cyrillicAround(const QString& text, int pos)
+{
+    for (int i = pos - 1; i >= 0; --i) {
+        if (text.at(i).isLetter())
+            return isCyrillicLetter(text.at(i));
+    }
+    return false;
+}
+
+bool cyrillicAfter(const QString& text, int pos)
+{
+    for (int i = pos + 1; i < text.size(); ++i) {
+        if (text.at(i).isLetter())
+            return isCyrillicLetter(text.at(i));
+    }
+    return false;
+}
+
+// position of a Latin i/I to replace, or -1:
+// - inside a Cyrillic word: "Iгар", "Мiхайлавіч";
+// - lower-case "i" as a word between Cyrillic words: the conjunction "і"
+//   ("лагістыкі i цэнавай"); a standalone capital "I" is a Roman numeral.
+int latinIInCyrillicWord(const QString& text, int from)
+{
+    for (int i = from; i < text.size(); ++i) {
+        const QChar c = text.at(i);
+        if (c != QLatin1Char('i') && c != QLatin1Char('I'))
+            continue;
+        const QChar previous = i > 0 ? text.at(i - 1) : QChar();
+        const QChar next = i + 1 < text.size() ? text.at(i + 1) : QChar();
+        if (isCyrillicLetter(previous) || isCyrillicLetter(next))
+            return i;
+        if (c == QLatin1Char('i') && !previous.isLetter() && !next.isLetter()
+            && cyrillicAround(text, i) && cyrillicAfter(text, i))
+            return i;
+    }
+    return -1;
+}
+
+} // namespace
+
+QString NormalizeBelarusianI(const QString& text)
+{
+    int pos = latinIInCyrillicWord(text, 0);
+    if (pos < 0)
+        return text;
+    QString result = text;
+    // rescan from the start: a replaced letter can make its Latin neighbour
+    // ("IIванаў") part of the Cyrillic word too
+    while (pos >= 0) {
+        result[pos] = result.at(pos) == QLatin1Char('i') ? QChar(0x0456) : QChar(0x0406);
+        pos = latinIInCyrillicWord(result, 0);
+    }
+    return result;
+}
+
+bool HasLatinBelarusianI(const QString& text)
+{
+    return latinIInCyrillicWord(text, 0) >= 0;
+}
+
 std::wstring ToLower(const std::wstring& str)
 {
     return QString::fromStdWString(str).toLower().toStdWString();

@@ -1,6 +1,7 @@
 #include "ImportDialog.h"
 
 #include "DocxText.h"
+#include "ImportMatch.h"
 #include "PdfText.h"
 
 #include <QAction>
@@ -218,12 +219,10 @@ ImportDialog::ImportDialog(Catalog* catalog, QWidget* parent)
         if (index < 0 || index >= int(m_parser.m_Persons.size()))
             return;
         m_parser.m_Persons[size_t(index)].Name = toWide(item->text());
-        const QFont font = alreadyKnown(personFromInfo(m_parser.m_Persons[size_t(index)]), {})
-            ? QFont(item->font().family(), -1, QFont::Bold) : item->font();
-        QFont updated = item->font();
-        updated.setBold(alreadyKnown(personFromInfo(m_parser.m_Persons[size_t(index)]), {}));
-        item->setFont(updated);
-        Q_UNUSED(font);
+        // a corrected name may match the catalog or another person now
+        m_filling = true;
+        markKnown();
+        m_filling = false;
     });
     m_persons->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_persons, &QWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
@@ -516,9 +515,6 @@ void ImportDialog::showPersons()
         name->setData(Qt::UserRole, index);
         if ((person.Flags & PersonInfo::NF_NAME) == 0)
             name->setForeground(QColor(200, 0, 0));
-        QFont font = name->font();
-        font.setBold(alreadyKnown(personFromInfo(person), {}));
-        name->setFont(font);
         m_persons->setItem(row, 0, name);
 
         auto* job = new QTableWidgetItem(fromWide(m_parser.GetPersonDescription(size_t(index))));
@@ -529,8 +525,40 @@ void ImportDialog::showPersons()
         m_persons->setItem(row, 1, job);
         ++shown;
     }
+    markKnown();
     m_personCount->setText(QStringLiteral("Награжденные (%1):").arg(shown));
     m_filling = false;
+}
+
+// bold: already in the catalog; yellow: namesakes in one decree, check positions
+void ImportDialog::markKnown()
+{
+    const QVector<ImportMatch> matches = matchImported(m_parser.m_Persons, *m_catalog);
+    for (int row = 0; row < m_persons->rowCount(); ++row) {
+        QTableWidgetItem* name = m_persons->item(row, 0);
+        QTableWidgetItem* job = m_persons->item(row, 1);
+        if (!name)
+            continue;
+        const int index = name->data(Qt::UserRole).toInt();
+        if (index < 0 || index >= matches.size())
+            continue;
+        const ImportMatch& match = matches.at(index);
+        QFont font = name->font();
+        font.setBold(match.known);
+        name->setFont(font);
+
+        const QBrush background = match.namesakes > 1 ? QBrush(QColor(255, 244, 196)) : QBrush();
+        const QString tip = match.namesakes > 1
+            ? QStringLiteral("В указе %1 человека с этим ФИО и наградой: это разные люди, проверьте должности.")
+                  .arg(match.namesakes)
+            : QString();
+        for (QTableWidgetItem* item : {name, job}) {
+            if (!item)
+                continue;
+            item->setBackground(background);
+            item->setToolTip(tip);
+        }
+    }
 }
 
 Person ImportDialog::personFromInfo(const PersonInfo& info)
@@ -553,34 +581,20 @@ Person ImportDialog::personFromInfo(const PersonInfo& info)
     return person;
 }
 
-bool ImportDialog::alreadyKnown(const Person& person, const QVector<Person>& batch) const
-{
-    if (m_catalog->contains(person))
-        return true;
-    for (const Person& existing : batch) {
-        if (existing.ukaseNo == person.ukaseNo && existing.ukaseDate == person.ukaseDate
-            && ((!existing.name.isEmpty() && existing.name == person.name)
-                || (!existing.nameBy.isEmpty() && existing.nameBy == person.nameBy)))
-            return true;
-    }
-    return false;
-}
-
 void ImportDialog::importRows(bool all)
 {
-    QVector<Person> batch;
-    for (const PersonInfo& info : m_parser.m_Persons) {
-        if (!all) {
-            if (m_awardId && m_awardId != info.AwardId)
-                continue;
-            if (!m_fileName.isEmpty() && m_fileName != fromWide(info.FileName))
-                continue;
+    const std::vector<PersonInfo>& persons = m_parser.m_Persons;
+    QVector<bool> wanted(int(persons.size()), true);
+    if (!all) {
+        for (size_t i = 0; i < persons.size(); ++i) {
+            const PersonInfo& info = persons[i];
+            wanted[int(i)] = (!m_awardId || m_awardId == info.AwardId)
+                && (m_fileName.isEmpty() || m_fileName == fromWide(info.FileName));
         }
-        const Person person = personFromInfo(info);
-        if (alreadyKnown(person, batch))
-            continue;
-        batch.push_back(person);
     }
+    QVector<Person> batch;
+    for (int index : personsToImport(persons, wanted, *m_catalog))
+        batch.push_back(personFromInfo(persons[size_t(index)]));
 
     if (QMessageBox::question(this, windowTitle(),
             QStringLiteral("Будет проимпортировано %1 записей. Сохранить?").arg(batch.size()))

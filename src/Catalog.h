@@ -2,6 +2,7 @@
 
 #include <QDate>
 #include <QHash>
+#include <QMap>
 #include <QObject>
 #include <QSet>
 #include <QSqlDatabase>
@@ -83,13 +84,30 @@ public:
 
     bool save(Person& person, QString* error);
     bool saveMany(QVector<Person>& people, QString* error);
-    bool contains(const Person& probe) const;
+    // records of the same person: decree number and date, award and name (Russian
+    // or Belarusian). count() > 1 means namesakes in one decree.
+    int count(const Person& probe) const;
+    bool contains(const Person& probe) const { return count(probe) > 0; }
     bool remove(const QList<int>& ids, QString* error);
 
     QStringList translateName(const QString& nameBy) const;
     QString professionRu(const QString& professionBy) const;
     QString rankRu(const QString& rankBy) const;
     bool fixQuotes(Person& person);
+
+    // Latin "i"/"I" typed in Belarusian fields instead of "і"/"І" (see
+    // NormalizeBelarusianI). save()/saveMany() always store the fixed text;
+    // this finds the records that still have it.
+    struct LetterFix
+    {
+        int records = 0;
+        QMap<QString, int> fields; // field caption -> records
+        QStringList samples;       // "before → after"
+    };
+    LetterFix findLatinBelarusianI(QVector<Person>* fixed = nullptr, int maxSamples = 8) const;
+    static bool normalizeBelarusianFields(Person& person);
+    // consistent copy of the open database (VACUUM INTO)
+    bool backup(const QString& filePath, QString* error) const;
 
     int exportCsv(const QString& filePath, bool fromDate, const QDate& from, QString* error);
     int replaceText(TextField field, bool exact, const QString& find, const QString& replace, QString* error);
@@ -109,20 +127,23 @@ signals:
     void dataChanged();
 
 private:
-    // a person is identified by decree number, decree date and name
+    // a person is identified by decree number, decree date, award and name; the
+    // award matters: one decree may give a person an order and a title.
+    // Belarusian names are compared after NormalizeBelarusianI ("Iгар" == "Ігар").
     struct IdentityKey
     {
         int ukaseNo = 0;
         qint64 day = 0;
+        int awardId = 0;
         QString name;
 
         bool operator==(const IdentityKey& other) const
         {
-            return ukaseNo == other.ukaseNo && day == other.day && name == other.name;
+            return ukaseNo == other.ukaseNo && day == other.day && awardId == other.awardId && name == other.name;
         }
         friend size_t qHash(const IdentityKey& key, size_t seed = 0) noexcept
         {
-            return qHashMulti(seed, key.ukaseNo, key.day, key.name);
+            return qHashMulti(seed, key.ukaseNo, key.day, key.awardId, key.name);
         }
     };
     using IdentityCount = QHash<IdentityKey, int>;

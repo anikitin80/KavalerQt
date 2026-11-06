@@ -43,6 +43,7 @@ private:
     void fixSelectedQuotes();
     void exportCsv();
     void replaceText();
+    void fixLatinBelarusianI();
     void printCurrent();
     void layoutPeopleColumns();
     void adjustPeopleColumn(int logical, int newSize);

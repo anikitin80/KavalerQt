@@ -11,3 +11,10 @@ bool FindTokens(const std::wstring& str, std::vector<std::wstring>& tokens, size
 std::vector<std::wstring> SplitString(const std::wstring& str, wchar_t sep);
 void StrTrim(std::wstring& str);
 std::wstring ToLower(const std::wstring& str);
+
+class QString;
+// Latin "i"/"I" typed inside a Cyrillic word ("Iгар", "Мiхайлавіч") becomes the
+// Belarusian "і"/"І". A letter is replaced only when a neighbour is Cyrillic, so
+// Roman numerals ("I класа", "III ступені") and Latin words ("iPhone") stay.
+QString NormalizeBelarusianI(const QString& text);
+bool HasLatinBelarusianI(const QString& text);

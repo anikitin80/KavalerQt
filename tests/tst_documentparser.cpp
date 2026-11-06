@@ -270,7 +270,7 @@ void TestDocumentParser::belarusianDecree()
     parse({kUkazBy, QStringLiteral("23 лютага 2006 г. № 120"),
            QStringLiteral("За асабістую мужнасць узнагародзіць:"),
            QStringLiteral("медалём «За адвагу»"),
-           QStringLiteral("Лагодзiча\vЮрыя Іванавiча"), QStringLiteral("–"), // capital Latin I: see tst_nameconverter
+           QStringLiteral("Лагодзiча\vЮрыя Iванавiча"), QStringLiteral("–"),
            QStringLiteral("старшага інспектара, капітана"),
            QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
     QCOMPARE(int(m_parser->m_Persons.size()), 1);

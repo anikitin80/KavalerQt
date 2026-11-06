@@ -86,10 +86,6 @@ void TestNameConverter::normalizeName()
     CNameConverter converter;
     std::wstring name = decree.toStdWString();
     QVERIFY(converter.NormalizeName(name, lang, nounCase));
-    // Known: capital Latin "I" ("Iгар", "Iванавіч") stays Latin. The catalog already
-    // stores ~1000 Belarusian names that way, and duplicates are found by exact
-    // name, so fixing only the parser would re-import those people as new ones.
-    QEXPECT_FAIL("by latin capital I", "capital Latin I is not replaced; needs catalog cleanup first", Continue);
     QCOMPARE(QString::fromStdWString(name), expected);
 }
 

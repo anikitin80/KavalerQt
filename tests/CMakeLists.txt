@@ -1,4 +1,4 @@
-find_package(Qt6 REQUIRED COMPONENTS Test)
+find_package(Qt6 REQUIRED COMPONENTS Test Sql)
 
 # one executable per test file; data lives in tests/data
 function(kavaler_add_test name)
@@ -19,3 +19,10 @@ kavaler_add_test(tst_professionconverter)
 kavaler_add_test(tst_documentparser)
 kavaler_add_test(tst_decrees)
 kavaler_add_test(tst_docxtext)
+
+# the catalog lives in the application sources, not in the parser library
+kavaler_add_test(tst_catalog)
+target_sources(tst_catalog PRIVATE "${PROJECT_SOURCE_DIR}/src/Catalog.h" "${PROJECT_SOURCE_DIR}/src/Catalog.cpp"
+    "${PROJECT_SOURCE_DIR}/src/import/ImportMatch.h" "${PROJECT_SOURCE_DIR}/src/import/ImportMatch.cpp")
+target_include_directories(tst_catalog PRIVATE "${PROJECT_SOURCE_DIR}/src")
+target_link_libraries(tst_catalog PRIVATE Qt6::Sql)

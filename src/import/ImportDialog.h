@@ -27,7 +27,7 @@ private:
     bool chooseDictionaries();
     void fillAwards();
     Person personFromInfo(const PersonInfo& info);
-    bool alreadyKnown(const Person& person, const QVector<Person>& batch) const;
+    void markKnown(); // see ImportMatch.h
 
     Catalog* m_catalog;
     CDocumentParser m_parser;

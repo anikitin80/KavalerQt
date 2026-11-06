@@ -1,4 +1,5 @@
 #include "Catalog.h"
+#include "TextUtil.h"
 
 #include <QFile>
 #include <QHash>
@@ -393,9 +394,9 @@ void Catalog::addIdentity(const Person& person)
 {
     const qint64 day = person.ukaseDate.toJulianDay();
     if (!person.name.isEmpty())
-        ++m_identityName[IdentityKey{person.ukaseNo, day, person.name}];
+        ++m_identityName[IdentityKey{person.ukaseNo, day, person.awardId, person.name}];
     if (!person.nameBy.isEmpty())
-        ++m_identityNameBy[IdentityKey{person.ukaseNo, day, person.nameBy}];
+        ++m_identityNameBy[IdentityKey{person.ukaseNo, day, person.awardId, NormalizeBelarusianI(person.nameBy)}];
 }
 
 void Catalog::removeIdentity(const Person& person)
@@ -407,25 +408,92 @@ void Catalog::removeIdentity(const Person& person)
             counts.erase(it);
     };
     if (!person.name.isEmpty())
-        drop(m_identityName, IdentityKey{person.ukaseNo, day, person.name});
+        drop(m_identityName, IdentityKey{person.ukaseNo, day, person.awardId, person.name});
     if (!person.nameBy.isEmpty())
-        drop(m_identityNameBy, IdentityKey{person.ukaseNo, day, person.nameBy});
+        drop(m_identityNameBy, IdentityKey{person.ukaseNo, day, person.awardId, NormalizeBelarusianI(person.nameBy)});
 }
 
-bool Catalog::contains(const Person& probe) const
+int Catalog::count(const Person& probe) const
 {
     const qint64 day = probe.ukaseDate.toJulianDay();
-    if (!probe.name.isEmpty() && m_identityName.contains(IdentityKey{probe.ukaseNo, day, probe.name}))
-        return true;
-    if (!probe.nameBy.isEmpty() && m_identityNameBy.contains(IdentityKey{probe.ukaseNo, day, probe.nameBy}))
-        return true;
-    return false;
+    int result = 0;
+    if (!probe.name.isEmpty())
+        result = m_identityName.value(IdentityKey{probe.ukaseNo, day, probe.awardId, probe.name});
+    if (!probe.nameBy.isEmpty()) {
+        result = std::max(result, m_identityNameBy.value(
+            IdentityKey{probe.ukaseNo, day, probe.awardId, NormalizeBelarusianI(probe.nameBy)}));
+    }
+    return result;
+}
+
+// Belarusian fields only: Russian text has no "і", and "Награжден за" is in
+// the language of the decree
+bool Catalog::normalizeBelarusianFields(Person& person)
+{
+    bool changed = false;
+    const auto fix = [&changed](QString& text) {
+        const QString fixed = NormalizeBelarusianI(text);
+        if (fixed != text) {
+            text = fixed;
+            changed = true;
+        }
+    };
+    fix(person.nameBy);
+    fix(person.personalBy);
+    fix(person.rankBy);
+    if (person.language == kLangBelarusian)
+        fix(person.awardedFor);
+    return changed;
+}
+
+Catalog::LetterFix Catalog::findLatinBelarusianI(QVector<Person>* fixed, int maxSamples) const
+{
+    LetterFix result;
+    for (const Person& person : m_people) {
+        Person copy = person;
+        if (!normalizeBelarusianFields(copy))
+            continue;
+        ++result.records;
+        const auto count = [&](const QString& caption, const QString& before, const QString& after) {
+            if (before == after)
+                return;
+            ++result.fields[caption];
+            if (result.samples.size() < maxSamples)
+                result.samples.push_back(before + QStringLiteral("  →  ") + after);
+        };
+        count(QStringLiteral("ФИО (белор.)"), person.nameBy, copy.nameBy);
+        count(QStringLiteral("Личные данные (белор.)"), person.personalBy, copy.personalBy);
+        count(QStringLiteral("Звание (белор.)"), person.rankBy, copy.rankBy);
+        count(QStringLiteral("Награжден за"), person.awardedFor, copy.awardedFor);
+        if (fixed)
+            fixed->push_back(copy);
+    }
+    return result;
+}
+
+bool Catalog::backup(const QString& filePath, QString* error) const
+{
+    if (QFile::exists(filePath)) {
+        if (error)
+            *error = QStringLiteral("Файл уже существует: %1").arg(filePath);
+        return false;
+    }
+    QString target = filePath;
+    target.replace(QLatin1Char('\''), QStringLiteral("''"));
+    QSqlQuery query(m_db);
+    if (!query.exec(QStringLiteral("VACUUM INTO '%1'").arg(target))) {
+        if (error)
+            *error = query.lastError().text();
+        return false;
+    }
+    return true;
 }
 
 bool Catalog::writePerson(Person& person, QString* error)
 {
     if (!person.personalBy.isEmpty())
         person.language = kLangBelarusian;
+    normalizeBelarusianFields(person);
 
     QSqlQuery query(m_db);
     const bool update = person.id > 0;

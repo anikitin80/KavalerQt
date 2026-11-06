@@ -140,9 +140,10 @@ bool CNameConverter::ApplyRules(std::wstring& name, RulesList& rules, SexType se
 {
 	if (lang == LangBY)
 	{
-		// replace Latin letters with Belorussian
-		// (capital Latin "I" is kept: the catalog has ~1000 such names, see tst_nameconverter)
+		// replace Latin letters with Belorussian ("Iгар" is often typed with Latin I;
+		// duplicates are found alphabet-blind, see Catalog::IdentityKey)
 		std::replace(name.begin(), name.end(), L'i', L'і');
+		std::replace(name.begin(), name.end(), L'I', L'І');
 	}
 
 	const std::wstring nameLower = ToLower(name);
