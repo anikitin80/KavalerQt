@@ -1,39 +1,25 @@
 #include "DocxText.h"
 
-#include <QDir>
-#include <QFile>
-#include <QProcess>
-#include <QTemporaryDir>
 #include <QXmlStreamReader>
+
+// a .docx is a zip archive; QZipReader is Qt's internal zip reader (Qt6::CorePrivate),
+// hundreds of times faster than extracting with tar.exe for every file
+#include <private/qzipreader_p.h>
 
 QStringList readDocxParagraphs(const QString& path, QString* error)
 {
-    QTemporaryDir temp;
-    if (!temp.isValid()) {
+    QZipReader zip(path);
+    if (!zip.isReadable() || zip.status() != QZipReader::NoError) {
         if (error)
-            *error = QStringLiteral("Не удалось создать временную папку.");
+            *error = QStringLiteral("Не удалось прочитать документ Word.");
         return {};
     }
-
-    QProcess tar;
-    tar.start(QStringLiteral("C:/Windows/System32/tar.exe"),
-        {QStringLiteral("-xf"), QDir::toNativeSeparators(path), QStringLiteral("-C"), temp.path(),
-         QStringLiteral("word/document.xml")});
-    if (!tar.waitForStarted(5000) || !tar.waitForFinished(120000) || tar.exitCode() != 0) {
-        if (error) {
-            const QString details = QString::fromLocal8Bit(tar.readAllStandardError()).trimmed();
-            *error = details.isEmpty() ? QStringLiteral("Не удалось прочитать документ Word.") : details;
-        }
-        return {};
-    }
-
-    QFile file(QDir(temp.path()).filePath(QStringLiteral("word/document.xml")));
-    if (!file.open(QIODevice::ReadOnly)) {
+    const QByteArray xml = zip.fileData(QStringLiteral("word/document.xml"));
+    if (xml.isEmpty()) {
         if (error)
             *error = QStringLiteral("В документе Word нет текста.");
         return {};
     }
-    const QByteArray xml = file.readAll();
 
     QStringList lines;
     QXmlStreamReader reader(xml);

@@ -25,7 +25,8 @@ add_library(KavalerParser STATIC
     src/import/DocxText.cpp
 )
 target_include_directories(KavalerParser PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src/import")
-target_link_libraries(KavalerParser PUBLIC Qt6::Core)
+# Qt6::CorePrivate: QZipReader for reading .docx (DocxText.cpp)
+target_link_libraries(KavalerParser PUBLIC Qt6::Core PRIVATE Qt6::CorePrivate)
 
 add_executable(Kavaler WIN32
     src/main.cpp

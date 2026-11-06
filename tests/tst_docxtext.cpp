@@ -26,8 +26,6 @@ const QString kDecree = QStringLiteral("docx/ru-1997-282-mothers-list.docx");
 void TestDocxText::initTestCase()
 {
     TestData::isolateSettings();
-    if (!QFile::exists(QStringLiteral("C:/Windows/System32/tar.exe")))
-        QSKIP("readDocxParagraphs needs tar.exe (Windows 10 and later)");
 }
 
 void TestDocxText::paragraphs()
