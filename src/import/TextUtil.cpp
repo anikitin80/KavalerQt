@@ -103,47 +103,116 @@ bool cyrillicAfter(const QString& text, int pos)
     return false;
 }
 
-// position of a Latin i/I to replace, or -1:
-// - inside a Cyrillic word: "Iгар", "Мiхайлавіч";
-// - lower-case "i" as a word between Cyrillic words: the conjunction "і"
-//   ("лагістыкі i цэнавай"); a standalone capital "I" is a Roman numeral.
-int latinIInCyrillicWord(const QString& text, int from)
+// Cyrillic letter that looks like the Latin one, or a null QChar
+QChar cyrillicTwin(QChar c, bool belarusian, bool onlyI)
+{
+    switch (c.unicode()) {
+    case 'i': return belarusian ? QChar(0x0456) : QChar(); // і
+    case 'I': return belarusian ? QChar(0x0406) : QChar(); // І
+    default: break;
+    }
+    if (onlyI)
+        return {};
+    switch (c.unicode()) {
+    case 'a': return QChar(0x0430);
+    case 'c': return QChar(0x0441);
+    case 'e': return QChar(0x0435);
+    case 'o': return QChar(0x043E);
+    case 'p': return QChar(0x0440);
+    case 'x': return QChar(0x0445);
+    case 'y': return QChar(0x0443);
+    case 'A': return QChar(0x0410);
+    case 'B': return QChar(0x0412);
+    case 'C': return QChar(0x0421);
+    case 'E': return QChar(0x0415);
+    case 'H': return QChar(0x041D);
+    case 'K': return QChar(0x041A);
+    case 'M': return QChar(0x041C);
+    case 'O': return QChar(0x041E);
+    case 'P': return QChar(0x0420);
+    case 'T': return QChar(0x0422);
+    case 'X': return QChar(0x0425);
+    case 'Y': return QChar(0x0423);
+    default: return {};
+    }
+}
+
+// position of a Latin letter to replace by its Cyrillic twin, or -1:
+// - inside a Cyrillic word: "Iгар", "Міxaйлаўна", "прядильщицa";
+// - a lower-case letter standing alone between Cyrillic words: the
+//   conjunctions and prepositions "і", "а", "с", "о", "у" typed in Latin.
+//   A standalone capital is left alone: Roman numerals ("I класа"),
+//   driving licence categories ("категории B").
+// the word around pos is a Roman numeral, possibly typed with Cyrillic І/Х
+// ("XXІ", "XІV" in "XXІ стагоддзя"): it stays as it is
+bool romanNumeralAt(const QString& text, int pos)
+{
+    int begin = pos;
+    while (begin > 0 && text.at(begin - 1).isLetter())
+        --begin;
+    int end = pos;
+    while (end + 1 < text.size() && text.at(end + 1).isLetter())
+        ++end;
+    static const QString roman = QStringLiteral("IVXLCDMІХ");
+    for (int i = begin; i <= end; ++i) {
+        if (!roman.contains(text.at(i)))
+            return false;
+    }
+    return true;
+}
+
+int latinInCyrillicWord(const QString& text, int from, bool belarusian, bool onlyI)
 {
     for (int i = from; i < text.size(); ++i) {
         const QChar c = text.at(i);
-        if (c != QLatin1Char('i') && c != QLatin1Char('I'))
+        if (cyrillicTwin(c, belarusian, onlyI).isNull() || romanNumeralAt(text, i))
             continue;
         const QChar previous = i > 0 ? text.at(i - 1) : QChar();
         const QChar next = i + 1 < text.size() ? text.at(i + 1) : QChar();
         if (isCyrillicLetter(previous) || isCyrillicLetter(next))
             return i;
-        if (c == QLatin1Char('i') && !previous.isLetter() && !next.isLetter()
+        if (c.isLower() && !previous.isLetter() && !next.isLetter()
             && cyrillicAround(text, i) && cyrillicAfter(text, i))
             return i;
     }
     return -1;
 }
 
-} // namespace
-
-QString NormalizeBelarusianI(const QString& text)
+QString normalize(const QString& text, bool belarusian, bool onlyI)
 {
-    int pos = latinIInCyrillicWord(text, 0);
+    int pos = latinInCyrillicWord(text, 0, belarusian, onlyI);
     if (pos < 0)
         return text;
     QString result = text;
     // rescan from the start: a replaced letter can make its Latin neighbour
-    // ("IIванаў") part of the Cyrillic word too
+    // part of the Cyrillic word too ("Mixaіл" -> "Міхаіл")
     while (pos >= 0) {
-        result[pos] = result.at(pos) == QLatin1Char('i') ? QChar(0x0456) : QChar(0x0406);
-        pos = latinIInCyrillicWord(result, 0);
+        result[pos] = cyrillicTwin(result.at(pos), belarusian, onlyI);
+        pos = latinInCyrillicWord(result, 0, belarusian, onlyI);
     }
     return result;
 }
 
+} // namespace
+
+QString NormalizeBelarusianI(const QString& text)
+{
+    return normalize(text, true, true);
+}
+
 bool HasLatinBelarusianI(const QString& text)
 {
-    return latinIInCyrillicWord(text, 0) >= 0;
+    return latinInCyrillicWord(text, 0, true, true) >= 0;
+}
+
+QString NormalizeCyrillicText(const QString& text, bool belarusian)
+{
+    return normalize(text, belarusian, false);
+}
+
+bool HasLatinLookalikes(const QString& text, bool belarusian)
+{
+    return latinInCyrillicWord(text, 0, belarusian, false) >= 0;
 }
 
 std::wstring ToLower(const std::wstring& str)

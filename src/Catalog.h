@@ -73,7 +73,8 @@ public:
     explicit Catalog(QObject* parent = nullptr);
     ~Catalog() override;
 
-    bool open(const QString& path, QString* error);
+    // readOnly: for reports and tools; every save then fails
+    bool open(const QString& path, QString* error, bool readOnly = false);
     void close();
     bool isOpen() const;
     QString path() const { return m_path; }
@@ -95,17 +96,17 @@ public:
     QString rankRu(const QString& rankBy) const;
     bool fixQuotes(Person& person);
 
-    // Latin "i"/"I" typed in Belarusian fields instead of "і"/"І" (see
-    // NormalizeBelarusianI). save()/saveMany() always store the fixed text;
-    // this finds the records that still have it.
+    // Latin letters typed inside Cyrillic words ("Міxaйлаўна", "прядильщицa",
+    // "Iгар"; see NormalizeCyrillicText). save()/saveMany() always store the
+    // fixed text; this finds the records that still have them.
     struct LetterFix
     {
         int records = 0;
         QMap<QString, int> fields; // field caption -> records
         QStringList samples;       // "before → after"
     };
-    LetterFix findLatinBelarusianI(QVector<Person>* fixed = nullptr, int maxSamples = 8) const;
-    static bool normalizeBelarusianFields(Person& person);
+    LetterFix findLatinLetters(QVector<Person>* fixed = nullptr, int maxSamples = 8) const;
+    static bool normalizeTextFields(Person& person);
     // consistent copy of the open database (VACUUM INTO)
     bool backup(const QString& filePath, QString* error) const;
 
@@ -129,7 +130,7 @@ signals:
 private:
     // a person is identified by decree number, decree date, award and name; the
     // award matters: one decree may give a person an order and a title.
-    // Belarusian names are compared after NormalizeBelarusianI ("Iгар" == "Ігар").
+    // Names are compared after NormalizeCyrillicText ("Iгар" == "Ігар").
     struct IdentityKey
     {
         int ukaseNo = 0;

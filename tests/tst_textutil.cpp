@@ -21,6 +21,8 @@ private slots:
     void toLower();
     void normalizeBelarusianI_data();
     void normalizeBelarusianI();
+    void normalizeCyrillicText_data();
+    void normalizeCyrillicText();
 };
 
 void TestTextUtil::parseDate_data()
@@ -161,6 +163,52 @@ void TestTextUtil::normalizeBelarusianI()
     QFETCH(QString, expected);
     QCOMPARE(NormalizeBelarusianI(text), expected);
     QCOMPARE(HasLatinBelarusianI(text), text != expected);
+}
+
+void TestTextUtil::normalizeCyrillicText_data()
+{
+    QTest::addColumn<QString>("text");
+    QTest::addColumn<bool>("belarusian");
+    QTest::addColumn<QString>("expected");
+
+    // real cases from the catalog
+    QTest::newRow("ru ending") << QStringLiteral("прядильщицa фабрики") << false << QStringLiteral("прядильщица фабрики");
+    QTest::newRow("ru surname") << QStringLiteral("Дорoxoва Анна Васильевна") << false << QStringLiteral("Дорохова Анна Васильевна");
+    QTest::newRow("ru capital") << QStringLiteral("Aршaвская Ирина") << false << QStringLiteral("Аршавская Ирина");
+    QTest::newRow("ru p for р") << QStringLiteral("проректоp университета") << false << QStringLiteral("проректор университета");
+    QTest::newRow("ru whole word latin twins") << QStringLiteral("имени Mapкca") << false << QStringLiteral("имени Маркса");
+    QTest::newRow("by name") << QStringLiteral("Шыбека Mixaіл Васільевіч") << true << QStringLiteral("Шыбека Міхаіл Васільевіч");
+    QTest::newRow("by name with i") << QStringLiteral("Іcaeва Валянціна") << true << QStringLiteral("Ісаева Валянціна");
+    QTest::newRow("by rank") << QStringLiteral("пaдпaлкоўнік") << true << QStringLiteral("падпалкоўнік");
+    QTest::newRow("by i and c") << QStringLiteral("Kipaўcкі раён") << true << QStringLiteral("Кіраўскі раён");
+    // standalone lower-case letters between Cyrillic words
+    QTest::newRow("ru preposition c") << QStringLiteral("работает c 1990 года в колхозе") << false
+                                      << QStringLiteral("работает с 1990 года в колхозе");
+    QTest::newRow("ru conjunction a") << QStringLiteral("слесарь a также механик") << false << QStringLiteral("слесарь а также механик");
+    QTest::newRow("by preposition y") << QStringLiteral("настаўнік y школе") << true << QStringLiteral("настаўнік у школе");
+    // must stay
+    QTest::newRow("roman latin") << QStringLiteral("першай паловы XIX стагоддзя") << true << QStringLiteral("першай паловы XIX стагоддзя");
+    QTest::newRow("roman mixed script") << QStringLiteral("XXІ стагоддзя") << true << QStringLiteral("XXІ стагоддзя");
+    QTest::newRow("roman ru") << QStringLiteral("участник XXIV съезда") << false << QStringLiteral("участник XXIV съезда");
+    QTest::newRow("roman with hyphen") << QStringLiteral("XIX-га стагоддзя") << true << QStringLiteral("XIX-га стагоддзя");
+    QTest::newRow("category letter") << QStringLiteral("водитель категории B") << false << QStringLiteral("водитель категории B");
+    QTest::newRow("latin name") << QStringLiteral("ООО «Coca-Cola Beverages» в Минске") << false
+                                << QStringLiteral("ООО «Coca-Cola Beverages» в Минске");
+    QTest::newRow("latin words") << QStringLiteral("«Moeller Electrotechnika s.r.o.» прадстаўніцтва") << true
+                                 << QStringLiteral("«Moeller Electrotechnika s.r.o.» прадстаўніцтва");
+    QTest::newRow("ru keeps latin i") << QStringLiteral("водитель i механик") << false << QStringLiteral("водитель i механик");
+    QTest::newRow("roman in name") << QStringLiteral("Алексий II (Ридигер Алексей Михайлович)") << false
+                                   << QStringLiteral("Алексий II (Ридигер Алексей Михайлович)");
+    QTest::newRow("clean") << QStringLiteral("Іваноў Ігар") << true << QStringLiteral("Іваноў Ігар");
+}
+
+void TestTextUtil::normalizeCyrillicText()
+{
+    QFETCH(QString, text);
+    QFETCH(bool, belarusian);
+    QFETCH(QString, expected);
+    QCOMPARE(NormalizeCyrillicText(text, belarusian), expected);
+    QCOMPARE(HasLatinLookalikes(text, belarusian), text != expected);
 }
 
 QTEST_GUILESS_MAIN(TestTextUtil)

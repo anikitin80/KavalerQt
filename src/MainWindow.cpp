@@ -186,7 +186,7 @@ MainWindow::MainWindow(QWidget* parent)
     editMenu->addAction(deleteRecord);
     editMenu->addSeparator();
     editMenu->addAction(QStringLiteral("Поиск и замена..."), this, &MainWindow::replaceText);
-    editMenu->addAction(QStringLiteral("Исправить латинские «i» в белорусских полях..."), this,
+    editMenu->addAction(QStringLiteral("Исправить латинские буквы в кириллице..."), this,
                         &MainWindow::fixLatinBelarusianI);
     editMenu->addSeparator();
     editMenu->addAction(QStringLiteral("API-ключ Яндекса..."), this, [this] {
@@ -1087,10 +1087,10 @@ void MainWindow::fixLatinBelarusianI()
         return;
 
     QVector<Person> fixed;
-    const Catalog::LetterFix found = m_catalog.findLatinBelarusianI(&fixed, 50);
+    const Catalog::LetterFix found = m_catalog.findLatinLetters(&fixed, 50);
     if (found.records == 0) {
         QMessageBox::information(this, windowTitle(),
-            QStringLiteral("Латинских «i» в белорусских полях нет."));
+            QStringLiteral("Латинских букв внутри кириллических слов нет."));
         return;
     }
 
@@ -1098,13 +1098,15 @@ void MainWindow::fixLatinBelarusianI()
     for (auto it = found.fields.cbegin(); it != found.fields.cend(); ++it)
         fields.push_back(QStringLiteral("    %1: %2").arg(it.key()).arg(it.value()));
     const QFileInfo database(m_catalog.path());
-    const QString backupPath = database.dir().filePath(QStringLiteral("%1.before-i-fix-%2.sqlite")
+    const QString backupPath = database.dir().filePath(QStringLiteral("%1.before-latin-fix-%2.sqlite")
         .arg(database.completeBaseName(), QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"))));
 
     QMessageBox question(QMessageBox::Question, windowTitle(),
-        QStringLiteral("Латинские «i»/«I» вместо белорусских «і»/«І» найдены в %1 записях:\n%2\n\n"
-                       "Меняются только буквы внутри белорусских слов и союз «і»; "
-                       "римские цифры («I класа») и латинские слова не трогаются.\n\n"
+        QStringLiteral("Латинские буквы внутри кириллических слов («Міxaйлаўна», «прядильщицa», «Iгар») "
+                       "найдены в %1 записях:\n%2\n\n"
+                       "Меняются только буквы-двойники внутри кириллических слов и набранные латиницей "
+                       "союзы и предлоги («і», «а», «с», «у»); римские цифры («XXI», «I класа») "
+                       "и латинские слова не трогаются.\n\n"
                        "Перед исправлением будет сделана копия базы:\n%3\n\nИсправить?")
             .arg(found.records).arg(fields.join(QLatin1Char('\n')), QDir::toNativeSeparators(backupPath)),
         QMessageBox::Yes | QMessageBox::No, this);

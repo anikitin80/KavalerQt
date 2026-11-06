@@ -14,7 +14,8 @@ QString identityKey(const PersonInfo& info)
     const QString name = QString::fromStdWString(info.Name);
     return QString::number(info.Ukaz.Number) + QChar(0x1F) + QString::number(info.Ukaz.Date.toJulianDay())
         + QChar(0x1F) + QString::number(info.AwardId) + QChar(0x1F)
-        + (info.Ukaz.RussianLang ? QStringLiteral("ru:") + name : QStringLiteral("by:") + NormalizeBelarusianI(name));
+        + (info.Ukaz.RussianLang ? QStringLiteral("ru:") : QStringLiteral("by:"))
+        + NormalizeCyrillicText(name, !info.Ukaz.RussianLang);
 }
 
 QString fileKey(const PersonInfo& info)

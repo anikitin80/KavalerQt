@@ -63,3 +63,8 @@ if(KAVALER_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
+
+option(KAVALER_BUILD_TOOLS "Build the command line tools (decree_report)" ON)
+if(KAVALER_BUILD_TOOLS)
+    add_subdirectory(tools)
+endif()

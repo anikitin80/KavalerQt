@@ -124,7 +124,7 @@ private slots:
     void importSameDecreeFromTwoFiles();
     void importSecondAward();
     void importNamesakeHiddenByFilter();
-    void findLatinBelarusianI();
+    void findLatinLetters();
     void saveFixesBelarusianFieldsOnly();
     void fixWholeDatabaseWithBackup();
     void identityFollowsEditsAndRemoval();
@@ -283,10 +283,10 @@ void TestCatalog::importNamesakeHiddenByFilter()
     QCOMPARE(personsToImport(persons, {true, false}, *m_catalog), QVector<int>());
 }
 
-void TestCatalog::findLatinBelarusianI()
+void TestCatalog::findLatinLetters()
 {
     QVector<Person> fixed;
-    const Catalog::LetterFix found = m_catalog->findLatinBelarusianI(&fixed);
+    const Catalog::LetterFix found = m_catalog->findLatinLetters(&fixed);
     QCOMPARE(found.records, 2);
     QCOMPARE(fixed.size(), 2);
     QCOMPARE(found.fields.value(QStringLiteral("ФИО (белор.)")), 1);
@@ -314,11 +314,19 @@ void TestCatalog::saveFixesBelarusianFieldsOnly()
     }
     QVERIFY(russian);
     Person ru = *russian;
-    ru.rank = QStringLiteral("капитан");
+    ru.rank = QStringLiteral("кaпитaн"); // Latin "a" twice
     QString error;
     QVERIFY(m_catalog->save(ru, &error));
+    QCOMPARE(stored(m_path, ru.id, QStringLiteral("Rank")), QStringLiteral("капитан"));
+    // a Latin "i" is not a Russian letter: Russian text keeps it (fixed by hand)
     QCOMPARE(stored(m_path, ru.id, QStringLiteral("Personal_Info")), QStringLiteral("водитель i механик"));
     QCOMPARE(stored(m_path, ru.id, QStringLiteral("Awarded_For")), QStringLiteral("За заслуги i труд"));
+
+    // Russian names are compared without look-alikes too
+    Person probe = ru;
+    probe.id = 0;
+    probe.name = QStringLiteral("Петрoв Петр Петрoвич");
+    QVERIFY(m_catalog->contains(probe));
 
     Person by = *byNameBy(*m_catalog, QStringLiteral("Шульга Валерый Ігаравіч"));
     by.rankBy = QStringLiteral("палкоўнiк");
@@ -339,9 +347,9 @@ void TestCatalog::fixWholeDatabaseWithBackup()
     QVERIFY(!m_catalog->backup(backupPath, &error)); // never overwrites
 
     QVector<Person> fixed;
-    m_catalog->findLatinBelarusianI(&fixed);
+    m_catalog->findLatinLetters(&fixed);
     QVERIFY(m_catalog->saveMany(fixed, &error));
-    QCOMPARE(m_catalog->findLatinBelarusianI().records, 0);
+    QCOMPARE(m_catalog->findLatinLetters().records, 0);
     QCOMPARE(stored(m_path, fixed.at(0).id, QStringLiteral("Name_BY")), QStringLiteral("Вышыванюк Ігар Міхайлавіч"));
 
     // the backup keeps the old text
@@ -351,7 +359,7 @@ void TestCatalog::fixWholeDatabaseWithBackup()
     delete m_catalog;
     m_catalog = new Catalog;
     QVERIFY(m_catalog->open(m_path, &error));
-    QCOMPARE(m_catalog->findLatinBelarusianI().records, 0);
+    QCOMPARE(m_catalog->findLatinLetters().records, 0);
     QCOMPARE(m_catalog->people().size(), 4);
 }
 

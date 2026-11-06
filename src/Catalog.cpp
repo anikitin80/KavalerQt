@@ -189,12 +189,14 @@ void Catalog::bindText(QSqlQuery& query, const QString& text) const
         query.addBindValue(text);
 }
 
-bool Catalog::open(const QString& path, QString* error)
+bool Catalog::open(const QString& path, QString* error, bool readOnly)
 {
     close();
 
     m_db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), QStringLiteral("kavaler"));
     m_db.setDatabaseName(path);
+    if (readOnly)
+        m_db.setConnectOptions(QStringLiteral("QSQLITE_OPEN_READONLY"));
     if (!m_db.open()) {
         if (error)
             *error = m_db.lastError().text();
@@ -389,14 +391,24 @@ void Catalog::rebuildIdentity()
     }
 }
 
+namespace {
+
+// names compared without Latin look-alike letters ("Mixaіл" == "Міхаіл")
+QString keyName(const QString& name, bool belarusian)
+{
+    return NormalizeCyrillicText(name, belarusian);
+}
+
+} // namespace
+
 // counts, not a set: two records may share a key, editing one must keep the other
 void Catalog::addIdentity(const Person& person)
 {
     const qint64 day = person.ukaseDate.toJulianDay();
     if (!person.name.isEmpty())
-        ++m_identityName[IdentityKey{person.ukaseNo, day, person.awardId, person.name}];
+        ++m_identityName[IdentityKey{person.ukaseNo, day, person.awardId, keyName(person.name, false)}];
     if (!person.nameBy.isEmpty())
-        ++m_identityNameBy[IdentityKey{person.ukaseNo, day, person.awardId, NormalizeBelarusianI(person.nameBy)}];
+        ++m_identityNameBy[IdentityKey{person.ukaseNo, day, person.awardId, keyName(person.nameBy, true)}];
 }
 
 void Catalog::removeIdentity(const Person& person)
@@ -408,9 +420,9 @@ void Catalog::removeIdentity(const Person& person)
             counts.erase(it);
     };
     if (!person.name.isEmpty())
-        drop(m_identityName, IdentityKey{person.ukaseNo, day, person.awardId, person.name});
+        drop(m_identityName, IdentityKey{person.ukaseNo, day, person.awardId, keyName(person.name, false)});
     if (!person.nameBy.isEmpty())
-        drop(m_identityNameBy, IdentityKey{person.ukaseNo, day, person.awardId, NormalizeBelarusianI(person.nameBy)});
+        drop(m_identityNameBy, IdentityKey{person.ukaseNo, day, person.awardId, keyName(person.nameBy, true)});
 }
 
 int Catalog::count(const Person& probe) const
@@ -418,40 +430,42 @@ int Catalog::count(const Person& probe) const
     const qint64 day = probe.ukaseDate.toJulianDay();
     int result = 0;
     if (!probe.name.isEmpty())
-        result = m_identityName.value(IdentityKey{probe.ukaseNo, day, probe.awardId, probe.name});
+        result = m_identityName.value(IdentityKey{probe.ukaseNo, day, probe.awardId, keyName(probe.name, false)});
     if (!probe.nameBy.isEmpty()) {
         result = std::max(result, m_identityNameBy.value(
-            IdentityKey{probe.ukaseNo, day, probe.awardId, NormalizeBelarusianI(probe.nameBy)}));
+            IdentityKey{probe.ukaseNo, day, probe.awardId, keyName(probe.nameBy, true)}));
     }
     return result;
 }
 
-// Belarusian fields only: Russian text has no "і", and "Награжден за" is in
-// the language of the decree
-bool Catalog::normalizeBelarusianFields(Person& person)
+// Latin look-alike letters in every text field; the Belarusian "і" only in
+// Belarusian fields ("Награжден за" is in the language of the decree)
+bool Catalog::normalizeTextFields(Person& person)
 {
     bool changed = false;
-    const auto fix = [&changed](QString& text) {
-        const QString fixed = NormalizeBelarusianI(text);
+    const auto fix = [&changed](QString& text, bool belarusian) {
+        const QString fixed = NormalizeCyrillicText(text, belarusian);
         if (fixed != text) {
             text = fixed;
             changed = true;
         }
     };
-    fix(person.nameBy);
-    fix(person.personalBy);
-    fix(person.rankBy);
-    if (person.language == kLangBelarusian)
-        fix(person.awardedFor);
+    fix(person.nameBy, true);
+    fix(person.personalBy, true);
+    fix(person.rankBy, true);
+    fix(person.name, false);
+    fix(person.personal, false);
+    fix(person.rank, false);
+    fix(person.awardedFor, person.language == kLangBelarusian);
     return changed;
 }
 
-Catalog::LetterFix Catalog::findLatinBelarusianI(QVector<Person>* fixed, int maxSamples) const
+Catalog::LetterFix Catalog::findLatinLetters(QVector<Person>* fixed, int maxSamples) const
 {
     LetterFix result;
     for (const Person& person : m_people) {
         Person copy = person;
-        if (!normalizeBelarusianFields(copy))
+        if (!normalizeTextFields(copy))
             continue;
         ++result.records;
         const auto count = [&](const QString& caption, const QString& before, const QString& after) {
@@ -464,6 +478,9 @@ Catalog::LetterFix Catalog::findLatinBelarusianI(QVector<Person>* fixed, int max
         count(QStringLiteral("ФИО (белор.)"), person.nameBy, copy.nameBy);
         count(QStringLiteral("Личные данные (белор.)"), person.personalBy, copy.personalBy);
         count(QStringLiteral("Звание (белор.)"), person.rankBy, copy.rankBy);
+        count(QStringLiteral("ФИО"), person.name, copy.name);
+        count(QStringLiteral("Личные данные"), person.personal, copy.personal);
+        count(QStringLiteral("Звание"), person.rank, copy.rank);
         count(QStringLiteral("Награжден за"), person.awardedFor, copy.awardedFor);
         if (fixed)
             fixed->push_back(copy);
@@ -493,7 +510,7 @@ bool Catalog::writePerson(Person& person, QString* error)
 {
     if (!person.personalBy.isEmpty())
         person.language = kLangBelarusian;
-    normalizeBelarusianFields(person);
+    normalizeTextFields(person);
 
     QSqlQuery query(m_db);
     const bool update = person.id > 0;

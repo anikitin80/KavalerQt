@@ -18,3 +18,10 @@ class QString;
 // Roman numerals ("I класа", "III ступені") and Latin words ("iPhone") stay.
 QString NormalizeBelarusianI(const QString& text);
 bool HasLatinBelarusianI(const QString& text);
+
+// The same for every Latin letter that looks like a Cyrillic one (a c e o p x y
+// A B C E H K M O P T X Y, plus i/I for Belarusian text): "Міxaйлаўна",
+// "прядильщицa", "пaдпaлкоўнік". Standalone lower-case letters between Cyrillic
+// words become the Cyrillic conjunction or preposition ("a", "c", "o", "y").
+QString NormalizeCyrillicText(const QString& text, bool belarusian);
+bool HasLatinLookalikes(const QString& text, bool belarusian);
