@@ -3,7 +3,6 @@
 #include "NameConverter.h"
 
 #include <map>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -12,7 +11,7 @@ struct RankInfo
 	std::wstring Nominative;
 	std::wstring Dative;
 	std::wstring Accusative;
-	
+
 };
 
 struct NewDictItem
@@ -29,7 +28,6 @@ class CProfessionConverter
 {
 public:
 
-	CProfessionConverter();
 
 	void Initialize();
 
@@ -44,11 +42,20 @@ public:
 	void FindNewWords(std::wstring& strSource, LangType lang, NounCase nounCase);
 	bool AddNewWord(std::wstring& word, LangType lang, NounCase nounCase);
 
-	std::vector<NewDictItem> GetNewWords() { return m_NewWords; }
 	const std::vector<NewDictItem>& newWords() const { return m_NewWords; }
 	void clearNewWords() { m_NewWords.clear(); }
 
 protected:
+	// the steps of ConvertProfession
+	const Dictionary& DictionaryFor(LangType lang, NounCase nounCase) const;
+	static Dictionary::const_iterator Lookup(const Dictionary& dictionary, std::wstring word, LangType lang);
+	static void ReplaceKeepingFirstLetter(std::wstring& text, size_t pos, size_t oldLength, const std::wstring& replacement);
+	void ConvertNonMilitaryRank(std::wstring& strSource, NounCase nounCase);
+	size_t ConvertWordChain(std::wstring& strSource, size_t posStart, Dictionary::const_iterator iter, LangType lang, NounCase nounCase);
+	size_t ConvertBracketed(std::wstring& strSource, size_t posStart, LangType lang, NounCase nounCase);
+	void ConvertAfterComma(std::wstring& strSource, size_t posStart, LangType lang, NounCase nounCase);
+	void ConvertLeadingAdjectives(std::wstring& strSource, size_t posMainWord, LangType lang, NounCase nounCase);
+
 	Dictionary m_DictionaryDatRU;
 	Dictionary m_DictionaryAccRU;
 	std::wstring m_FilePathRU;
@@ -58,8 +65,8 @@ protected:
 	std::wstring m_FilePathBY;
 
 	std::vector<NewDictItem> m_NewWords;
-	static RulesList RulesAdjectives;
-	static RulesList RulesProfession;
-	static std::vector<RankInfo> NonMilitatyRanksBY;
+	static const RulesList RulesAdjectives;
+	static const RulesList RulesProfession;
+	static const std::vector<RankInfo> NonMilitatyRanksBY;
 };
 

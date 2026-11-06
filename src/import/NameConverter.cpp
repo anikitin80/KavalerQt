@@ -5,7 +5,7 @@
 
 // restores nominative case of names
 
-RulesList CNameConverter::ExceptionsLastName = {
+const RulesList CNameConverter::ExceptionsLastName = ExpandRules({
 	{ SexMale, LangRU, L"вию,сою,цою,хою", L"вия,соя,цоя,хоя", L"-й" },
 	{ SexMale, LangBY, L"дразду", L"дразда", L"----озд" },
 	{ SexMale, LangBY, L"каралю", L"караля", L"---оль" },
@@ -28,9 +28,9 @@ RulesList CNameConverter::ExceptionsLastName = {
 	{ SexMale, LangBY, L"кляшчу", L"кляшча", L"----ешч" },
 	{ SexMale, LangBY, L"хвашчу", L"хвашча", L"----ошч" },
 	{ SexMale, LangBY, L"лукашэню", L"лукашэню", L"-я" }
-};
+});
 
-RulesList CNameConverter::RulesLastName = {
+const RulesList CNameConverter::RulesLastName = ExpandRules({
 	{ SexAny,	LangBY, L"дзе",			L"",			L"--а"},	// Калядзе
 	{ SexAny,	LangAny,L"е",			L"у",			L"-а"},
 	{ SexFemale,LangAny,L"кай,кой",		L"",			L"--ая"},	// Романской
@@ -68,7 +68,7 @@ RulesList CNameConverter::RulesLastName = {
 	{ SexAny,	LangAny,L"те",			L"",			L"-а" },	// Федуте
 	{ SexAny,	LangAny,L"це",			L"",			L"--та" },	// Федуце
 	{ SexAny,	LangRU, L"о",			L"о",			L"" },
-	{ SexAny,	LangBY, L"о,е,э",		L"о,е,э,",		L"" },
+	{ SexAny,	LangBY, L"о,е,э",		L"о,е,э",		L"" },
 	{ SexAny,	LangBY, L"ы",			L"",			L"-а" },    // Рагойшы
 	{ SexAny,	LangRU, L"ия",			L"ия",			L"" },
 	{ SexAny,	LangRU, L"их,ых",		L"их,ых",		L"" },
@@ -79,9 +79,9 @@ RulesList CNameConverter::RulesLastName = {
 	{ SexMale,	LangBY,	L"аву,ову,ёву,еву", L"ава,ова,ёва,ева", L"--ў" },
 	{ SexFemale,LangAny,L"б,в,г,д,ж,з,й,к,л,м,н,п,р,с,т,ф,х,ц,ч,ш,щ,ъ,ь", L"б,в,г,д,ж,з,й,к,л,м,н,п,р,с,т,ф,х,ц,ч,ш,щ,ъ,ь", L""},
 	{ SexMale,	LangAny,L"бу,ву,гу,ду,жу,зу,ку,лу,му,ну,пу,ру,су,ту,фу,ху,цу,чу,шу,щу", L"ба,ва,га,да,жа,за,ка,ла,ма,на,па,ра,са,та,фа,ха,ца,ча,ша,ща", L"-" }
-};
+});
 
-RulesList CNameConverter::ExceptionsFirstName = {
+const RulesList CNameConverter::ExceptionsFirstName = ExpandRules({
 	{ SexMale, LangRU, L"льву", L"льва", L"---ев" },
 	{ SexMale, LangBY, L"льву", L"льва", L"---еў" },
 	{ SexMale, LangRU, L"павлу", L"павла", L"--ел" },
@@ -90,9 +90,9 @@ RulesList CNameConverter::ExceptionsFirstName = {
 	{ SexMale, LangRU, L"шота", L"шота", L"" },
 	{ SexMale, LangAny, L"роберту,альберту,норберту,герберту", L"", L"-" },
 	{ SexMale, LangBY, L"францішку", L"францішка", L"--ак" }
-};
+});
 
-RulesList CNameConverter::RulesFirstName = {
+const RulesList CNameConverter::RulesFirstName = ExpandRules({
 	{ SexAny,	LangAny, L"",			L"ю",		L"-я" },	// Наталью, Илью
 	{ SexAny,	LangRU, L"ье,ое",		L"",		L"-я" },	// Наталье, Зое
 	{ SexFemale,LangRU, L"ии",			L"",		L"-я" },	// Марии, Алиции
@@ -104,72 +104,56 @@ RulesList CNameConverter::RulesFirstName = {
 	{ SexFemale,LangAny,L"е",			L"у",		L"-а" },	// Галина
 	{ SexFemale,LangBY, L"цы",			L"",		L"--ка" },	// Анжалицы
 	{ SexFemale,LangBY, L"ы",			L"",		L"-а" },	// Аляксандры
-	{ SexFemale,LangBY, L"вi,ві",		L"",		L"--ў" },	// Любовi
+	{ SexFemale,LangBY, L"ві",			L"",		L"--ў" },	// Любові
 	{ SexFemale,LangBY, L"аву",			L"ава",		L"--ў" },
 	{ SexMale,  LangBY, L"ту",			L"ту",		L"-а" },
 	{ SexMale,  LangBY, L"аву",			L"ава",		L"--ў" },
-	{ SexMale,  LangBY, L"дзію,дзiю",	L"дзія,дзiя", L"--ь" },
-	{ SexMale,  LangAny,L"аю,ею,ию,ою,ію,ыю,эю,ію,iю", L"ая,ея,ия,оя,ія,ыя,эя,ія,iя", L"-й" },
+	{ SexMale,  LangBY, L"дзію",		L"дзія",	L"--ь" },
+	{ SexMale,  LangAny,L"аю,ею,ию,ою,ію,ыю,эю,iю", L"ая,ея,ия,оя,ія,ыя,эя,iя", L"-й" },
 	{ SexMale,  LangAny,L"ю",			L"я",		L"-ь" },	// Рамиль
 	{ SexMale,  LangAny,L"е,ё,и,і,о,ы,э", L"е,ё,и,і,о,у,ы,э,ю", L"" },
 	{ SexMale,  LangRU,	L"ге,ке,хе,че,ще,же",L"гу,ку,ху,чу,щу,жу", L"-а" },
 	{ SexFemale,LangAny,L"б,в,г,д,ж,з,й,к,л,м,н,п,р,с,т,ў,ф,х,ц,ч,ш,щ,ъ,ь", L"б,в,г,д,ж,з,й,к,л,м,н,п,р,с,т,ў,ф,х,ц,ч,ш,щ,ъ,ь", L"" },
 	{ SexMale,  LangAny,L"бу,ву,гу,ду,жу,зу,ку,лу,му,ну,пу,ру,су,ту,фу,ху,цу,чу,шу", L"ба,ва,га,да,жа,за,ка,ла,ма,на,па,ра,са,та,фа,ха,ца,ча,ша", L"-" },
-};
+});
 
-RulesList CNameConverter::RulesMiddleName = {
+const RulesList CNameConverter::RulesMiddleName = ExpandRules({
 	{ SexMale, LangRU, L"ичу", L"ича", L"-" },
 	{ SexMale, LangBY, L"ічу,iчу", L"іча,iча", L"-" },
 	{ SexFemale, LangAny, L"не", L"ну", L"-а" },
-};
+});
 
-bool CNameConverter::m_bIsInitialized = false;
-
-CNameConverter::CNameConverter()
+RulesList CNameConverter::ExpandRules(const RulesList& rules)
 {
-	if (!m_bIsInitialized)
+	RulesList expanded;
+	expanded.reserve(rules.size());
+	for (const Rule& rule : rules)
 	{
-		ExpandRules(ExceptionsFirstName);
-		ExpandRules(ExceptionsLastName);
-		ExpandRules(RulesFirstName);
-		ExpandRules(RulesLastName);
-		ExpandRules(RulesMiddleName);
-		m_bIsInitialized = true;
-	}
-};
-
-void CNameConverter::ExpandRules(RulesList& rules)
-{
-	for (size_t r = 0; r < rules.size(); r++)
-	{
-		if (rules[r].SuffixAcc.find(',') == -1 && rules[r].SuffixDat.find(',') == -1)
-			continue;
-
-		std::vector<std::wstring> strListAcc = SplitString(rules[r].SuffixAcc, L',');
-		std::vector<std::wstring> strListDat = SplitString(rules[r].SuffixDat, L',');
-
-		Rule rule = rules[r];
-		rules.erase(rules.begin() + r);
-
-		for (size_t i = 0; i < std::max(strListDat.size(), strListAcc.size()); i++)
+		if (rule.SuffixAcc.find(L',') == std::wstring::npos && rule.SuffixDat.find(L',') == std::wstring::npos)
 		{
-			rule.SuffixAcc = (i < strListAcc.size() ? strListAcc[i] : L"");
-			rule.SuffixDat = (i < strListDat.size() ? strListDat[i] : L"");
-			rules.insert(rules.begin() + r++, rule);
+			expanded.push_back(rule);
+			continue;
 		}
-
-		r--;
+		const std::vector<std::wstring> acc = SplitString(rule.SuffixAcc, L',');
+		const std::vector<std::wstring> dat = SplitString(rule.SuffixDat, L',');
+		for (size_t i = 0; i < std::max(dat.size(), acc.size()); i++)
+		{
+			Rule part = rule;
+			part.SuffixAcc = i < acc.size() ? acc[i] : std::wstring();
+			part.SuffixDat = i < dat.size() ? dat[i] : std::wstring();
+			expanded.push_back(part);
+		}
 	}
+	return expanded;
 }
 
-bool CNameConverter::ApplyRules(std::wstring& name, RulesList& rules, SexType sex, LangType lang, NounCase nounCase, bool bFullWordMatch)
+bool CNameConverter::ApplyRules(std::wstring& name, const RulesList& rules, SexType sex, LangType lang, NounCase nounCase, bool bFullWordMatch)
 {
 	if (lang == LangBY)
 	{
 		// replace Latin letters with Belorussian ("Iгар" is often typed with Latin I;
 		// duplicates are found alphabet-blind, see Catalog::IdentityKey)
-		std::replace(name.begin(), name.end(), L'i', L'і');
-		std::replace(name.begin(), name.end(), L'I', L'І');
+		ToCyrillicI(name, true);
 	}
 
 	const std::wstring nameLower = ToLower(name);
@@ -237,12 +221,12 @@ bool CNameConverter::NormalizeName(std::wstring& fullName, LangType lang, NounCa
 	std::wstring firstName, lastName, middleName;
 	size_t pos1 = fullName.find(' ');
 	size_t pos2 = fullName.find(' ', pos1 + 1);
-	if (pos1 == -1)
+	if (pos1 == std::wstring::npos)
 		return false;
 	lastName = fullName.substr(0, pos1);
 	StrTrim(lastName);
 
-	if (pos2 != -1)
+	if (pos2 != std::wstring::npos)
 	{
 		middleName = fullName.substr(pos2 + 1);
 		firstName = fullName.substr(pos1 + 1, pos2 - pos1 - 1);

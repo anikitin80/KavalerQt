@@ -19,12 +19,10 @@ struct GroupInfo
 class CDocumentParser
 {
 public:
-	CDocumentParser();
-
 	void Initialize(std::map<long, DecreeAward>& awards);
 	void ResetData();
 
-	bool ProcessFile(const std::wstring& fileName, std::vector<std::wstring>& arrLines);
+	bool ProcessFile(const std::wstring& fileName, const std::vector<std::wstring>& arrLines);
 	int  GetFileMonth(const std::wstring& fileName) { return m_mapFileMonth[fileName];  }
 	bool SpltPersonInfo(PersonInfo& person);
 	NounCase GetNounCaseByAwardId(int awardId);
@@ -35,18 +33,16 @@ public:
 	void  UpdateGroupInfo(const wchar_t* fileName, const wchar_t* groupInfo);
 	void  CheckGroupInfo(const wchar_t* fileName, bool bCheck);
 
-	//static bool TranslateRank(std::wstring& strText, std::wstring& strResult);
 	static bool IsMilitaryAward(int awardId);
 
 	std::vector<AwardInfo> m_AwardsStat;
 	std::vector<PersonInfo> m_Persons;
 	std::vector<GroupInfo> m_GroupsInfo;
 	UkazInfo m_UkazInfo;
-	//CPadegDll m_PadegDll;
 	CNameConverter m_NameConverter;
 	CProfessionConverter m_ProfessionConverter;
-	static std::vector<RankInfo> MilitatyRanksRU;
-	static std::vector<RankInfo> MilitatyRanksBY;
+	static const std::vector<RankInfo> MilitatyRanksRU;
+	static const std::vector<RankInfo> MilitatyRanksBY;
 
 	std::map<long, DecreeAward> m_Awards;
 
@@ -61,6 +57,8 @@ public:
 
 protected:
 
+	void ParseDecreeHeader(const std::wstring& strLine);
+	void ParseGroupInfo(const std::wstring& strLine);
 	void UpdateAwardStat(int id, std::wstring& award, int nCount);
 	void ExtractPersonInfo(std::wstring& curAward, std::wstring& strAwardedInfo);
 	void NormalizePersonInfo(PersonInfo& person);
@@ -69,7 +67,7 @@ protected:
 	bool GetGroupInfo(const UkazInfo& ukaz, std::wstring& info);
 
 	int  GetAwardId(std::wstring award, bool bRussian, bool bPochetNameOnly = false);
-			
+
 	std::map<std::wstring, int> m_mapFileMonth;
 	std::wstring m_FileName;
 };

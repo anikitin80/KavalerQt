@@ -5,7 +5,7 @@
 #include <cstdlib>
 #include <cwchar>
 
-std::vector<RankInfo> CDocumentParser::MilitatyRanksRU = {
+const std::vector<RankInfo> CDocumentParser::MilitatyRanksRU = {
 	{ L"рядовой", L"рядовому", L"рядового" },
 	{ L"прапорщик", L"прапорщику", L"прапорщика"},
 	{ L"старший прапорщик", L"старшему прапорщику", L"старшего прапорщика"},
@@ -28,7 +28,7 @@ std::vector<RankInfo> CDocumentParser::MilitatyRanksRU = {
 	{ L"старший мичман", L"старшему мичману", L"старшего мичмана" }
 };
 
-std::vector<RankInfo> CDocumentParser::MilitatyRanksBY = {
+const std::vector<RankInfo> CDocumentParser::MilitatyRanksBY = {
 	{ L"радавы", L"радавому", L"радавога"},
 	{ L"яфрэйтар", L"яфрэйтару", L"яфрэйтара"},
 	{ L"прапаршчык", L"прапаршчыку", L"прапаршчыка"},
@@ -54,11 +54,6 @@ std::vector<RankInfo> CDocumentParser::MilitatyRanksBY = {
 	{ L"малодшы саветнік", L"малодшаму саветніку", L"малодшага саветніка" },
 	{ L"дзяржаўны саветнік", L"дзяржаўнаму саветніку", L"дзяржаўнага саветніка" }
 };
-
-CDocumentParser::CDocumentParser()
-{
-
-}
 
 void CDocumentParser::Initialize(std::map<long, DecreeAward>& awards)
 {
@@ -126,14 +121,9 @@ void CDocumentParser::ResetData()
 
 int CDocumentParser::GetAwardId(std::wstring award, bool bRussian, bool bPochetNameOnly /*= false*/)
 {
-	//award.erase(std::remove(award.begin(), award.end(), L' '), award.end());
-	//award.erase(std::remove(award.begin(), award.end(), L' '), award.end());
 	award.erase(std::remove(award.begin(), award.end(), L'»'), award.end());
 	award.erase(std::remove(award.begin(), award.end(), L'«'), award.end());
 	award.erase(std::remove(award.begin(), award.end(), L'"'), award.end());
-
-	// replace Latin letters with Belorussian
-	//std::replace(award.begin(), award.end(), L'i', L'і');
 
 	// replace Belorussian letters with Latin for degreee number
 	std::replace(award.begin(), award.end(), L'І', L'I');
@@ -194,41 +184,82 @@ bool CDocumentParser::IsMilitaryAward(int awardId)
 	return false;
 }
 
-bool CDocumentParser::ProcessFile(const std::wstring& fileName, std::vector<std::wstring>& arrLines)
+namespace {
+
+// words of a decree; Belarusian lines have Cyrillic "і" (Latin "i" is replaced first)
+const std::vector<std::wstring> searchTargetsRU = { L"медалью", L"орденом", L"почетное звание", L"почетные звания" };
+const std::vector<std::wstring> searchTargetsBY = { L"медалём", L"ордэнам", L"ганаровае званн", L"ганаровыя званн" };
+const std::vector<std::wstring> searchFinishBY = { L"Прэзідэнт Рэспублікі Беларусь" };
+const std::vector<std::wstring> searchFinishRU = { L"Президент Республики Беларусь" };
+const std::vector<std::wstring> searchUkazStart = { L"УКАЗ ПР", L"УКАЗ ПР", L"УКАЗПР" };
+const std::vector<std::wstring> searchActionsBY = { L"знагародзіць", L"прысвоіць", L"Прысвоіць" };
+const std::vector<std::wstring> searchActionsRU = { L"наградить", L"присвоить", L"Присвоить" };
+const std::vector<std::wstring> searchGroup = { L"группу", L"группы", L"работников", L"работнікаў", L"супрацоўнікаў", L"сотрудникам" };
+const std::vector<std::wstring> searchGroupEnd = { L"государственными", L"орденом", L"медалью", L"дзяржаўнымі", L"ордэнам", L"медалём", L"почетные", L"почетное", L"почетных" };
+
+} // namespace
+
+// "15 мая 1997 г.№ 282": the number after "№", the date before "г"
+void CDocumentParser::ParseDecreeHeader(const std::wstring& strLine)
+{
+	size_t pos = strLine.find(L'№');
+	if (pos == std::wstring::npos)
+		return;
+	m_UkazInfo.Number = int(std::wcstol(strLine.substr(pos + 1).c_str(), nullptr, 10));
+
+	pos = strLine.rfind(L'г', pos - 1);
+	if (pos != std::wstring::npos)
+	{
+		m_UkazInfo.Date = ParseDate(strLine.substr(0, pos), m_UkazInfo.RussianLang);
+		m_mapFileMonth[m_FileName] = m_UkazInfo.Date.isValid() ? m_UkazInfo.Date.month() : 0;
+	}
+}
+
+// info about a group: text after the group token up to the end of the sentence
+// or up to the award type ("орденом", "медалью", ...)
+void CDocumentParser::ParseGroupInfo(const std::wstring& strLine)
+{
+	size_t posStart = 0, posEnd = 0;
+	if (!FindTokens(strLine, searchGroup, posStart, posEnd))
+		return;
+	std::wstring groupInfo = posEnd < strLine.length() ? strLine.substr(posEnd + 1) : std::wstring();
+	posEnd = groupInfo.find_first_of(L":\t\n\r.");
+	if (posEnd != std::wstring::npos)
+		groupInfo.erase(posEnd);
+	if (FindTokens(groupInfo, searchGroupEnd, posStart, posEnd) && posStart > 0)
+		groupInfo.erase(posStart - 1);
+
+	AddGroupInfo(m_UkazInfo, m_FileName, groupInfo);
+}
+
+bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vector<std::wstring>& arrLines)
 {
 	bool bResult = false;
 
 	m_FileName = fileName;
-
-	std::vector<std::wstring> searchTargetsRU = { L"медалью", L"орденом", L"почетное звание", L"почетные звания" };
-	std::vector<std::wstring> searchTargetsBY = { L"медалём", L"ордэнам", L"ганаровае званн", L"ганаровыя званн" };
-	std::vector<std::wstring> searchFinishBY = { L"Прэзідэнт Рэспублікі Беларусь" };
-	std::vector<std::wstring> searchFinishRU = { L"Президент Республики Беларусь" };
-	std::vector<std::wstring> searchUkazStart = { L"УКАЗ ПР", L"УКАЗ ПР", L"УКАЗПР" };
-	std::vector<std::wstring> searchActionsBY = { L"знагародзіць", L"знагародзiць", L"прысвоіць", L"Прысвоіць" };
-	std::vector<std::wstring> searchActionsRU = { L"наградить", L"присвоить", L"Присвоить" };
-	std::vector<std::wstring> searchGroup = { L"группу", L"группы", L"работников", L"работнiкаў", L"работнікаў", L"супрацоўнікаў", L"сотрудникам" };
-	// Belarusian lines have Cyrillic "і" here (Latin "i" is replaced above)
-	std::vector<std::wstring> searchGroupEnd = { L"государственными", L"орденом", L"медалью", L"дзяржаўнымі",L"ордэнам", L"медалём", L"почетные", L"почетное", L"почетных" };
 
 	bool bUkazStarted = false, bAwardStarted = false, bAwardTypeFound = false, bPossibleGroupStart = false, bMultiplePochet = false;
 	std::wstring curAward;
 	int awardId = 0;
 	int nAwardedCount = 0;
 	size_t posStart = 0, posEnd = 0;
+	// the award being read is over: count its people
+	const auto finishAward = [&] {
+		UpdateAwardStat(awardId, curAward, nAwardedCount);
+		curAward.clear();
+		awardId = nAwardedCount = 0;
+	};
 
 	for (auto itrLine = arrLines.begin(); itrLine != arrLines.end(); itrLine++)
 	{
 		// new ukaze of president found
 		if (FindTokens(*itrLine, searchUkazStart, posStart, posEnd))
 		{
-			UpdateAwardStat(awardId, curAward, nAwardedCount);
+			finishAward();
 			bUkazStarted = true;
 			bAwardStarted = bAwardTypeFound = bPossibleGroupStart = bMultiplePochet = false;
 			m_UkazInfo.Clear();
 			m_UkazInfo.RussianLang = ((*itrLine)[posEnd] == L'Е');
-			curAward.clear();
-			awardId = nAwardedCount = 0;
 			continue;
 		}
 
@@ -239,49 +270,23 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, std::vector<std:
 		size_t posActionEnd = 0, posTargetStart = 0;
 
 		if (0 == m_UkazInfo.Number)
-		{
-			size_t pos = strLine.find(L'№');
-			if (pos != -1)
-			{
-				m_UkazInfo.Number = _wtoi(strLine.substr(pos + 1).c_str());
-
-				pos = strLine.rfind(L'г', pos - 1);
-				if (pos != -1)
-				{
-					m_UkazInfo.Date = ParseDate(strLine.substr(0, pos), m_UkazInfo.RussianLang);
-					m_mapFileMonth[m_FileName] = m_UkazInfo.Date.isValid() ? m_UkazInfo.Date.month() : 0;
-				}
-			}
-		}
+			ParseDecreeHeader(strLine);
 
 		// replace latin 'i' with belorussian
 		if (!m_UkazInfo.RussianLang)
-			std::replace(strLine.begin(), strLine.end(), L'i', L'і');
+			ToCyrillicI(strLine, false);
 
 		// order about awarding found
 		if (FindTokens(strLine, m_UkazInfo.RussianLang ? searchActionsRU : searchActionsBY, posStart, posEnd))
 		{
 			bAwardStarted = true;
 			bAwardTypeFound = false;
-			UpdateAwardStat(awardId, curAward, nAwardedCount);
-			curAward.clear();
-			awardId = nAwardedCount = 0;
+			finishAward();
 			posActionEnd = posEnd;
 		}
 
-		// find info about group: text after the group token up to the end of
-		// the sentence or up to the award type ("орденом", "медалью", ...)
-		if (bUkazStarted && m_UkazInfo.Number && FindTokens(strLine, searchGroup, posStart, posEnd))
-		{
-			std::wstring groupInfo = posEnd < strLine.length() ? strLine.substr(posEnd + 1) : std::wstring();
-			posEnd = groupInfo.find_first_of(L":\t\n\r.");
-			if (posEnd != std::wstring::npos)
-				groupInfo.erase(posEnd);
-			if (FindTokens(groupInfo, searchGroupEnd, posStart, posEnd) && posStart > 0)
-				groupInfo.erase(posStart - 1);
-
-			AddGroupInfo(m_UkazInfo, m_FileName, groupInfo);
-		}
+		if (m_UkazInfo.Number)
+			ParseGroupInfo(strLine);
 
 		if (bAwardStarted)
 		{
@@ -289,9 +294,7 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, std::vector<std:
 			if (bAwardTypeFound && FindTokens(strLine, m_UkazInfo.RussianLang ? searchFinishRU : searchFinishBY, posStart, posEnd))
 			{
 				bUkazStarted = bAwardStarted = bAwardTypeFound = false;
-				UpdateAwardStat(awardId, curAward, nAwardedCount);
-				curAward.clear();
-				awardId = nAwardedCount = 0;
+				finishAward();
 				continue;
 			}
 
@@ -300,9 +303,7 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, std::vector<std:
 			{
 				bAwardTypeFound = true;
 				posTargetStart = posStart;
-				UpdateAwardStat(awardId, curAward, nAwardedCount);
-
-				awardId = nAwardedCount = 0;
+				finishAward();
 				curAward = strLine.substr(posTargetStart);
 				curAward.erase(curAward.find_last_not_of(L" :\t\n\r.") + 1);
 				awardId = GetAwardId(curAward.c_str(), m_UkazInfo.RussianLang);
@@ -332,8 +333,8 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, std::vector<std:
 				{
 					if (awardId)
 						bPossibleGroupStart = true;
-					else if (strLine.find(m_UkazInfo.RussianLang ? searchTargetsRU[2] : searchTargetsBY[2]) != -1 ||
-						     strLine.find(m_UkazInfo.RussianLang ? searchTargetsRU[3] : searchTargetsBY[3]) != -1 )
+					else if (strLine.find(m_UkazInfo.RussianLang ? searchTargetsRU[2] : searchTargetsBY[2]) != std::wstring::npos ||
+						     strLine.find(m_UkazInfo.RussianLang ? searchTargetsRU[3] : searchTargetsBY[3]) != std::wstring::npos )
 					{
 						bMultiplePochet = true;
 					}
@@ -350,7 +351,7 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, std::vector<std:
 						if (awardId > 0)
 							continue;
 					}
-					else if (strLine.find(L"Заслуж") != -1 || strLine.find(L"Народны") != -1)
+					else if (strLine.find(L"Заслуж") != std::wstring::npos || strLine.find(L"Народны") != std::wstring::npos)
 					{
 						int newAwardId = GetAwardId(strLine.c_str(), m_UkazInfo.RussianLang, true);
 						if (newAwardId > 0)
@@ -367,7 +368,7 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, std::vector<std:
 				{
 					// awarding list
 					size_t pos = strLine.find_first_of(L"–-", 0);
-					if (pos == -1)
+					if (pos == std::wstring::npos)
 						continue;
 
 					PersonInfo info;
@@ -381,10 +382,8 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, std::vector<std:
 						// name on the previous line, description on the next one
 						if (itrLine == arrLines.begin() || itrLine + 1 == arrLines.end())
 							continue;
-						m_UkazInfo.ListOfPersons = true;
 						nAwardedCount++;
 
-						info.OriginalText = *(itrLine - 1) + *itrLine + *(itrLine + 1);
 						info.Name = *(itrLine - 1);
 						std::replace(info.Name.begin(), info.Name.end(), L'\v', L' ');
 						info.Description = *(++itrLine);
@@ -395,10 +394,8 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, std::vector<std:
 					else if ((bPossibleGroupStart || bMultiplePochet) && strLine[pos] == L'–')
 					{
 						// old format of persons list in the docx
-						m_UkazInfo.ListOfPersons = true;
 						nAwardedCount++;
 
-						info.OriginalText = strLine;
 						info.Name = strLine.substr(0, pos);
 						info.Description = strLine.substr(pos + 1);
 
@@ -430,23 +427,11 @@ void CDocumentParser::UpdateAwardStat(int id, std::wstring& award, int nCount)
 		{
 			bFound = true;
 
-			auto iter = awardInfo.CountByFiles.find(m_FileName);
-			if (iter == awardInfo.CountByFiles.end())
-				awardInfo.CountByFiles[m_FileName] = nCount ? nCount : 1;
-			else
-			{
-				if (nCount)
-					iter->second += nCount;
-				else
-					iter->second++;
-			}
-
+			awardInfo.CountByFiles[m_FileName] += nCount ? nCount : 1; // a new file starts at 0
 			awardInfo.TotalCount += nCount ? nCount : 1;
-			//awardInfo.CountByMonth[m_UkazInfo.Date.GetMonth()] += (nCount ? nCount : 1);
 			if (0 == nCount)
 			{
 				awardInfo.CountByFiles[m_FileName] |= kFlagNeedReview;
-				//awardInfo.CountByMonth[m_UkazInfo.Date.GetMonth()] |= kFlagNeedReview;
 				awardInfo.NeedReview = true;
 			}
 		}
@@ -467,11 +452,9 @@ void CDocumentParser::UpdateAwardStat(int id, std::wstring& award, int nCount)
 		}
 		awardInfo.TotalCount = nCount ? nCount : 1;
 		awardInfo.CountByFiles[m_FileName] = nCount ? nCount : 1;
-		//awardInfo.CountByMonth[m_UkazInfo.Date.GetMonth()] += (nCount ? nCount : 1);
 		if (!nCount)
 		{
 			awardInfo.CountByFiles[m_FileName] |= kFlagNeedReview;
-			//awardInfo.CountByMonth[m_UkazInfo.Date.GetMonth()] |= kFlagNeedReview;
 			awardInfo.NeedReview = true;
 		}
 		m_AwardsStat.push_back(awardInfo);
@@ -491,7 +474,7 @@ void CDocumentParser::ExtractPersonInfo(std::wstring& curAward, std::wstring& st
 
 	bool bPosthumous = false;
 	size_t posPost = strAwardedInfo.find(m_UkazInfo.RussianLang? L"(посмертно)" : L"(пасмяротна)");
-	if (posPost != -1)
+	if (posPost != std::wstring::npos)
 	{
 		bPosthumous = true;
 		strAwardedInfo.erase(posPost, strAwardedInfo.length() - posPost);
@@ -502,13 +485,13 @@ void CDocumentParser::ExtractPersonInfo(std::wstring& curAward, std::wstring& st
 	// check for alias
 	bool bHasAlias = false;
 	size_t posBracket = strAwardedInfo.rfind(L'(');
-	if (posBracket != -1 && strAwardedInfo.rfind(L')') > strAwardedInfo.length() - 10)
+	if (posBracket != std::wstring::npos && strAwardedInfo.rfind(L')') > strAwardedInfo.length() - 10)
 		bHasAlias = true;
 
 	// lookup name parts
 	size_t pos1 = bHasAlias ? strAwardedInfo.rfind(' ', posBracket-2) : strAwardedInfo.rfind(' ');
 	size_t pos2 = strAwardedInfo.rfind(' ', pos1 - 1);
-	if (pos1 == -1 || pos2 == -1)
+	if (pos1 == std::wstring::npos || pos2 == std::wstring::npos)
 		return;
 
 	if (!IsCapital(strAwardedInfo[pos1 + 1]) || !IsCapital(strAwardedInfo[pos2 + 1]))
@@ -519,7 +502,7 @@ void CDocumentParser::ExtractPersonInfo(std::wstring& curAward, std::wstring& st
 	if (m_NameConverter.IsMiddleName(strAwardedInfo.substr(pos1), m_UkazInfo.RussianLang? LangRU : LangBY, nounCase))
 	{
 		size_t pos3 = strAwardedInfo.rfind(' ', pos2 - 1);
-		if (pos3 != -1 && IsCapital(strAwardedInfo[pos3 + 1]))
+		if (pos3 != std::wstring::npos && IsCapital(strAwardedInfo[pos3 + 1]))
 			sep = pos3;
 	}
 
@@ -528,7 +511,6 @@ void CDocumentParser::ExtractPersonInfo(std::wstring& curAward, std::wstring& st
 	info.Ukaz = m_UkazInfo;
 	info.FileName = m_FileName;
 	info.AwardId = awardId;
-	info.OriginalText = strAwardedInfo;
 	info.Name = strAwardedInfo.substr(sep + 1);
 	info.Description = strAwardedInfo.substr(0, sep);
 	info.Posthumous = bPosthumous;
@@ -542,7 +524,6 @@ bool CDocumentParser::SpltPersonInfo(PersonInfo& person)
 	PersonInfo person2;
 
 	person2.AwardId = person.AwardId;
-	person2.OriginalText = person.OriginalText;
 	person2.FileName = person.FileName;
 	person2.Ukaz = person.Ukaz;
 
@@ -550,10 +531,10 @@ bool CDocumentParser::SpltPersonInfo(PersonInfo& person)
 	NounCase nounCase = GetNounCaseByAwardId(person.AwardId);
 
 	size_t posNextPerson = person.Description.rfind(person.Ukaz.RussianLang? L" и " : L" і ");
-	if (posNextPerson == -1)
+	if (posNextPerson == std::wstring::npos)
 	{
 		posNextPerson = person.Description.rfind(person.Ukaz.RussianLang ? L" и" : L" і");
-		if (posNextPerson == -1)
+		if (posNextPerson == std::wstring::npos)
 			return false;
 
 		bSameProfession = true;
@@ -563,7 +544,7 @@ bool CDocumentParser::SpltPersonInfo(PersonInfo& person)
 
 	size_t pos1 = strAwardedInfo.rfind(' ');
 	size_t pos2 = strAwardedInfo.rfind(' ', pos1 - 1);
-	if (pos1 == -1 || pos2 == -1)
+	if (pos1 == std::wstring::npos || pos2 == std::wstring::npos)
 		return false;
 
 	if (!IsCapital(strAwardedInfo[pos1 + 1]) || !IsCapital(strAwardedInfo[pos2 + 1]))
@@ -571,7 +552,7 @@ bool CDocumentParser::SpltPersonInfo(PersonInfo& person)
 
 	size_t sep = pos2;
 	size_t pos3 = strAwardedInfo.rfind(' ', pos2 - 1);
-	if (pos3 != -1 && IsCapital(strAwardedInfo[pos3 + 1]))
+	if (pos3 != std::wstring::npos && IsCapital(strAwardedInfo[pos3 + 1]))
 		sep = pos3;
 
 	person2.Name = strAwardedInfo.substr(sep + 1);;
@@ -582,7 +563,7 @@ bool CDocumentParser::SpltPersonInfo(PersonInfo& person)
 		size_t posNext = person2.Description.find(L' ');
 		std::wstring strFirstWord = person2.Description.substr(0, posNext);
 
-		static RulesList rulesPlural = { { SexAny, LangAny, L"ам", L"ов", L"--"} };
+		static const RulesList rulesPlural = { { SexAny, LangAny, L"ам", L"ов", L"--"} };
 		if (CNameConverter::ApplyRules(strFirstWord, rulesPlural, SexAny, person.Ukaz.RussianLang ? LangRU : LangBY, nounCase, false))
 		{
 			person2.Description.erase(0, posNext);
@@ -608,30 +589,16 @@ bool CDocumentParser::SpltPersonInfo(PersonInfo& person)
 
 void CDocumentParser::NormalizePersonInfo(PersonInfo& person)
 {
-	wchar_t altName[255] = L"";
-	int iLen = 255;
-
 	StrTrim(person.Name);
 	StrTrim(person.Description);
 	std::replace(person.Description.begin(), person.Description.end(), L' ', L' ');
-
-	/*if (m_PadegDll.IsAvailable() && m_UkazInfo.RussianLang)
-		m_PadegDll.GetNominativePadeg(person.Name.c_str(), (wchar_t*)altName, iLen);*/
 
 	NounCase nounCase = GetNounCaseByAwardId(person.AwardId);
 
 	LangType lang = person.Ukaz.RussianLang ? LangRU : LangBY;
 	person.SourceName = person.Name;
 	person.SourceCase = nounCase;
-	bool bRes = m_NameConverter.NormalizeName(person.Name, lang, nounCase);
-	if (*altName)
-	{
-		if (0 == person.Name.compare(altName))
-			person.Flags |= PersonInfo::NF_NAME;
-		else
-			person.Name += L" (" + std::wstring(altName) + L")";
-	}
-	else if(bRes)
+	if (m_NameConverter.NormalizeName(person.Name, lang, nounCase))
 		person.Flags |= PersonInfo::NF_NAME;
 
 	if (ExtractMilitaryRank(person, lang, nounCase))
@@ -674,9 +641,8 @@ void CDocumentParser::NormalizePersonInfo(PersonInfo& person)
 
 bool CDocumentParser::ExtractMilitaryRank(PersonInfo& person, LangType lang, NounCase nounCase)
 {
-	bool bPosthumous = false;
 	size_t posPost = person.Description.find(lang == LangRU ? L"(посмертно)" : L"(пасмяротна)");
-	if (posPost != -1)
+	if (posPost != std::wstring::npos)
 	{
 		person.Posthumous = true;
 		person.Description.erase(posPost, person.Description.length() - posPost);
@@ -684,27 +650,34 @@ bool CDocumentParser::ExtractMilitaryRank(PersonInfo& person, LangType lang, Nou
 
 	size_t posComma = person.Description.rfind(L',');
 	size_t posStart = 0;
-	if (posComma != -1)
+	if (posComma != std::wstring::npos)
 		posStart = person.Description.find_first_not_of(L" ,", posComma);
 
-	if (posStart == -1 || posStart >= person.Description.length())
+	if (posStart == std::wstring::npos || posStart >= person.Description.length())
 		return false;
 
 	std::wstring strCheck = person.Description.substr(posStart);
-	std::replace(strCheck.begin(), strCheck.end(), L'i', L'і');
+	ToCyrillicI(strCheck, false);
 
 	// check longer ranks first: "старшему прапорщику" contains "прапорщику",
-	// "генерал-майору" contains "майору" etc.
-	const auto& allRanks = (lang == LangBY ? MilitatyRanksBY : MilitatyRanksRU);
-	std::vector<const RankInfo*> ranks;
-	ranks.reserve(allRanks.size());
-	for (const auto& rank : allRanks)
-		ranks.push_back(&rank);
-	std::stable_sort(ranks.begin(), ranks.end(), [nounCase](const RankInfo* a, const RankInfo* b) {
-		const size_t lenA = (nounCase == Dative ? a->Dative : a->Accusative).length();
-		const size_t lenB = (nounCase == Dative ? b->Dative : b->Accusative).length();
-		return lenA > lenB;
-	});
+	// "генерал-майору" contains "майору" etc. (sorted once per language and case)
+	const auto sortedRanks = [](const std::vector<RankInfo>& allRanks, NounCase nounCase) {
+		std::vector<const RankInfo*> ranks;
+		ranks.reserve(allRanks.size());
+		for (const auto& rank : allRanks)
+			ranks.push_back(&rank);
+		std::stable_sort(ranks.begin(), ranks.end(), [nounCase](const RankInfo* a, const RankInfo* b) {
+			const size_t lenA = (nounCase == Dative ? a->Dative : a->Accusative).length();
+			const size_t lenB = (nounCase == Dative ? b->Dative : b->Accusative).length();
+			return lenA > lenB;
+		});
+		return ranks;
+	};
+	static const std::vector<const RankInfo*> ranksByDative[2] = {
+		sortedRanks(MilitatyRanksRU, Dative), sortedRanks(MilitatyRanksBY, Dative) };
+	static const std::vector<const RankInfo*> ranksByAccusative[2] = {
+		sortedRanks(MilitatyRanksRU, Accusative), sortedRanks(MilitatyRanksBY, Accusative) };
+	const auto& ranks = (nounCase == Dative ? ranksByDative : ranksByAccusative)[lang == LangBY ? 1 : 0];
 
 	for (const RankInfo* pRank : ranks)
 	{
@@ -739,9 +712,9 @@ bool CDocumentParser::ExtractMilitaryRank(PersonInfo& person, LangType lang, Nou
 				continue;
 		}
 
-		if (posComma != -1)
+		if (posComma != std::wstring::npos)
 		{
-			if (!wcsncmp(strCheck.c_str(), rankOriginal.c_str(), rankOriginal.length()))
+			if (strCheck.compare(0, rankOriginal.length(), rankOriginal) == 0)
 			{
 				person.MilitaryRank = rank.Nominative + strCheck.substr(rankOriginal.length());
 				StrTrim(person.MilitaryRank);
@@ -752,7 +725,7 @@ bool CDocumentParser::ExtractMilitaryRank(PersonInfo& person, LangType lang, Nou
 		else
 		{
 			posStart = strCheck.find(rankOriginal.c_str());
-			if (posStart != -1)
+			if (posStart != std::wstring::npos)
 			{
 				person.MilitaryRank = rank.Nominative + strCheck.substr(posStart + rankOriginal.length());
 				StrTrim(person.MilitaryRank);
@@ -776,11 +749,6 @@ std::wstring CDocumentParser::GetPersonDescription(size_t nIndex)
 
 std::wstring CDocumentParser::GetPersonDescription(PersonInfo& person, bool bGetRank)
 {
-	static RulesList rulesPlural = {
-	{ SexAny, LangAny, L"ам", L"ов", L"--"}
-	};
-
-
 	std::wstring strDesc = person.Description.c_str();
 	std::wstring strGroupInfo;
 	if (GetGroupInfo(person.Ukaz, strGroupInfo))
@@ -803,41 +771,6 @@ std::wstring CDocumentParser::GetPersonDescription(PersonInfo& person, bool bGet
 
 	return strDesc;
 }
-
-/*bool CDocumentParser::TranslateRank(std::wstring& strText,std::wstring& strResult)
-{
-	bool bResult = false;
-	size_t posEnd = -1;
-	strResult = strText;
-
-	for (size_t i = 0; i < MilitatyRanksBY.size(); i++)
-	{
-		const auto& rank = MilitatyRanksBY[i];
-		if (rank.Converted.length() > strText.length())
-			continue;
-
-		if (!wcsncmp(strText.c_str(), rank.Converted.c_str(), rank.Converted.length()) && i < MilitatyRanksRU.size())
-		{
-			strResult.erase(0, rank.Converted.length());
-			strResult.insert(0, MilitatyRanksRU[i].Converted.c_str());
-			posEnd = MilitatyRanksRU[i].Converted.length() + 1;
-			bResult = true;
-			break;
-		}
-	}
-
-	if (bResult && posEnd < strResult.length() - 5)
-	{
-		std::wstring sWord = CProfessionConverter::GetNextWord(strResult, posEnd);
-		if (sWord == L"міліцыі")
-		{
-			strResult.erase(posEnd, sWord.length());
-			strResult.insert(posEnd, L"милиции");
-		}
-	}
-
-	return bResult;
-}*/
 
 // decree numbers restart every year, so a decree is identified by number and date
 void CDocumentParser::AddGroupInfo(const UkazInfo& ukaz, const std::wstring& fileName, const std::wstring& groupInfo)

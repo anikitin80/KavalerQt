@@ -3,6 +3,7 @@
 #include <QDate>
 #include <QString>
 #include <algorithm>
+#include <cwchar>
 
 bool IsCapital(wchar_t character)
 {
@@ -14,7 +15,7 @@ QDate ParseDate(std::wstring strDate, bool russian)
     StrTrim(strDate);
     strDate.erase(std::remove(strDate.begin(), strDate.end(), L' '), strDate.end());
     if (!russian) // "лiпеня" typed with Latin i
-        std::replace(strDate.begin(), strDate.end(), L'i', L'і');
+        ToCyrillicI(strDate, false);
 
     const size_t sep1 = strDate.find_first_not_of(L"0123456789");
     const size_t sep2 = strDate.find_last_not_of(L"0123456789");
@@ -23,8 +24,8 @@ QDate ParseDate(std::wstring strDate, bool russian)
     static const std::wstring byMonth[] = {L"сту", L"лют", L"сак", L"кра", L"мая", L"чэр", L"ліп", L"жні", L"вер", L"кас", L"ліс", L"сне"};
 
     if (sep1 != std::wstring::npos && sep2 != std::wstring::npos && sep2 >= sep1) {
-        const int day = _wtoi(strDate.substr(0, sep1).c_str());
-        const int year = _wtoi(strDate.substr(sep2 + 1).c_str());
+        const int day = int(std::wcstol(strDate.substr(0, sep1).c_str(), nullptr, 10));
+        const int year = int(std::wcstol(strDate.substr(sep2 + 1).c_str(), nullptr, 10));
         const QString monthName = QString::fromStdWString(strDate.substr(sep1, sep2 - sep1 + 1)).trimmed();
         int month = 0;
         for (int i = 0; i < 12; ++i) {
@@ -41,7 +42,7 @@ QDate ParseDate(std::wstring strDate, bool russian)
     return {};
 }
 
-bool FindTokens(const std::wstring& str, std::vector<std::wstring>& tokens, size_t& start, size_t& end)
+bool FindTokens(const std::wstring& str, const std::vector<std::wstring>& tokens, size_t& start, size_t& end)
 {
     for (const auto& token : tokens) {
         const size_t pos = str.find(token);
@@ -207,6 +208,13 @@ QString NormalizeCyrillicText(const QString& text, bool belarusian)
 bool HasLatinLookalikes(const QString& text, bool belarusian)
 {
     return latinInCyrillicWord(text, 0, belarusian, false) >= 0;
+}
+
+void ToCyrillicI(std::wstring& text, bool capitalToo)
+{
+    std::replace(text.begin(), text.end(), L'i', L'\u0456');
+    if (capitalToo)
+        std::replace(text.begin(), text.end(), L'I', L'\u0406');
 }
 
 std::wstring ToLower(const std::wstring& str)

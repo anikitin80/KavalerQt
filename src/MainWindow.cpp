@@ -999,7 +999,9 @@ void MainWindow::exportCsv()
         return;
 
     QSettings settings;
-    auto* dialog = new QDialog(this);
+    // on the stack: the dialog and its widgets are deleted when the function returns
+    QDialog dialogObject(this);
+    QDialog* dialog = &dialogObject;
     dialog->setWindowTitle(QStringLiteral("Экспорт награждений в CSV файл"));
     auto* all = new QRadioButton(QStringLiteral("Все"), dialog);
     auto* from = new QRadioButton(QStringLiteral("С даты:"), dialog);
@@ -1054,7 +1056,9 @@ void MainWindow::replaceText()
     if (!m_catalog.isOpen())
         return;
 
-    auto* dialog = new QDialog(this);
+    // on the stack: the dialog and its widgets are deleted when the function returns
+    QDialog dialogObject(this);
+    QDialog* dialog = &dialogObject;
     dialog->setWindowTitle(QStringLiteral("Поиск и замена"));
     auto* name = new QRadioButton(QStringLiteral("Имя (RU)"), dialog);
     auto* nameBy = new QRadioButton(QStringLiteral("Имя (BY)"), dialog);

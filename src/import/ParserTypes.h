@@ -22,13 +22,11 @@ struct UkazInfo
         Number = 0;
         Date = {};
         RussianLang = false;
-        ListOfPersons = false;
     }
 
     int Number = 0;
     QDate Date;
     bool RussianLang = false;
-    bool ListOfPersons = false;
 };
 
 struct PersonInfo
@@ -45,7 +43,6 @@ struct PersonInfo
     std::wstring Name;
     std::wstring Description;
     std::wstring MilitaryRank;
-    std::wstring OriginalText;
     // the name as written in the decree (dative or accusative) and its NounCase
     std::wstring SourceName;
     int SourceCase = 0;
