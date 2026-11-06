@@ -33,6 +33,7 @@
 #include <QMessageBox>
 #include <QPrintDialog>
 #include <QPrinter>
+#include <QProgressDialog>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QSettings>
@@ -356,13 +357,14 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_quotes, &QCheckBox::toggled, this, [this](bool checked) { m_people->setCheckQuotes(checked); });
     connect(m_needTranslation, &QCheckBox::toggled, this, refresh);
     connect(m_group, &QCheckBox::toggled, this, refresh);
-    connect(m_name, &QLineEdit::textChanged, this, [this](const QString& text) {
-        if (text.size() >= 3 || text.isEmpty())
-            refreshPeople();
-    });
+    // both text filters wait for a pause in typing
     auto* quickTimer = new QTimer(this);
     quickTimer->setSingleShot(true);
     quickTimer->setInterval(200);
+    connect(m_name, &QLineEdit::textChanged, quickTimer, [quickTimer](const QString& text) {
+        if (text.size() >= 3 || text.isEmpty())
+            quickTimer->start();
+    });
     connect(m_quick, &QLineEdit::textChanged, quickTimer, [quickTimer](const QString&) { quickTimer->start(); });
     connect(quickTimer, &QTimer::timeout, this, refresh);
     connect(m_statsByMonth, &QCheckBox::toggled, this, [this] { refreshStats(); });
@@ -425,6 +427,12 @@ void MainWindow::openDatabase(const QString& path)
     const bool opened = m_catalog.open(path, &error);
     m_openingDatabase = false;
     if (!opened) {
+        // an unusable file is rejected before the current database is closed;
+        // only a failure while loading leaves no database open
+        if (!m_catalog.isOpen()) {
+            setWindowTitle(QStringLiteral("Кавалер"));
+            fillFilters();
+        }
         QMessageBox::critical(this, windowTitle(), error);
         return;
     }
@@ -743,7 +751,18 @@ void MainWindow::translateSelectedCloud(CloudScope scope)
 {
     QVector<Person> changed;
     QString failure;
-    for (Person person : selectedPeople()) {
+    const QVector<Person> selected = selectedPeople();
+    // the requests run a nested event loop: a modal progress keeps the user from
+    // editing or deleting these records meanwhile (their copies are saved below)
+    QProgressDialog progress(QStringLiteral("Перевод через Яндекс..."), QStringLiteral("Отмена"), 0,
+                             int(selected.size()), this);
+    progress.setWindowModality(Qt::WindowModal);
+    progress.setMinimumDuration(0);
+    for (int i = 0; i < selected.size(); ++i) {
+        progress.setValue(i);
+        if (progress.wasCanceled())
+            break;
+        Person person = selected.at(i);
         const Person original = person;
         if (!translateWithCloud(person, scope, false, &failure))
             break;

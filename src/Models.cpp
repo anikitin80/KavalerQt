@@ -467,7 +467,8 @@ void PersonModel::apply(int awardId, int year, const QString& name, const QStrin
             continue;
         if (needTranslationOnly && !person.needTranslation())
             continue;
-        if (!name.isEmpty() && !person.name.contains(name) && !person.nameBy.contains(name))
+        if (!name.isEmpty() && !person.name.contains(name, Qt::CaseInsensitive)
+            && !person.nameBy.contains(name, Qt::CaseInsensitive))
             continue;
         if (!quick.isEmpty() && !matchesQuick(person, quick))
             continue;

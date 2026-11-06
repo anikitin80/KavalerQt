@@ -17,8 +17,10 @@ RulesList CProfessionConverter::RulesAdjectives = {
 	{ SexAny, LangBY, L"кому", L"кога", L"---і"},
 	{ SexAny, LangBY, L"аму", L"ага", L"---ы"},
 	{ SexAny, LangBY, L"ому", L"ога", L"---ы"},	// былога
-	{ SexFemale, LangBY, L"ай", L"ую", L"--ая"},
-	{ SexFemale, LangBY, L"яй", L"юю", L"--яя"},
+	// feminine: positions are converted with SexAny, so these must not be SexFemale
+	// (masculine dative is "-аму", "-ай"/"-яй" is always feminine)
+	{ SexAny, LangBY, L"ай", L"ую", L"--ая"},
+	{ SexAny, LangBY, L"яй", L"юю", L"--яя"},
 	{ SexFemale, LangBY, L"ы", L"", L"-а"},
 };
 
@@ -98,11 +100,17 @@ bool CProfessionConverter::LoadDictionary(const std::wstring& filePath, LangType
 			line.replace(QLatin1Char('i'), QChar(0x0456)).replace(QLatin1Char('I'), QChar(0x0406));
 		const int pos1 = line.indexOf(QLatin1Char(';'));
 		const int pos2 = line.indexOf(QLatin1Char(';'), pos1 + 1);
+		// empty words are skipped: the converter keeps the first letter of the
+		// replacement and an empty one would crash it
+		const auto add = [](Dictionary* dictionary, const QString& form, const QString& nominative) {
+			if (!form.isEmpty() && !nominative.isEmpty())
+				(*dictionary)[form.toStdWString()] = nominative.toStdWString();
+		};
 		if (pos2 != -1) {
-			(*dictionaryDat)[line.mid(pos1 + 1, pos2 - pos1 - 1).toStdWString()] = line.left(pos1).toStdWString();
-			(*dictionaryAcc)[line.mid(pos2 + 1).toStdWString()] = line.left(pos1).toStdWString();
+			add(dictionaryDat, line.mid(pos1 + 1, pos2 - pos1 - 1), line.left(pos1));
+			add(dictionaryAcc, line.mid(pos2 + 1), line.left(pos1));
 		} else if (pos1 != -1) {
-			(*dictionaryAcc)[line.left(pos1).toStdWString()] = line.mid(pos1 + 1).toStdWString();
+			add(dictionaryAcc, line.left(pos1), line.mid(pos1 + 1));
 		}
 	}
 	return true;
@@ -509,7 +517,8 @@ bool CProfessionConverter::AddNewWord(std::wstring& word, LangType lang, NounCas
 	item.Language = lang;
 	item.Case = nounCase;
 	item.Checked = true;
-	if (CNameConverter::ApplyRules(word, RulesProfession, SexAny, lang, nounCase, false))
+	// a one-letter word would become empty ("у" -> ""): not a new word
+	if (CNameConverter::ApplyRules(word, RulesProfession, SexAny, lang, nounCase, false) && !word.empty())
 	{
 		for (size_t i = 0; i < m_NewWords.size(); i++)
 		{

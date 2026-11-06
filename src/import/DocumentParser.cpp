@@ -202,13 +202,14 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, std::vector<std:
 
 	std::vector<std::wstring> searchTargetsRU = { L"медалью", L"орденом", L"почетное звание", L"почетные звания" };
 	std::vector<std::wstring> searchTargetsBY = { L"медалём", L"ордэнам", L"ганаровае званн", L"ганаровыя званн" };
-	std::vector<std::wstring> searchFinishBY = { };
+	std::vector<std::wstring> searchFinishBY = { L"Прэзідэнт Рэспублікі Беларусь" };
 	std::vector<std::wstring> searchFinishRU = { L"Президент Республики Беларусь" };
 	std::vector<std::wstring> searchUkazStart = { L"УКАЗ ПР", L"УКАЗ ПР", L"УКАЗПР" };
 	std::vector<std::wstring> searchActionsBY = { L"знагародзіць", L"знагародзiць", L"прысвоіць", L"Прысвоіць" };
 	std::vector<std::wstring> searchActionsRU = { L"наградить", L"присвоить", L"Присвоить" };
-	std::vector<std::wstring> searchGroup = { L"группу", L"группы", L"работников", L"работнiкаў", L"работнікаў", L"супрацоўнiкаў", L"сотрудникам" };
-	std::vector<std::wstring> searchGroupEnd = { L"государственными", L"орденом", L"медалью", L"дзяржаўнымi", L"ордэнам", L"медалём", L"почетные", L"почетное", L"почетных" };
+	std::vector<std::wstring> searchGroup = { L"группу", L"группы", L"работников", L"работнiкаў", L"работнікаў", L"супрацоўнікаў", L"сотрудникам" };
+	// Belarusian lines have Cyrillic "і" here (Latin "i" is replaced above)
+	std::vector<std::wstring> searchGroupEnd = { L"государственными", L"орденом", L"медалью", L"дзяржаўнымі",L"ордэнам", L"медалём", L"почетные", L"почетное", L"почетных" };
 
 	bool bUkazStarted = false, bAwardStarted = false, bAwardTypeFound = false, bPossibleGroupStart = false, bMultiplePochet = false;
 	std::wstring curAward;
@@ -548,7 +549,7 @@ bool CDocumentParser::SpltPersonInfo(PersonInfo& person)
 	bool bSameProfession = false;
 	NounCase nounCase = GetNounCaseByAwardId(person.AwardId);
 
-	size_t posNextPerson = person.Description.rfind(person.Ukaz.RussianLang? L" и " : L" i ");
+	size_t posNextPerson = person.Description.rfind(person.Ukaz.RussianLang? L" и " : L" і ");
 	if (posNextPerson == -1)
 	{
 		posNextPerson = person.Description.rfind(person.Ukaz.RussianLang ? L" и" : L" і");

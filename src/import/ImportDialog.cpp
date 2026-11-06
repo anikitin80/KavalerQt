@@ -268,6 +268,10 @@ void ImportDialog::startParse()
 
     QStringList files;
     if (m_fileMode->isChecked()) {
+        if (QFileInfo(selected).suffix().compare(QLatin1String("docx"), Qt::CaseInsensitive) != 0) {
+            QMessageBox::warning(this, windowTitle(), QStringLiteral("Указы читаются только из файлов Word (.docx)."));
+            return;
+        }
         m_folder = QFileInfo(selected).absolutePath();
         files.push_back(selected);
     } else {
@@ -292,8 +296,6 @@ void ImportDialog::startParse()
         m_progress->setText(info.fileName());
         QApplication::processEvents();
 
-        if (info.suffix().compare(QLatin1String("docx"), Qt::CaseInsensitive) != 0)
-            continue;
         QString error;
         const QStringList paragraphs = readDocxParagraphs(filePath, &error);
 

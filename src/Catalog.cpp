@@ -1,7 +1,9 @@
 #include "Catalog.h"
 #include "TextUtil.h"
 
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QHash>
 #include <QSet>
 #include <QSqlError>
@@ -189,9 +191,53 @@ void Catalog::bindText(QSqlQuery& query, const QString& text) const
         query.addBindValue(text);
 }
 
+// opens the file on a separate connection and reads both tables: an unusable file
+// is rejected before the current database is closed
+static bool probeDatabase(const QString& path, QString* error)
+{
+    const QString connection = QStringLiteral("kavaler-probe");
+    bool ok = false;
+    {
+        QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
+        db.setDatabaseName(path);
+        db.setConnectOptions(QStringLiteral("QSQLITE_OPEN_READONLY"));
+        if (db.open()) {
+            QSqlQuery query(db);
+            ok = query.exec(QStringLiteral("SELECT ID, Type, Priority, Name, NameBY FROM Awards LIMIT 1"))
+                && query.exec(QStringLiteral("SELECT ID, Award_ID, Name, Name_BY FROM Kavalers LIMIT 1"));
+            if (!ok && error)
+                *error = query.lastError().text();
+        } else if (error) {
+            *error = db.lastError().text();
+        }
+        db.close();
+    }
+    QSqlDatabase::removeDatabase(connection);
+    return ok;
+}
+
 bool Catalog::open(const QString& path, QString* error, bool readOnly)
 {
+    if (!QFileInfo::exists(path)) {
+        // SQLite would silently create an empty file
+        if (error)
+            *error = QStringLiteral("Файл не найден: %1").arg(QDir::toNativeSeparators(path));
+        return false;
+    }
+    if (!probeDatabase(path, error))
+        return false;
+
+    const bool wasOpen = isOpen();
+    if (wasOpen)
+        emit aboutToChange();
     close();
+    // from here on a failure leaves no database: views are told to show nothing
+    const auto fail = [&] {
+        close();
+        if (wasOpen)
+            emit dataChanged();
+        return false;
+    };
 
     m_db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), QStringLiteral("kavaler"));
     m_db.setDatabaseName(path);
@@ -200,25 +246,14 @@ bool Catalog::open(const QString& path, QString* error, bool readOnly)
     if (!m_db.open()) {
         if (error)
             *error = m_db.lastError().text();
-        close();
-        return false;
+        return fail();
     }
 
-    QSqlQuery probe(m_db);
-    if (!probe.exec(QStringLiteral("SELECT 1 FROM sqlite_master LIMIT 1"))) {
-        if (error)
-            *error = probe.lastError().text();
-        close();
-        return false;
-    }
-    probe.finish();
     QSqlQuery pragma(m_db);
     pragma.exec(QStringLiteral("PRAGMA foreign_keys = ON"));
 
-    if (!load(error)) {
-        close();
-        return false;
-    }
+    if (!load(error))
+        return fail();
 
     m_path = path;
     emit dataChanged();
@@ -495,10 +530,10 @@ bool Catalog::backup(const QString& filePath, QString* error) const
             *error = QStringLiteral("Файл уже существует: %1").arg(filePath);
         return false;
     }
-    QString target = filePath;
-    target.replace(QLatin1Char('\''), QStringLiteral("''"));
     QSqlQuery query(m_db);
-    if (!query.exec(QStringLiteral("VACUUM INTO '%1'").arg(target))) {
+    query.prepare(QStringLiteral("VACUUM INTO ?"));
+    query.addBindValue(filePath);
+    if (!query.exec()) {
         if (error)
             *error = query.lastError().text();
         return false;
@@ -563,6 +598,12 @@ bool Catalog::writePerson(Person& person, QString* error)
 
     if (!exec(query, error))
         return false;
+    // a record deleted meanwhile (or never saved) must not come back in memory
+    if (update && query.numRowsAffected() != 1) {
+        if (error)
+            *error = QStringLiteral("Запись %1 не найдена в базе: возможно, она была удалена.").arg(person.id);
+        return false;
+    }
     if (!update)
         person.id = query.lastInsertId().toInt();
     return true;
@@ -601,16 +642,26 @@ bool Catalog::saveMany(QVector<Person>& people, QString* error)
             *error = m_db.lastError().text();
         return false;
     }
+    // ids of new records are assigned by INSERT; a rollback must take them back
+    QVector<int> originalIds;
+    originalIds.reserve(people.size());
+    for (const Person& person : people)
+        originalIds.push_back(person.id);
+    const auto rollback = [&] {
+        m_db.rollback();
+        for (int i = 0; i < people.size(); ++i)
+            people[i].id = originalIds.at(i);
+    };
     for (Person& person : people) {
         if (!writePerson(person, error)) {
-            m_db.rollback();
+            rollback();
             return false;
         }
     }
     if (!m_db.commit()) {
         if (error)
             *error = m_db.lastError().text();
-        m_db.rollback();
+        rollback();
         return false;
     }
     emit aboutToChange();
@@ -626,17 +677,28 @@ bool Catalog::remove(const QList<int>& ids, QString* error)
     if (ids.isEmpty())
         return true;
 
-    QStringList marks;
-    marks.reserve(ids.size());
-    for (int i = 0; i < ids.size(); ++i)
-        marks << QStringLiteral("?");
-
-    QSqlQuery query(m_db);
-    query.prepare(QStringLiteral("DELETE FROM Kavalers WHERE ID IN (%1)").arg(marks.join(QLatin1Char(','))));
-    for (int id : ids)
-        query.addBindValue(id);
-    if (!exec(query, error))
+    // one prepared statement per id in one transaction: an "IN (?, ...)" list is
+    // limited by the number of SQL parameters (32766)
+    if (!m_db.transaction()) {
+        if (error)
+            *error = m_db.lastError().text();
         return false;
+    }
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral("DELETE FROM Kavalers WHERE ID = ?"));
+    for (int id : ids) {
+        query.bindValue(0, id);
+        if (!exec(query, error)) {
+            m_db.rollback();
+            return false;
+        }
+    }
+    if (!m_db.commit()) {
+        if (error)
+            *error = m_db.lastError().text();
+        m_db.rollback();
+        return false;
+    }
 
     emit aboutToChange();
     const QSet<int> drop(ids.begin(), ids.end());

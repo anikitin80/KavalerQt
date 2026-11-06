@@ -37,6 +37,7 @@ QStringList requestTranslation(const QStringList& texts, QString* error)
     QNetworkRequest request(QUrl(QStringLiteral("https://translate.api.cloud.yandex.net/translate/v2/translate")));
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     request.setRawHeader("Authorization", "Api-Key " + apiKey.toUtf8());
+    request.setTransferTimeout(30000); // no answer in 30 s: OperationCanceledError
 
     QNetworkAccessManager network;
     QEventLoop loop;

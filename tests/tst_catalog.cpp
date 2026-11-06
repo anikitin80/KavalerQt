@@ -130,6 +130,8 @@ private slots:
     void identityFollowsEditsAndRemoval();
     void signalsOncePerChange();
     void derivedDataFollowsChanges();
+    void savingDeletedRecordFails();
+    void failedOpenKeepsCurrentDatabase();
 
 private:
     QTemporaryDir m_dir;
@@ -447,6 +449,59 @@ void TestCatalog::derivedDataFollowsChanges()
     for (const StatMonth& row : m_catalog->stats())
         total += row.total;
     QCOMPARE(total, 5);
+}
+
+// a copy saved after its record was deleted (e.g. a slow translation) must not
+// bring the record back in memory; a rolled back batch keeps the new ids unset
+void TestCatalog::savingDeletedRecordFails()
+{
+    QString error;
+    Person stale = *byNameBy(*m_catalog, QStringLiteral("Шульга Валерый Ігаравіч"));
+    QVERIFY(m_catalog->remove({stale.id}, &error));
+    const int count = m_catalog->people().size();
+
+    stale.rank = QStringLiteral("палкоўнік");
+    QVERIFY(!m_catalog->save(stale, &error));
+    QVERIFY(!error.isEmpty());
+    QCOMPARE(m_catalog->people().size(), count);
+
+    Person fresh = stale;
+    fresh.id = 0;
+    QVector<Person> batch = {fresh, stale};
+    QVERIFY(!m_catalog->saveMany(batch, &error));
+    QCOMPARE(batch.at(0).id, 0);
+    QCOMPARE(m_catalog->people().size(), count);
+}
+
+void TestCatalog::failedOpenKeepsCurrentDatabase()
+{
+    const QString notSqlite = m_dir.filePath(QStringLiteral("not-a-database.sqlite"));
+    QFile file(notSqlite);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write("this is not an SQLite file");
+    file.close();
+    const QString emptyDb = m_dir.filePath(QStringLiteral("no-tables.sqlite"));
+    {
+        QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), QStringLiteral("empty"));
+        db.setDatabaseName(emptyDb);
+        QVERIFY(db.open());
+        QSqlQuery(db).exec(QStringLiteral("CREATE TABLE Other (ID INTEGER)"));
+        db.close();
+    }
+    QSqlDatabase::removeDatabase(QStringLiteral("empty"));
+
+    const int count = m_catalog->people().size();
+    QSignalSpy changed(m_catalog, &Catalog::dataChanged);
+    for (const QString& path : {notSqlite, emptyDb, m_dir.filePath(QStringLiteral("missing.sqlite"))}) {
+        QString error;
+        QVERIFY(!m_catalog->open(path, &error));
+        QVERIFY(!error.isEmpty());
+        QVERIFY(m_catalog->isOpen());
+        QCOMPARE(m_catalog->path(), m_path);
+        QCOMPARE(m_catalog->people().size(), count);
+    }
+    QCOMPARE(changed.count(), 0);
+    QVERIFY(!QFile::exists(m_dir.filePath(QStringLiteral("missing.sqlite"))));
 }
 
 QTEST_GUILESS_MAIN(TestCatalog)

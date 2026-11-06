@@ -23,6 +23,7 @@ private slots:
     void unknownProfessionBecomesNewWord();
     void newWordsAreLowerCase();
     void newWordsWorkWithoutDictionaryFile();
+    void emptyDictionaryValuesAreSkipped();
     void dictionaryRoundTrip();
 };
 
@@ -165,6 +166,27 @@ void TestProfessionConverter::newWordsWorkWithoutDictionaryFile()
     std::wstring again = L"сварщику участка";
     QVERIFY(converter.ConvertProfession(again, LangRU, Dative)); // but usable in this session
     QCOMPARE(QString::fromStdWString(again), QStringLiteral("сварщик участка"));
+}
+
+// a broken line (empty nominative or form) is skipped, not used as a replacement
+void TestProfessionConverter::emptyDictionaryValuesAreSkipped()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("PositionsRU.csv"));
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(";водителю;водителя\nслесарь;;\nмеханик;механику;механика\n");
+    file.close();
+
+    CProfessionConverter converter;
+    QVERIFY(converter.SetDictionaryPath(path.toStdWString(), LangRU));
+    std::wstring text = L"водителя автобуса";
+    converter.ConvertProfession(text, LangRU, Accusative);
+    QCOMPARE(QString::fromStdWString(text), QStringLiteral("водителя автобуса"));
+    std::wstring mechanic = L"механика цеха";
+    QVERIFY(converter.ConvertProfession(mechanic, LangRU, Accusative));
+    QCOMPARE(QString::fromStdWString(mechanic), QStringLiteral("механик цеха"));
 }
 
 void TestProfessionConverter::dictionaryRoundTrip()
