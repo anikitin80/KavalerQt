@@ -21,7 +21,11 @@ std::vector<RankInfo> CDocumentParser::MilitatyRanksRU = {
 	{ L"подполковник", L"подполковнику", L"подполковника" },
 	{ L"полковник", L"полковнику", L"полковника" },
 	{ L"генерал-майор", L"генерал-майору", L"генерал-майора" },
-	{ L"генерал-лейтенант", L"генерал-лейтенанту", L"генерал-лейтенанта" }
+	{ L"генерал-лейтенант", L"генерал-лейтенанту", L"генерал-лейтенанта" },
+	{ L"генерал-полковник", L"генерал-полковнику", L"генерал-полковника" },
+	{ L"ефрейтор", L"ефрейтору", L"ефрейтора" },
+	{ L"мичман", L"мичману", L"мичмана" },
+	{ L"старший мичман", L"старшему мичману", L"старшего мичмана" }
 };
 
 std::vector<RankInfo> CDocumentParser::MilitatyRanksBY = {
@@ -29,6 +33,7 @@ std::vector<RankInfo> CDocumentParser::MilitatyRanksBY = {
 	{ L"яфрэйтар", L"яфрэйтару", L"яфрэйтара"},
 	{ L"прапаршчык", L"прапаршчыку", L"прапаршчыка"},
 	{ L"мічман", L"мічману", L"мічмана"},
+	{ L"старшы мічман", L"старшаму мічману", L"старшага мічмана"},
 	{ L"старшы прапаршчык", L"старшаму прапаршчыку", L"старшага прапаршчыка"},
 	{ L"малодшы сяржант", L"малодшаму сяржанту", L"малодшага сяржанта"},
 	{ L"старшы сяржант", L"старшаму сяржанту", L"старшага сяржанта" },
@@ -645,20 +650,39 @@ void CDocumentParser::NormalizePersonInfo(PersonInfo& person)
 	if (ExtractMilitaryRank(person, lang, nounCase))
 		person.Flags |= PersonInfo::NF_RANK;
 
-	std::wstring secondProfession;
-	size_t posSep = person.Description.find(L" – ");
-	if (posSep != -1)
+	// "наладчык – брыгадзір ...": the second profession after a dash, but not a
+	// dash inside quotes («Дзіцячы сад – сярэдняя школа»): there the next quote
+	// is a closing one. Nested quotes are closed once («НВА «Цэнтр»), so the
+	// quotes before the dash are not counted.
+	// every part after a dash is a profession of its own: "намесніка начальніка –
+	// начальніка аддзела – урача-фтызіятра"
+	std::vector<std::wstring> professions;
+	std::wstring rest = person.Description;
+	for (;;)
 	{
-		secondProfession = person.Description.substr(posSep + 3);
-		person.Description.erase(posSep, person.Description.length() - posSep);
+		size_t posSep = rest.find(L" – ");
+		while (posSep != std::wstring::npos)
+		{
+			const size_t posQuote = rest.find_first_of(L"«»", posSep);
+			if (posQuote == std::wstring::npos || rest[posQuote] == L'«')
+				break;
+			posSep = rest.find(L" – ", posSep + 3);
+		}
+		if (posSep == std::wstring::npos)
+			break;
+		professions.push_back(rest.substr(0, posSep));
+		rest.erase(0, posSep + 3);
 	}
-	if (m_ProfessionConverter.ConvertProfession(person.Description, lang, nounCase))
-		person.Flags |= PersonInfo::NF_PROFESSION;
-	if (!secondProfession.empty())
+	professions.push_back(rest);
+
+	for (size_t i = 0; i < professions.size(); i++)
 	{
-		m_ProfessionConverter.ConvertProfession(secondProfession, lang, nounCase);
-		person.Description += L" – " + secondProfession;
+		if (m_ProfessionConverter.ConvertProfession(professions[i], lang, nounCase) && i == 0)
+			person.Flags |= PersonInfo::NF_PROFESSION;
 	}
+	person.Description = professions[0];
+	for (size_t i = 1; i < professions.size(); i++)
+		person.Description += L" – " + professions[i];
 }
 
 bool CDocumentParser::ExtractMilitaryRank(PersonInfo& person, LangType lang, NounCase nounCase)
@@ -702,11 +726,38 @@ bool CDocumentParser::ExtractMilitaryRank(PersonInfo& person, LangType lang, Nou
 		if (rankOriginal.length() > strCheck.length())
 			continue;
 
+		// a rank is followed by a few words at most ("міліцыі", "унутранай службы ў адстаўцы",
+		// "медыцынскай службы запасу"): "капітана-механіка", "капітана – зменнага
+		// механіка цеплахода", "капітана нацыянальнай каманды па тэнісу" are positions
+		{
+			const size_t posRank = strCheck.find(rankOriginal);
+			if (posRank != std::wstring::npos)
+			{
+				const std::wstring rest = strCheck.substr(posRank + rankOriginal.length());
+				if (!rest.empty() && (rest[0] == L'-' || rest.compare(0, 2, L" –") == 0
+					|| std::count(rest.begin(), rest.end(), L' ') > 5))
+					continue;
+			}
+		}
+
+		// "саветнік" is a rank only as "саветнік юстыцыі" or with a class
+		// ("дзяржаўны саветнік ... 3 класа"); "саветнік упраўлення ..." is a position
+		if (rank.Nominative.find(L"саветнік") != std::wstring::npos)
+		{
+			const size_t posRank = strCheck.find(rankOriginal);
+			if (posRank == std::wstring::npos)
+				continue;
+			const std::wstring rest = strCheck.substr(posRank + rankOriginal.length());
+			if (rest.compare(0, 8, L" юстыцыі") != 0 && rest.find(L"класа") == std::wstring::npos)
+				continue;
+		}
+
 		if (posComma != -1)
 		{
 			if (!wcsncmp(strCheck.c_str(), rankOriginal.c_str(), rankOriginal.length()))
 			{
 				person.MilitaryRank = rank.Nominative + strCheck.substr(rankOriginal.length());
+				StrTrim(person.MilitaryRank);
 				person.Description.erase(posComma, person.Description.length() - posComma);
 				return true;
 			}
@@ -717,6 +768,7 @@ bool CDocumentParser::ExtractMilitaryRank(PersonInfo& person, LangType lang, Nou
 			if (posStart != -1)
 			{
 				person.MilitaryRank = rank.Nominative + strCheck.substr(posStart + rankOriginal.length());
+				StrTrim(person.MilitaryRank);
 				person.Description.erase(posStart, person.Description.length() - posStart);
 				StrTrim(person.Description);
 				return true;

@@ -37,6 +37,7 @@ RulesList CNameConverter::RulesLastName = {
 	{ SexFemale,LangBY,	L"іной,ыной",	L"",			L"--а"},	// Кузьміной
 	{ SexFemale,LangBY,	L"ой",			L"",			L"--ая?"},	// Лясной
 	{ SexFemale,LangAny,L"ай,ой",		L"",			L"--а"},	// Никитиной
+	{ SexFemale,LangAny,L"бей",			L"",			L""},		// Воробей: before "-ей"
 	{ SexFemale,LangAny,L"ей",			L"ую",			L"--ая"},
 	{ SexFemale,LangBY, L"а",			L"а",			L"" },
 	{ SexFemale,LangBY, L"ня",			L"ня",			L"" },
@@ -182,6 +183,28 @@ bool CNameConverter::ApplyRules(std::wstring& name, RulesList& rules, SexType se
 	return false;
 }
 
+// applies convert to every part of a hyphenated word; true if all parts were converted
+bool CNameConverter::ForEachPart(std::wstring& word, const std::function<bool(std::wstring&)>& convert)
+{
+	if (word.find(L'-') == std::wstring::npos)
+		return convert(word);
+
+	bool bRes = true;
+	std::wstring result;
+	const std::vector<std::wstring> parts = SplitString(word, L'-'); // keeps empty parts
+	for (size_t i = 0; i < parts.size(); i++)
+	{
+		std::wstring part = parts[i];
+		if (!part.empty() && !convert(part))
+			bRes = false;
+		if (i > 0)
+			result += L'-';
+		result += part;
+	}
+	word = result;
+	return bRes;
+}
+
 bool CNameConverter::IsMiddleName(const std::wstring& name, LangType lang, NounCase nounCase)
 {
 	const std::wstring nameLower = ToLower(name);
@@ -232,27 +255,36 @@ bool CNameConverter::NormalizeName(std::wstring& fullName, LangType lang, NounCa
 	if (!middleName.empty())
 	{
 		sex = GetSex(middleName, nounCase);
-		ApplyRules(middleName, RulesMiddleName, sex, lang, nounCase, false);
+		// double patronymic: "Гедзімінасавіча-Альбертасавіча"
+		ForEachPart(middleName, [&](std::wstring& part) {
+			return ApplyRules(part, RulesMiddleName, sex, lang, nounCase, false);
+		});
 	}
 	else
 	{
 		std::swap(firstName, lastName);
 	}
 
-	bool bResFN = ApplyRules(firstName, ExceptionsFirstName, sex, lang, nounCase, true);
-	if (!bResFN)
-		bResFN = ApplyRules(firstName, RulesFirstName, sex, lang, nounCase, false);
+	// double first name: "Хайнца-Рудольфа"
+	bool bResFN = ForEachPart(firstName, [&](std::wstring& part) {
+		return ApplyRules(part, ExceptionsFirstName, sex, lang, nounCase, true)
+			|| ApplyRules(part, RulesFirstName, sex, lang, nounCase, false);
+	});
 
-	bool bResLN = ApplyRules(lastName, ExceptionsLastName, sex, lang, nounCase, true);
-	if (!bResLN)
-	{
-		bResLN = ApplyRules(lastName, RulesLastName, sex, lang, nounCase, false);
-		if (!lastName.empty() && lastName.back() == '?')
+	// double surname: each part is declined, "Карпінскую-Пешка", "Денисовой-Клебанович"
+	bool bResLN = ForEachPart(lastName, [&](std::wstring& part) {
+		bool bRes = ApplyRules(part, ExceptionsLastName, sex, lang, nounCase, true);
+		if (!bRes)
 		{
-			lastName.pop_back();
-			bResLN = false;
+			bRes = ApplyRules(part, RulesLastName, sex, lang, nounCase, false);
+			if (!part.empty() && part.back() == '?')
+			{
+				part.pop_back();
+				bRes = false;
+			}
 		}
-	}
+		return bRes;
+	});
 
 	if(middleName.empty())
 		fullName = firstName + L' ' + lastName;

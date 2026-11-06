@@ -52,6 +52,46 @@ void TestProfessionConverter::convert_data()
                             << QStringLiteral("вадзіцель аўтобуса");
     QTest::newRow("by acc") << QStringLiteral("слесара цэха") << LangBY << Accusative
                             << QStringLiteral("слесар цэха");
+    QTest::newRow("by acc adjective + profession") << QStringLiteral("дзяжурнага памочніка начальніка турмы № 8") << LangBY << Accusative
+                                                   << QStringLiteral("дзяжурны памочнік начальніка турмы № 8");
+    QTest::newRow("by acc two adjectives") << QStringLiteral("вядучага навуковага супрацоўніка інстытута") << LangBY << Accusative
+                                           << QStringLiteral("вядучы навуковы супрацоўнік інстытута");
+    QTest::newRow("by acc adjective + hyphenated") << QStringLiteral("вядучага інжынера-канструктара бюро") << LangBY << Accusative
+                                                   << QStringLiteral("вядучы інжынер-канструктар бюро");
+    QTest::newRow("by acc adjective not in the dictionary") << QStringLiteral("вядучага ветэрынарнага ўрача станцыі") << LangBY << Accusative
+                                                            << QStringLiteral("вядучы ветэрынарны ўрач станцыі");
+    QTest::newRow("by dat two adjectives") << QStringLiteral("галоўнаму навуковаму супрацоўніку інстытута") << LangBY << Dative
+                                           << QStringLiteral("галоўны навуковы супрацоўнік інстытута");
+    QTest::newRow("by acc second profession after comma") << QStringLiteral("саліста оперы, вядучага майстра сцэны тэатра") << LangBY << Accusative
+                                                          << QStringLiteral("саліст оперы, вядучы майстар сцэны тэатра");
+    QTest::newRow("by acc comma, adjectives first") << QStringLiteral("саветніка Прэзідыума, галоўнага навуковага супрацоўніка інстытута") << LangBY << Accusative
+                                                    << QStringLiteral("саветнік Прэзідыума, галоўны навуковы супрацоўнік інстытута");
+    QTest::newRow("by acc comma inside quotes kept") << QStringLiteral("слесара таварыства «Мазырсоль, слесара»") << LangBY << Accusative
+                                                     << QStringLiteral("слесар таварыства «Мазырсоль, слесара»");
+    QTest::newRow("by acc comma before a compound adjective") << QStringLiteral("начальніка ўчастка механічнай, хіміка-тэрмічнай апрацоўкі") << LangBY << Accusative
+                                                              << QStringLiteral("начальнік ўчастка механічнай, хіміка-тэрмічнай апрацоўкі");
+    QTest::newRow("by acc compound in brackets") << QStringLiteral("загадчыка (урача-тэрапеўта) бальніцы") << LangBY << Accusative
+                                                 << QStringLiteral("загадчык (урач-тэрапеўт) бальніцы");
+    QTest::newRow("by acc bracket, genitive kept") << QStringLiteral("урача-тэрапеўта (загадчыка паліклінікі) бальніцы") << LangBY << Accusative
+                                                   << QStringLiteral("урач-тэрапеўт (загадчык паліклінікі) бальніцы");
+    QTest::newRow("by acc bracket, adjective first") << QStringLiteral("намесніка начальніка (галоўнага ўрача) бальніцы") << LangBY << Accusative
+                                                     << QStringLiteral("намеснік начальніка (галоўны ўрач) бальніцы");
+    QTest::newRow("by acc three-part word") << QStringLiteral("урача-анестэзіёлага-рэаніматолага бальніцы") << LangBY << Accusative
+                                            << QStringLiteral("урач-анестэзіёлаг-рэаніматолаг бальніцы");
+    QTest::newRow("by dat bracket after two words") << QStringLiteral("артысту балета (салісту) тэатра") << LangBY << Dative
+                                                    << QStringLiteral("артыст балета (саліст) тэатра");
+    QTest::newRow("by acc былога") << QStringLiteral("былога генеральнага дырэктара завода") << LangBY << Accusative
+                                   << QStringLiteral("былы генеральны дырэктар завода");
+    QTest::newRow("ru acc acting head") << QStringLiteral("исполняющего обязанности начальника отдела") << LangRU << Accusative
+                                        << QStringLiteral("исполняющий обязанности начальника отдела");
+    QTest::newRow("by acc same adjective twice") << QStringLiteral("дзяжурнага дзяжурнага аддзялення") << LangBY << Accusative
+                                                 << QStringLiteral("дзяжурны дзяжурнага аддзялення");
+    QTest::newRow("by acc Latin i in the dictionary") << QStringLiteral("прыёмную маці аддзела адукацыі") << LangBY << Accusative
+                                                      << QStringLiteral("прыёмная маці аддзела адукацыі");
+    QTest::newRow("by acc profession in brackets") << QStringLiteral("артыста-вакаліста (саліста) філармоніі") << LangBY << Accusative
+                                                   << QStringLiteral("артыст-вакаліст (саліст) філармоніі");
+    QTest::newRow("by dat profession in brackets") << QStringLiteral("артысту-вакалісту (салісту) філармоніі") << LangBY << Dative
+                                                   << QStringLiteral("артыст-вакаліст (саліст) філармоніі");
     QTest::newRow("by dat non-military rank") << QStringLiteral("загадчыку кафедры, прафесару") << LangBY << Dative
                                               << QStringLiteral("загадчык кафедры, прафесар");
 }

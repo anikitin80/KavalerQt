@@ -102,6 +102,14 @@ void TestNameConverter::normalizeName_data()
                                   << QStringLiteral("Петрова Мария Ивановна");
     QTest::newRow("by dat Роберт") << QStringLiteral("Іванову Роберту Сяргеевічу") << LangBY << Dative
                                    << QStringLiteral("Іваноў Роберт Сяргеевіч");
+    QTest::newRow("by acc double surname, female") << QStringLiteral("Карпінскую-Пешка Ганну Іванаўну") << LangBY << Accusative
+                                                   << QStringLiteral("Карпінская-Пешка Ганна Іванаўна");
+    QTest::newRow("by acc double surname, male") << QStringLiteral("Чумака-Жуня Міхаіла Яўгенавіча") << LangBY << Accusative
+                                                 << QStringLiteral("Чумак-Жунь Міхаіл Яўгенавіч");
+    QTest::newRow("by acc double patronymic") << QStringLiteral("Петрайціса Юозаса Гедзімінасавіча-Альбертасавіча") << LangBY << Accusative
+                                              << QStringLiteral("Петрайціс Юозас Гедзімінасавіч-Альбертасавіч");
+    QTest::newRow("ru dat Воробей") << QStringLiteral("Воробей Анне Ивановне") << LangRU << Dative
+                                    << QStringLiteral("Воробей Анна Ивановна");
     // Latin "i" typed instead of Belarusian "і" is fixed on the way
     QTest::newRow("by latin i") << QStringLiteral("Лагодзiча Юрыя Іванавiча") << LangBY << Accusative
                                 << QStringLiteral("Лагодзіч Юрый Іванавіч");

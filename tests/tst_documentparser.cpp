@@ -52,6 +52,7 @@ private slots:
     void listEndingWithDashDoesNotCrash();
     void listStartingWithDashDoesNotCrash();
     void belarusianDecree();
+    void dashInsideQuotesIsNotSecondProfession();
     void twoDecreesInOneFile();
     void groupInfoBelongsToItsDecree();
     void resetClearsEverything();
@@ -140,6 +141,21 @@ void TestDocumentParser::militaryRank_data()
                                 << QStringLiteral("капітан міліцыі") << QStringLiteral("начальніка");
     QTest::newRow("no rank") << QStringLiteral("водителя автобуса") << LangRU << Accusative
                              << QString() << QStringLiteral("водителя автобуса");
+    QTest::newRow("by старшы мічман") << QStringLiteral("камандзіра судна, старшага мічмана") << LangBY << Accusative
+                                      << QStringLiteral("старшы мічман") << QStringLiteral("камандзіра судна");
+    QTest::newRow("ru генерал-полковник") << QStringLiteral("министра обороны, генерал-полковника") << LangRU << Accusative
+                                          << QStringLiteral("генерал-полковник") << QStringLiteral("министра обороны");
+    QTest::newRow("by rank in retirement") << QStringLiteral("прафесара кафедры, палкоўніка ўнутранай службы ў адстаўцы")
+                                           << LangBY << Accusative << QStringLiteral("палкоўнік ўнутранай службы ў адстаўцы")
+                                           << QStringLiteral("прафесара кафедры");
+    // positions, not ranks
+    QTest::newRow("by саветнік is a position") << QStringLiteral("саветніка ўпраўлення кадравай работы")
+                                               << LangBY << Accusative << QString() << QStringLiteral("саветніка ўпраўлення кадравай работы");
+    QTest::newRow("by капітан-механік is a position") << QStringLiteral("капітана-механіка прадпрыемства водных шляхоў")
+                                                      << LangBY << Accusative << QString() << QStringLiteral("капітана-механіка прадпрыемства водных шляхоў");
+    QTest::newRow("by капітан каманды is a position") << QStringLiteral("капітана нацыянальнай каманды Рэспублікі Беларусь па тэнісу")
+                                                      << LangBY << Accusative << QString()
+                                                      << QStringLiteral("капітана нацыянальнай каманды Рэспублікі Беларусь па тэнісу");
 }
 
 void TestDocumentParser::militaryRank()
@@ -281,6 +297,25 @@ void TestDocumentParser::belarusianDecree()
     QCOMPARE(text(person.Name), QStringLiteral("Лагодзіч Юрый Іванавіч"));
     QCOMPARE(text(person.MilitaryRank), QStringLiteral("капітан"));
     QCOMPARE(text(m_parser->GetPersonDescription(person, false)), QStringLiteral("старшы інспектар"));
+}
+
+// «Дзіцячы сад – сярэдняя школа» is a name, the dash does not start a second
+// profession; a dash after nested quotes («НВА «Цэнтр» – ...) still does
+void TestDocumentParser::dashInsideQuotesIsNotSecondProfession()
+{
+    parse({kUkazBy, QStringLiteral("23 лютага 2006 г. № 120"),
+           QStringLiteral("За шматгадовую працу ўзнагародзіць:"),
+           QStringLiteral("медалём «За адвагу»"),
+           QStringLiteral("Лагодзiча\vЮрыя Iванавiча"), QStringLiteral("–"),
+           QStringLiteral("слесара ўстановы «Дзіцячы сад – сярэдняя школа»"),
+           QStringLiteral("Іванова\vПятра Сяргеевіча"), QStringLiteral("–"),
+           QStringLiteral("слесара прадпрыемства «НВА «Цэнтр» – слесара цэнтра"),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QCOMPARE(int(m_parser->m_Persons.size()), 2);
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[0], false)),
+             QStringLiteral("слесар ўстановы «Дзіцячы сад – сярэдняя школа»"));
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[1], false)),
+             QStringLiteral("слесар прадпрыемства «НВА «Цэнтр» – слесар цэнтра"));
 }
 
 void TestDocumentParser::twoDecreesInOneFile()

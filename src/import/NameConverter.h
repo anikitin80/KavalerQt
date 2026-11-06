@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -95,6 +96,7 @@ public:
 
 protected:
 	void ExpandRules(RulesList& rules);
+	static bool ForEachPart(std::wstring& word, const std::function<bool(std::wstring&)>& convert);
 	
 	static RulesList ExceptionsFirstName;
 	static RulesList ExceptionsLastName;

@@ -12,8 +12,11 @@ RulesList CProfessionConverter::RulesAdjectives = {
 	{ SexAny, LangAny, L"ому", L"ого", L"---ый"},
 	{ SexAny, LangAny, L"ой", L"ую", L"--ая"},
 	{ SexAny, LangAny, L"ей", L"юю", L"--яя"},
+	// one ending per rule: this list is not expanded like the name rules
 	{ SexAny, LangBY, L"каму", L"кага", L"---і"},
+	{ SexAny, LangBY, L"кому", L"кога", L"---і"},
 	{ SexAny, LangBY, L"аму", L"ага", L"---ы"},
+	{ SexAny, LangBY, L"ому", L"ога", L"---ы"},	// былога
 	{ SexFemale, LangBY, L"ай", L"ую", L"--ая"},
 	{ SexFemale, LangBY, L"яй", L"юю", L"--яя"},
 	{ SexFemale, LangBY, L"ы", L"", L"-а"},
@@ -29,9 +32,25 @@ std::vector<RankInfo> CProfessionConverter::NonMilitatyRanksBY = {
 	{ L"прафесар", L"прафесару", L"прафесара"}
 };
 
+namespace {
+
+// nominative of an adjective ("вядучы", "дзяжурны", "старшая", "главный")
+bool IsAdjective(const std::wstring& word)
+{
+	for (const wchar_t* ending : { L"ы", L"і", L"ый", L"ий", L"ой", L"ая", L"яя" })
+	{
+		const size_t length = std::wcslen(ending);
+		if (word.length() > length + 2 && word.compare(word.length() - length, length, ending) == 0)
+			return true;
+	}
+	return false;
+}
+
+} // namespace
+
 CProfessionConverter::CProfessionConverter()
 {
-	
+
 }
 
 void CProfessionConverter::Initialize()
@@ -73,7 +92,10 @@ bool CProfessionConverter::LoadDictionary(const std::wstring& filePath, LangType
 	QTextStream input(&file);
 	input.setEncoding(QStringConverter::Utf8);
 	while (!input.atEnd()) {
-		const QString line = input.readLine();
+		QString line = input.readLine();
+		// Belarusian words were often typed with Latin "i" ("мацi"): keep one form
+		if (lang == LangBY)
+			line.replace(QLatin1Char('i'), QChar(0x0456)).replace(QLatin1Char('I'), QChar(0x0406));
 		const int pos1 = line.indexOf(QLatin1Char(';'));
 		const int pos2 = line.indexOf(QLatin1Char(';'), pos1 + 1);
 		if (pos2 != -1) {
@@ -123,10 +145,16 @@ bool CProfessionConverter::UpdateDictionary(std::vector<NewDictItem>& newItems)
 
 		if (item.Language == LangBY)
 		{
+			std::wstring original = item.Original, word = item.Word;
+			for (std::wstring* text : { &original, &word })
+			{
+				std::replace(text->begin(), text->end(), L'i', L'і');
+				std::replace(text->begin(), text->end(), L'I', L'І');
+			}
 			if(item.Case == Dative)
-				m_DictionaryDatBY[item.Original] = item.Word;
+				m_DictionaryDatBY[original] = word;
 			else
-				m_DictionaryAccBY[item.Original] = item.Word;
+				m_DictionaryAccBY[original] = word;
 			bSaveBY = true;
 		}
 		else if (item.Language == LangRU)
@@ -157,7 +185,7 @@ std::wstring CProfessionConverter::GetNextWord(std::wstring& strSource, size_t& 
 	size_t posEnd = strSource.find_first_of(L" ,-", posStart);
 	if (posEnd == -1)
 		posEnd = strSource.length();
-	
+
 	std::wstring word;
 	if(posEnd > posStart)
 		word = strSource.substr(posStart, posEnd - posStart);
@@ -167,9 +195,18 @@ std::wstring CProfessionConverter::GetNextWord(std::wstring& strSource, size_t& 
 bool CProfessionConverter::ConvertProfession(std::wstring& strSource, LangType lang, NounCase nounCase)
 {
 	bool bResult = false;
-	const Dictionary& dictionary = (lang == LangRU ? 
-		(nounCase == Dative? m_DictionaryDatRU : m_DictionaryAccRU) : 
+	const Dictionary& dictionary = (lang == LangRU ?
+		(nounCase == Dative? m_DictionaryDatRU : m_DictionaryAccRU) :
 		(nounCase == Dative? m_DictionaryDatBY : m_DictionaryAccBY) );
+	// the dictionary has Cyrillic "і" only (LoadDictionary), the decree may have Latin "i"
+	const auto lookup = [&](std::wstring word) {
+		if (lang == LangBY)
+		{
+			std::replace(word.begin(), word.end(), L'i', L'і');
+			std::replace(word.begin(), word.end(), L'I', L'І');
+		}
+		return dictionary.find(word);
+	};
 
 	// check non-military rank
 	size_t posComma = strSource.rfind(L',');
@@ -197,42 +234,207 @@ bool CProfessionConverter::ConvertProfession(std::wstring& strSource, LangType l
 
 	size_t posStart = 0, posMainWord = 0;
 	const int maxProfessionWords = 5;
-	
+
 	for (int i = 0; i < maxProfessionWords && posStart < strSource.length(); i++)
 	{
 		std::wstring word = ToLower(GetNextWord(strSource, posStart));
 		if (word.empty())
 			break;
 
-		auto iter = dictionary.find(word);
-		if (iter != dictionary.end())
+		// "исполняющего обязанности начальника": the profession is the adjective
+		// before it, the rest is genitive (converted with the rules below)
+		if (i > 0 && (word == L"обязанности" || word == L"абавязкі" || word == L"абавязкi"))
 		{
-			strSource.erase(posStart + 1, iter->first.length() - 1); // leave first letter (may be capital)
-			strSource.insert(posStart + 1, iter->second.substr(1));
-			
 			bResult = true;
 			posMainWord = posStart;
+			break;
+		}
 
-			// check second part
-			posStart += iter->second.length();
-			if (posStart < strSource.length() && strSource[posStart] == L'-')
+		auto iter = lookup(word);
+		if (iter != dictionary.end())
+		{
+			bResult = true;
+			posMainWord = posStart; // the adjectives before it are converted below
+
+			// an adjective from the dictionary is followed by the profession, convert
+			// the whole chain: "дзяжурнага памочніка", "вядучага навуковага
+			// супрацоўніка", "вядучага інжынера-канструктара"
+			for (;;)
 			{
-				word = ToLower(GetNextWord(strSource, posStart));
-				iter = dictionary.find(word);
-				if (iter != dictionary.end())
+				const std::wstring nominative = iter->second;
+				strSource.erase(posStart + 1, iter->first.length() - 1); // leave first letter (may be capital)
+				strSource.insert(posStart + 1, nominative.substr(1));
+
+				// the other parts: "урача-анестэзіёлага-рэаніматолага"
+				posStart += nominative.length();
+				while (posStart < strSource.length() && strSource[posStart] == L'-')
 				{
-					strSource.erase(posStart + 1, iter->first.length() - 1); // leave first letter (may be capital)
-					strSource.insert(posStart + 1, iter->second.substr(1));
-				}
-				else
-				{
-					int nWordLen = word.length();
-					if (AddNewWord(word, lang, nounCase))
+					word = ToLower(GetNextWord(strSource, posStart));
+					if (word.empty())
+						break;
+					size_t partLength = word.length();
+					iter = lookup(word);
+					if (iter != dictionary.end())
 					{
-						strSource.erase(posStart + 1, nWordLen-1);
-						strSource.insert(posStart + 1, word.substr(1));
+						strSource.erase(posStart + 1, iter->first.length() - 1); // leave first letter (may be capital)
+						strSource.insert(posStart + 1, iter->second.substr(1));
+						partLength = iter->second.length();
 					}
+					else
+					{
+						int nWordLen = word.length();
+						if (AddNewWord(word, lang, nounCase))
+						{
+							strSource.erase(posStart + 1, nWordLen-1);
+							strSource.insert(posStart + 1, word.substr(1));
+							partLength = word.length();
+						}
+					}
+					posStart += partLength;
 				}
+
+				if (!IsAdjective(nominative) || posStart >= strSource.length() || strSource[posStart] != L' ')
+					break;
+				size_t posNext = posStart;
+				const std::wstring next = ToLower(GetNextWord(strSource, posNext));
+				if (next.empty() || posNext != posStart + 1)
+					break;
+				const auto nextIter = lookup(next);
+				// not "следчага следчага аддзялення": the second one belongs to "аддзялення"
+				if (nextIter != dictionary.end() && nextIter->second == nominative)
+					break;
+				if (nextIter == dictionary.end())
+				{
+					// one adjective that is not in the dictionary, then the profession:
+					// "вядучага ветэрынарнага ўрача" (but not "следчага 2-га следчага")
+					std::wstring adjective = strSource.substr(posNext, next.length());
+					const size_t posNoun = posNext + next.length() + 1;
+					if (posNoun < strSource.length() && strSource[posNoun - 1] == L' '
+						&& CNameConverter::ApplyRules(adjective, RulesAdjectives, SexAny, lang, nounCase, false))
+					{
+						size_t posWord = posNoun;
+						const std::wstring noun = ToLower(GetNextWord(strSource, posWord));
+						const auto nounIter = (noun.empty() || posWord != posNoun) ? dictionary.end() : lookup(noun);
+						if (nounIter != dictionary.end() && !IsAdjective(nounIter->second))
+						{
+							strSource.replace(posNext, next.length(), adjective);
+							posStart = posNoun + adjective.length() - next.length();
+							iter = lookup(ToLower(GetNextWord(strSource, posStart)));
+							continue;
+						}
+					}
+					break;
+				}
+				posStart = posNext;
+				iter = nextIter;
+			}
+
+			// the profession in brackets after it: "артыст-вакаліст (саліста)",
+			// "артыст балета (салісту)", "начальнік упраўлення (статс-сакратара)"
+			const size_t posOpen = strSource.find(L'(', posStart);
+			if (posOpen != std::wstring::npos)
+			{
+				const std::wstring between = strSource.substr(posStart, posOpen - posStart);
+				const size_t posClose = strSource.find(L')', posOpen);
+				if (posClose != std::wstring::npos && between.find_first_of(L",–«»;") == std::wstring::npos
+					&& std::count(between.begin(), between.end(), L' ') <= 3)
+				{
+					// each part of "статс-сакратара" separately
+					// ("урача-тэрапеўта": a part after a converted one is converted by the rules)
+					// only the profession itself: "(загадчыка аддзялення)" -> "(загадчык
+					// аддзялення)", "(галоўнага ўрача)" -> "(галоўны ўрач)", the rest is genitive
+					size_t posPart = posOpen + 1;
+					bool converted = false;
+					for (;;)
+					{
+						const size_t posCloseNow = strSource.find(L')', posOpen);
+						if (posPart >= posCloseNow)
+							break;
+						const size_t posPartEnd = std::min(strSource.find_first_of(L"- )", posPart), posCloseNow);
+						std::wstring part = ToLower(strSource.substr(posPart, posPartEnd - posPart));
+						const size_t originalLength = part.length();
+						const bool afterHyphen = strSource[posPart - 1] == L'-';
+						if (part.empty() || (converted && !afterHyphen))
+							break;
+						const auto partIter = lookup(part);
+						size_t partLength = originalLength;
+						if (partIter != dictionary.end())
+						{
+							strSource.erase(posPart + 1, originalLength - 1);
+							strSource.insert(posPart + 1, partIter->second.substr(1));
+							partLength = partIter->second.length();
+							converted = true;
+						}
+						else if (converted && afterHyphen && AddNewWord(part, lang, nounCase))
+						{
+							strSource.erase(posPart + 1, originalLength - 1);
+							strSource.insert(posPart + 1, part.substr(1));
+							partLength = part.length();
+						}
+						else if (!converted && !afterHyphen && posPartEnd < posCloseNow && strSource[posPartEnd] == L' '
+							&& CNameConverter::ApplyRules(part, RulesAdjectives, SexAny, lang, nounCase, false))
+						{
+							// an adjective before the profession
+							const size_t posNext = posPartEnd + 1;
+							const size_t posNextEnd = std::min(strSource.find_first_of(L"- )", posNext), posCloseNow);
+							if (lookup(ToLower(strSource.substr(posNext, posNextEnd - posNext))) == dictionary.end())
+								break;
+							strSource.replace(posPart, originalLength, part);
+							partLength = part.length();
+						}
+						else if (!converted && posPartEnd < posCloseNow && strSource[posPartEnd] == L'-')
+						{
+							// "статс-сакратара": only the last part is in the dictionary
+						}
+						else
+							break;
+						posPart += partLength + 1;
+					}
+					posStart = strSource.find(L')', posOpen) + 1;
+				}
+			}
+
+			// a second profession after a comma: "саліст оперы, вядучага майстра
+			// сцэны", "кампазітар, члена Саюза кампазітараў" (not inside quotes)
+			for (size_t posComma = strSource.find(L',', posStart); posComma != std::wstring::npos;
+				 posComma = strSource.find(L',', posComma + 1))
+			{
+				const size_t posQuote = strSource.find_first_of(L"«»", posComma);
+				if (posQuote != std::wstring::npos && strSource[posQuote] == L'»')
+					continue;
+				// the profession may follow one or two adjectives: ", галоўнага навуковага супрацоўніка"
+				bool profession = false;
+				size_t posWord = posComma + 1;
+				for (int w = 0; w < 3 && !profession; ++w)
+				{
+					std::wstring next = ToLower(GetNextWord(strSource, posWord));
+					if (next.empty())
+						break;
+					posWord += next.length();
+					// not "механічнай, хіміка-тэрмічнай апрацоўкі": a compound adjective
+					bool compoundAdjective = false;
+					if (posWord < strSource.length() && strSource[posWord] == L'-')
+					{
+						size_t posPart = posWord;
+						const std::wstring part = ToLower(GetNextWord(strSource, posPart));
+						for (const wchar_t* ending : { L"ай", L"ой", L"ых", L"іх", L"их", L"ым", L"ае", L"ое", L"ыя", L"ые" })
+						{
+							const size_t length = std::wcslen(ending);
+							if (part.length() > length + 2 && part.compare(part.length() - length, length, ending) == 0)
+								compoundAdjective = true;
+						}
+					}
+					if (lookup(next) != dictionary.end() && !compoundAdjective)
+						profession = true;
+					else if (!CNameConverter::ApplyRules(next, RulesAdjectives, SexAny, lang, nounCase, false))
+						break;
+				}
+				if (!profession)
+					continue;
+				std::wstring rest = strSource.substr(posComma + 1);
+				ConvertProfession(rest, lang, nounCase);
+				strSource.replace(posComma + 1, std::wstring::npos, rest);
+				break;
 			}
 			break;
 		}
@@ -276,7 +478,7 @@ void CProfessionConverter::FindNewWords(std::wstring& strSource, LangType lang, 
 	if (nounCase == Dative)
 		strEndings = { L"му",L"ай", L"яй" };
 	else
-		strEndings = { L"га", L"го" ,L"ую", L"юю" };		
+		strEndings = { L"га", L"го" ,L"ую", L"юю" };
 
 	// try to check the first word - it could be new profession and we can add it to the dictionary
 	size_t posStart = 0;

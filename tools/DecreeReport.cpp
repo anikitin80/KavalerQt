@@ -258,6 +258,7 @@ int main(int argc, char** argv)
     QMap<QString, int> diffFields;
     QHash<QString, Row> current;
     int emptyFiles = 0;
+    int groupFiles = 0; // files where the group info is added to the description
     QElapsedTimer timer;
     timer.start();
 
@@ -271,6 +272,39 @@ int main(int argc, char** argv)
         parser.ResetData();
         if (!lines.empty())
             parser.ProcessFile(false, QFileInfo(path).fileName().toStdWString(), lines);
+
+        // group info ("работнікаў ... завода") is added to the description in the
+        // import dialog by a check box per file: use it when more people match
+        const std::wstring fileName = QFileInfo(path).fileName().toStdWString();
+        bool useGroup = false;
+        {
+            GroupInfo group;
+            std::wstring name = fileName;
+            if (parser.GetGroupInfo(name, group) && !group.Info.empty()) {
+                int with = 0, without = 0;
+                QHash<QString, int> seen;
+                for (PersonInfo& info : parser.m_Persons) {
+                    const bool belarusian = !info.Ukaz.RussianLang;
+                    const QString key = awardKey(info.AwardId, decreeKey(info.Ukaz.Number, info.Ukaz.Date,
+                                                                          QString::fromStdWString(info.Name), belarusian));
+                    const int n = seen[key]++;
+                    if (n >= byAward.value(key).size())
+                        continue;
+                    const QString& db = belarusian ? byAward.value(key).at(n)->personalBy : byAward.value(key).at(n)->personal;
+                    for (bool checked : {false, true}) {
+                        parser.CheckGroupInfo(fileName.c_str(), checked);
+                        const QString description = NormalizeCyrillicText(
+                            QString::fromStdWString(parser.GetPersonDescription(info, false)), belarusian);
+                        if (description == db)
+                            ++(checked ? with : without);
+                    }
+                }
+                useGroup = with > without;
+            }
+            parser.CheckGroupInfo(fileName.c_str(), useGroup);
+        }
+        if (useGroup)
+            ++groupFiles;
 
         QMap<QString, int> fileCounts;
         QHash<QString, int> ordinal;
@@ -349,7 +383,8 @@ int main(int argc, char** argv)
     QTextStream s(&summary);
     s << "Отчёт парсера указов\n"
       << "база: " << cli.value(dbOption) << " (" << catalog.people().size() << " записей)\n"
-      << "указы: " << docs.path() << " (" << files.size() << " файлов, без людей: " << emptyFiles << ")\n"
+      << "указы: " << docs.path() << " (" << files.size() << " файлов, без людей: " << emptyFiles
+      << ", со сведениями о группе: " << groupFiles << ")\n"
       << "словари: " << (dictRu.isEmpty() ? QStringLiteral("-") : dictRu) << ", " << (dictBy.isEmpty() ? QStringLiteral("-") : dictBy) << "\n\n"
       << "Людей разобрано: " << total << "\n";
     for (const QString& status : kStatuses)
