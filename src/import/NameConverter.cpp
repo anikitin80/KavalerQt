@@ -12,13 +12,29 @@ RulesList CNameConverter::ExceptionsLastName = {
 	{ SexMale, LangBY, L"ваўку", L"ваўка", L"----оўк" },
 	{ SexMale, LangBY, L"кату,крату", L"ката,крата", L"---от" },
 	{ SexMale, LangBY, L"дзятлу", L"дзятла", L"---цел" },
-	{ SexMale, LangBY, L"рогу", L"рога", L"-" }
+	{ SexMale, LangBY, L"рогу", L"рога", L"-" },
+	// fleeting vowels the general rules cannot restore
+	{ SexMale, LangAny, L"зайцу", L"зайца", L"---яц" },
+	{ SexMale, LangAny, L"буслу", L"бусла", L"--ел" },
+	{ SexMale, LangBY, L"бугру", L"бугра", L"--ор" },
+	{ SexMale, LangBY, L"арлу", L"арла", L"--ол" },
+	{ SexMale, LangBY, L"бубну", L"бубна", L"--ен" },
+	{ SexMale, LangBY, L"піўню", L"піўня", L"---вень" },
+	{ SexMale, LangBY, L"полудню", L"полудня", L"---дзень" },
+	{ SexMale, LangBY, L"баклажцу", L"баклажца", L"--ац" },
+	{ SexMale, LangBY, L"забалотцу", L"забалотца", L"---цец" },
+	{ SexMale, LangBY, L"маршалку,сідарку", L"маршалка,сідарка", L"--ок" },
+	{ SexMale, LangBY, L"турку,запатылку", L"турка,запатылка", L"--ак" },
+	{ SexMale, LangBY, L"кляшчу", L"кляшча", L"----ешч" },
+	{ SexMale, LangBY, L"хвашчу", L"хвашча", L"----ошч" },
+	{ SexMale, LangBY, L"лукашэню", L"лукашэню", L"-я" }
 };
 
 RulesList CNameConverter::RulesLastName = {
 	{ SexAny,	LangBY, L"дзе",			L"",			L"--а"},	// Калядзе
 	{ SexAny,	LangAny,L"е",			L"у",			L"-а"},
 	{ SexFemale,LangAny,L"кай,кой",		L"",			L"--ая"},	// Романской
+	{ SexFemale,LangBY,	L"іной,ыной",	L"",			L"--а"},	// Кузьміной
 	{ SexFemale,LangBY,	L"ой",			L"",			L"--ая?"},	// Лясной
 	{ SexFemale,LangAny,L"ай,ой",		L"",			L"--а"},	// Никитиной
 	{ SexFemale,LangAny,L"ей",			L"ую",			L"--ая"},
@@ -30,19 +46,24 @@ RulesList CNameConverter::RulesLastName = {
 	{ SexMale,	LangBY, L"хаму,каму",	L"хага,кага",	L"---і" },
 	{ SexMale,	LangRU, L"ому",			L"ого",			L"---ый?" },
 	{ SexMale,	LangBY, L"рому",		L"",			L"-" },	   // Прыстрому
+	{ SexMale,	LangBY, L"гаму,гому,кому,хому,няму", L"гага,гога,кога,хога,няга", L"---і" }, // Доўгі, Лугаўскі, Загародні
 	{ SexMale,	LangBY, L"аму,ому",		L"ага,ога",		L"---ы" },
 	{ SexMale,	LangRU, L"ему",			L"его",			L"---ий" },
 	{ SexMale,	LangRU, L"иноя",		L"иноя",		L"-й"},
-	{ SexMale,	LangAny,L"ую,ею,аю,ою,эю,ыю,iю,ію", L"уя,ея,ая,оя,эя,ыя,iя,ія", L"-й"},
+	{ SexMale,	LangAny,L"ую,ею,аю,ою,эю,ыю,iю,ію,яю", L"уя,ея,ая,оя,эя,ыя,iя,ія,яя", L"-й"},
+	{ SexMale,	LangRU, L"ию",			L"",			L"-й"},		// Виолентию
 	{ SexMale,	LangAny,L"йцу,льцу",	L"йца,льца",	L"---ец" },
-	{ SexMale,	LangAny,L"пцу,бцу,вцу,нцу,мцу,рца", L"пца,бца,вца,нца,мца,рца", L"--ец" },
+	{ SexMale,	LangBY, L"рцу",			L"рца",			L"--эц" },	// Азярэц: "р" is always hard in Belarusian
+	{ SexMale,	LangAny,L"пцу,бцу,вцу,нцу,мцу,рцу", L"пца,бца,вца,нца,мца,рца", L"--ец" },
 	{ SexMale,	LangRU, L"енку,ёнку",	L"енка,ёнка",	L"--ок" },
 	{ SexMale,	LangBY, L"онку,ёнку",	L"онка,ёнка",	L"--ак" },
 	{ SexMale,	LangBY, L"анку,енку,энку",	L"",		L"-а" },// Краўчанку, Лукашэнку, Гардзеенку
 	{ SexMale,	LangBY, L"чку,тку,пку,бку,нку", L"чка,тка,пка,бка,нка", L"--ок" },
+	{ SexMale,	LangBY, L"",			L"шка,зка,жка,дка", L"--ок" },	// Мяшок, Палазок (dative "-шку" is mostly "-шка")
+	{ SexMale,	LangBY, L"",			L"лька,нька,йка", L"---ёк" },	// Каралёк, Канёк, Кіёк
 	{ SexMale,	LangAny,L"аку,іку,уку,яку,ыку,юку",	L"",L"-" },		// Климчуку, Антончыку, Прасняку, Бібіку, Манчаку, Панасюку
-	{ SexMale,	LangBY, L"цу,лу,ту,ку,ру,пу", L"",		L"-а" },	// Кухту, Жыгалу, Батуру
 	{ SexMale,	LangBY, L"ўцу",			L"ўца",			L"---вец"}, // Грыцавец
+	{ SexMale,	LangBY, L"цу,лу,ту,ку,пу", L"",		L"-а" },	// Кухту, Жыгалу ("-ру" is mostly "-р": Косару)
 	{ SexAny,	LangAny,L"те",			L"",			L"-а" },	// Федуте
 	{ SexAny,	LangAny,L"це",			L"",			L"--та" },	// Федуце
 	{ SexAny,	LangRU, L"о",			L"о",			L"" },
@@ -58,20 +79,24 @@ RulesList CNameConverter::RulesLastName = {
 	{ SexFemale,LangAny,L"б,в,г,д,ж,з,й,к,л,м,н,п,р,с,т,ф,х,ц,ч,ш,щ,ъ,ь", L"б,в,г,д,ж,з,й,к,л,м,н,п,р,с,т,ф,х,ц,ч,ш,щ,ъ,ь", L""},
 	{ SexMale,	LangAny,L"бу,ву,гу,ду,жу,зу,ку,лу,му,ну,пу,ру,су,ту,фу,ху,цу,чу,шу,щу", L"ба,ва,га,да,жа,за,ка,ла,ма,на,па,ра,са,та,фа,ха,ца,ча,ша,ща", L"-" }
 };
-			
+
 RulesList CNameConverter::ExceptionsFirstName = {
 	{ SexMale, LangRU, L"льву", L"льва", L"---ев" },
 	{ SexMale, LangBY, L"льву", L"льва", L"---еў" },
 	{ SexMale, LangRU, L"павлу", L"павла", L"--ел" },
 	{ SexMale, LangBY, L"паўлу", L"паўла", L"---вел" },
 	{ SexMale, LangBY, L"пятру", L"пятра", L"----ётр" },
-	{ SexMale, LangRU, L"шота", L"шота", L"" }
+	{ SexMale, LangRU, L"шота", L"шота", L"" },
+	{ SexMale, LangAny, L"роберту,альберту,норберту,герберту", L"", L"-" },
+	{ SexMale, LangBY, L"францішку", L"францішка", L"--ак" }
 };
 
 RulesList CNameConverter::RulesFirstName = {
 	{ SexAny,	LangAny, L"",			L"ю",		L"-я" },	// Наталью, Илью
 	{ SexAny,	LangRU, L"ье,ое",		L"",		L"-я" },	// Наталье, Зое
-	{ SexAny,	LangBY, L"ei,ьі,лі,іі,ыі",L"",		L"-я" },	// Наталлi, Надзеi, Iллi, Iльi
+	{ SexFemale,LangRU, L"ии",			L"",		L"-я" },	// Марии, Алиции
+	// Latin "i" is already replaced with "і" here (ApplyRules)
+	{ SexAny,	LangBY, L"еі,оі,ьі,лі,іі,ыі,сі,’і,'і",L"", L"-я" },	// Наталлi, Надзеi, Зоі, Алесі, Соф’і
 	{ SexFemale,LangBY, L"дзе",			L"",		L"--а" },	// Зинаидзе
 	{ SexFemale,LangBY, L"зе",			L"",		L"--га" },	// Ядвизе
 	{ SexFemale,LangBY, L"це",			L"",		L"--та" },	// Маргарыце
@@ -88,7 +113,7 @@ RulesList CNameConverter::RulesFirstName = {
 	{ SexMale,  LangAny,L"е,ё,и,і,о,ы,э", L"е,ё,и,і,о,у,ы,э,ю", L"" },
 	{ SexMale,  LangRU,	L"ге,ке,хе,че,ще,же",L"гу,ку,ху,чу,щу,жу", L"-а" },
 	{ SexFemale,LangAny,L"б,в,г,д,ж,з,й,к,л,м,н,п,р,с,т,ў,ф,х,ц,ч,ш,щ,ъ,ь", L"б,в,г,д,ж,з,й,к,л,м,н,п,р,с,т,ў,ф,х,ц,ч,ш,щ,ъ,ь", L"" },
-	{ SexMale,  LangAny,L"бу,ву,гу,ду,жу,зу,ку,лу,му,ну,пу,ру,су,ту,фу,ху,цу,чу,шу", L"ба,ва,га,да,жа,за,ка,ла,ма,на,па,ра,са,та,фа,ха,ца,ча,ша", L"-" },	
+	{ SexMale,  LangAny,L"бу,ву,гу,ду,жу,зу,ку,лу,му,ну,пу,ру,су,ту,фу,ху,цу,чу,шу", L"ба,ва,га,да,жа,за,ка,ла,ма,на,па,ра,са,та,фа,ха,ца,ча,ша", L"-" },
 };
 
 RulesList CNameConverter::RulesMiddleName = {
@@ -150,7 +175,7 @@ bool CNameConverter::ApplyRules(std::wstring& name, RulesList& rules, SexType se
 
 	for (const auto& rule : rules)
 	{
-		if (rule.Match(nameLower, sex, lang, nounCase, bFullWordMatch)) 
+		if (rule.Match(nameLower, sex, lang, nounCase, bFullWordMatch))
 			return rule.Apply(name);
 	}
 
@@ -195,7 +220,7 @@ bool CNameConverter::NormalizeName(std::wstring& fullName, LangType lang, NounCa
 	StrTrim(lastName);
 
 	if (pos2 != -1)
-	{ 
+	{
 		middleName = fullName.substr(pos2 + 1);
 		firstName = fullName.substr(pos1 + 1, pos2 - pos1 - 1);
 	}
@@ -236,8 +261,8 @@ bool CNameConverter::NormalizeName(std::wstring& fullName, LangType lang, NounCa
 
 	if (!strAlias.empty())
 		fullName += L" (" + strAlias + L")";
-	
-	return bResFN && bResLN;	
+
+	return bResFN && bResLN;
 }
 
 SexType CNameConverter::GetSex(std::wstring& middleName, NounCase nounCase)

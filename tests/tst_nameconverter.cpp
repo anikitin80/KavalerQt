@@ -69,6 +69,39 @@ void TestNameConverter::normalizeName_data()
                                             << QStringLiteral("Шульга Валерый Ігаравіч");
     QTest::newRow("by dat male -оў, exception Пётр") << QStringLiteral("Іванову Пятру Сяргеевічу") << LangBY << Dative
                                                      << QStringLiteral("Іваноў Пётр Сяргеевіч");
+    // fleeting vowels and other endings checked on the whole decree archive (decree_report)
+    QTest::newRow("by acc -шка") << QStringLiteral("Мяшка Андрэя Іванавіча") << LangBY << Accusative
+                                 << QStringLiteral("Мяшок Андрэй Іванавіч");
+    QTest::newRow("by acc -лька") << QStringLiteral("Каралька Сяргея Іванавіча") << LangBY << Accusative
+                                  << QStringLiteral("Каралёк Сяргей Іванавіч");
+    QTest::newRow("by acc -ўца") << QStringLiteral("Сакаўца Юрыя Іванавіча") << LangBY << Accusative
+                                 << QStringLiteral("Сакавец Юрый Іванавіч");
+    QTest::newRow("by dat -ўцу") << QStringLiteral("Паўлаўцу Юрыю Іванавічу") << LangBY << Dative
+                                 << QStringLiteral("Паўлавец Юрый Іванавіч");
+    QTest::newRow("by acc -рца") << QStringLiteral("Азярца Юрыя Іванавіча") << LangBY << Accusative
+                                 << QStringLiteral("Азярэц Юрый Іванавіч");
+    QTest::newRow("ru dat -рцу") << QStringLiteral("Перцу Ивану Петровичу") << LangRU << Dative
+                                 << QStringLiteral("Перец Иван Петрович");
+    QTest::newRow("by acc Заяц") << QStringLiteral("Зайца Юрыя Іванавіча") << LangBY << Accusative
+                                 << QStringLiteral("Заяц Юрый Іванавіч");
+    QTest::newRow("by acc -гага") << QStringLiteral("Доўгага Пятра Васільевіча") << LangBY << Accusative
+                                  << QStringLiteral("Доўгі Пётр Васільевіч");
+    QTest::newRow("by acc -няга") << QStringLiteral("Загародняга Анатолія Мікалаевіча") << LangBY << Accusative
+                                  << QStringLiteral("Загародні Анатолій Мікалаевіч");
+    QTest::newRow("by acc -яя") << QStringLiteral("Біцяя Анатолія Мікалаевіча") << LangBY << Accusative
+                                << QStringLiteral("Біцяй Анатолій Мікалаевіч");
+    QTest::newRow("by dat -ру") << QStringLiteral("Косару Івану Пятровічу") << LangBY << Dative
+                                << QStringLiteral("Косар Іван Пятровіч");
+    QTest::newRow("by dat female -іной") << QStringLiteral("Кузьміной Алене Іванаўне") << LangBY << Dative
+                                         << QStringLiteral("Кузьміна Алена Іванаўна");
+    QTest::newRow("by dat Надзеі (Latin i)") << QStringLiteral("Петрусь Надзеi Іванаўне") << LangBY << Dative
+                                             << QStringLiteral("Петрусь Надзея Іванаўна");
+    QTest::newRow("by dat Алесі") << QStringLiteral("Петрусь Алесі Іванаўне") << LangBY << Dative
+                                  << QStringLiteral("Петрусь Алеся Іванаўна");
+    QTest::newRow("ru dat Марии") << QStringLiteral("Петровой Марии Ивановне") << LangRU << Dative
+                                  << QStringLiteral("Петрова Мария Ивановна");
+    QTest::newRow("by dat Роберт") << QStringLiteral("Іванову Роберту Сяргеевічу") << LangBY << Dative
+                                   << QStringLiteral("Іваноў Роберт Сяргеевіч");
     // Latin "i" typed instead of Belarusian "і" is fixed on the way
     QTest::newRow("by latin i") << QStringLiteral("Лагодзiча Юрыя Іванавiча") << LangBY << Accusative
                                 << QStringLiteral("Лагодзіч Юрый Іванавіч");

@@ -52,7 +52,7 @@ std::vector<RankInfo> CDocumentParser::MilitatyRanksBY = {
 
 CDocumentParser::CDocumentParser()
 {
-	
+
 }
 
 void CDocumentParser::Initialize(std::map<long, DecreeAward>& awards)
@@ -69,7 +69,7 @@ void CDocumentParser::Initialize(std::map<long, DecreeAward>& awards)
 		std::wstring nameBY = award.second.NameBY;
 		nameBY.erase(0, nameBY.find(' ') + 1);
 		nameBY.erase(std::remove(nameBY.begin(), nameBY.end(), L'"'), nameBY.end());
-		
+
 		if (award.second.Type == DecreeAward::Orden)
 		{
 			m_OrdenDetector.push_back({ name, award.first });
@@ -95,7 +95,7 @@ void CDocumentParser::Initialize(std::map<long, DecreeAward>& awards)
 			cutFrom(nameBY, L"Рэспублікі Беларусь");
 			cutFrom(nameBY, L"Беларусі");
 			m_PochetDetector.push_back({ name, award.first });
-			m_PochetDetectorBY.push_back({ nameBY, award.first });				
+			m_PochetDetectorBY.push_back({ nameBY, award.first });
 		}
 	}
 
@@ -126,10 +126,10 @@ int CDocumentParser::GetAwardId(std::wstring award, bool bRussian, bool bPochetN
 	award.erase(std::remove(award.begin(), award.end(), L'»'), award.end());
 	award.erase(std::remove(award.begin(), award.end(), L'«'), award.end());
 	award.erase(std::remove(award.begin(), award.end(), L'"'), award.end());
-	
+
 	// replace Latin letters with Belorussian
 	//std::replace(award.begin(), award.end(), L'i', L'і');
-	
+
 	// replace Belorussian letters with Latin for degreee number
 	std::replace(award.begin(), award.end(), L'І', L'I');
 
@@ -211,7 +211,7 @@ bool CDocumentParser::ProcessFile(bool bPDF, const std::wstring& fileName, std::
 	int awardId = 0;
 	int nAwardedCount = 0;
 	size_t posStart = 0, posEnd = 0;
-	
+
 	for (auto itrLine = arrLines.begin(); itrLine != arrLines.end(); itrLine++)
 	{
 		// new ukaze of president found
@@ -308,7 +308,7 @@ bool CDocumentParser::ProcessFile(bool bPDF, const std::wstring& fileName, std::
 			{
 				bAwardTypeFound = true;
 				posTargetStart = posStart;
-				UpdateAwardStat(awardId, curAward, nAwardedCount);				
+				UpdateAwardStat(awardId, curAward, nAwardedCount);
 
 				awardId = nAwardedCount = 0;
 				curAward = strLine.substr(posTargetStart);
@@ -334,7 +334,7 @@ bool CDocumentParser::ProcessFile(bool bPDF, const std::wstring& fileName, std::
 
 					if(!strAwardedInfo.empty())
 						ExtractPersonInfo(curAward, strAwardedInfo);
-				} 
+				}
 
 				if (strLine.back() == L':')
 				{
@@ -396,7 +396,7 @@ bool CDocumentParser::ProcessFile(bool bPDF, const std::wstring& fileName, std::
 						info.Name = *(itrLine - 1);
 						std::replace(info.Name.begin(), info.Name.end(), L'\v', L' ');
 						info.Description = *(++itrLine);
-						
+
 						NormalizePersonInfo(info);
 						m_Persons.push_back(info);
 					}
@@ -409,7 +409,7 @@ bool CDocumentParser::ProcessFile(bool bPDF, const std::wstring& fileName, std::
 						info.OriginalText = strLine;
 						info.Name = strLine.substr(0, pos);
 						info.Description = strLine.substr(pos + 1);
-						
+
 						NormalizePersonInfo(info);
 						m_Persons.push_back(info);
 					}
@@ -531,7 +531,7 @@ void CDocumentParser::ExtractPersonInfo(std::wstring& curAward, std::wstring& st
 			sep = pos3;
 	}
 
-	
+
 	PersonInfo info;
 	info.Ukaz = m_UkazInfo;
 	info.FileName = m_FileName;
@@ -607,7 +607,7 @@ bool CDocumentParser::SpltPersonInfo(PersonInfo& person)
 		if (m_ProfessionConverter.ConvertProfession(person.Description, person.Ukaz.RussianLang ? LangRU : LangBY, nounCase))
 			person.Flags |= PersonInfo::NF_PROFESSION;
 	}
-	
+
 	NormalizePersonInfo(person2);
 	m_Persons.push_back(person2);
 
@@ -629,6 +629,8 @@ void CDocumentParser::NormalizePersonInfo(PersonInfo& person)
 	NounCase nounCase = GetNounCaseByAwardId(person.AwardId);
 
 	LangType lang = person.Ukaz.RussianLang ? LangRU : LangBY;
+	person.SourceName = person.Name;
+	person.SourceCase = nounCase;
 	bool bRes = m_NameConverter.NormalizeName(person.Name, lang, nounCase);
 	if (*altName)
 	{
@@ -642,7 +644,7 @@ void CDocumentParser::NormalizePersonInfo(PersonInfo& person)
 
 	if (ExtractMilitaryRank(person, lang, nounCase))
 		person.Flags |= PersonInfo::NF_RANK;
-	
+
 	std::wstring secondProfession;
 	size_t posSep = person.Description.find(L" – ");
 	if (posSep != -1)
@@ -726,7 +728,7 @@ bool CDocumentParser::ExtractMilitaryRank(PersonInfo& person, LangType lang, Nou
 }
 
 std::wstring CDocumentParser::GetPersonDescription(size_t nIndex)
-{	
+{
 	if (nIndex >= m_Persons.size())
 		return L"";
 
@@ -739,7 +741,7 @@ std::wstring CDocumentParser::GetPersonDescription(PersonInfo& person, bool bGet
 	{ SexAny, LangAny, L"ам", L"ов", L"--"}
 	};
 
-	
+
 	std::wstring strDesc = person.Description.c_str();
 	std::wstring strGroupInfo;
 	if (GetGroupInfo(person.Ukaz, strGroupInfo))
@@ -776,7 +778,7 @@ std::wstring CDocumentParser::GetPersonDescription(PersonInfo& person, bool bGet
 			continue;
 
 		if (!wcsncmp(strText.c_str(), rank.Converted.c_str(), rank.Converted.length()) && i < MilitatyRanksRU.size())
-		{	
+		{
 			strResult.erase(0, rank.Converted.length());
 			strResult.insert(0, MilitatyRanksRU[i].Converted.c_str());
 			posEnd = MilitatyRanksRU[i].Converted.length() + 1;

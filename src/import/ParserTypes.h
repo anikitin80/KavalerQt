@@ -46,6 +46,9 @@ struct PersonInfo
     std::wstring Description;
     std::wstring MilitaryRank;
     std::wstring OriginalText;
+    // the name as written in the decree (dative or accusative) and its NounCase
+    std::wstring SourceName;
+    int SourceCase = 0;
     UkazInfo Ukaz;
     unsigned Flags = 0;
     bool Posthumous = false;

@@ -250,7 +250,7 @@ int main(int argc, char** argv)
     QTextStream filesOut(&filesFile);
     filesOut.setEncoding(QStringConverter::Utf8);
     persons << "file\tyear\tindex\tstatus\taward\tdb_id\tname\tdescription\trank\tposthumous"
-               "\tdb_description\tdb_rank\tdb_posthumous\tdiff_fields\tdecree_no\tdecree_date\tlanguage\n";
+               "\tdb_description\tdb_rank\tdb_posthumous\tdiff_fields\tdecree_no\tdecree_date\tlanguage\tsource_name\tsource_case\n";
     filesOut << "file\tyear\tpersons\texact\tdiff\tother_award\tnew\tbad_header\terror\n";
 
     QMap<QString, int> totals;
@@ -325,7 +325,8 @@ int main(int argc, char** argv)
                     << '\t' << cell(row.rank) << '\t' << (row.posthumous ? 1 : 0) << '\t' << cell(row.dbDescription)
                     << '\t' << cell(row.dbRank) << '\t' << (row.dbPosthumous ? 1 : 0) << '\t' << row.diffFields
                     << '\t' << info.Ukaz.Number << '\t' << info.Ukaz.Date.toString(Qt::ISODate) << '\t'
-                    << (belarusian ? "by" : "ru") << '\n';
+                    << (belarusian ? "by" : "ru") << '\t' << cell(QString::fromStdWString(info.SourceName)) << '\t'
+                    << (info.SourceCase == Dative ? "dat" : info.SourceCase == Accusative ? "acc" : "nom") << '\n';
         }
         if (parser.m_Persons.empty())
             ++emptyFiles;
