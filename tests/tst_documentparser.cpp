@@ -53,6 +53,7 @@ private slots:
     void singleAwardPosthumous();
     void singleAwardPosthumousAfterAward();
     void comradeTitleBeforeName();
+    void splitUsesTheSameNameCut();
     void listWithLineBreaks();
     void housewifeGetsTheCityOfTheSection();
     void listEndingWithDashDoesNotCrash();
@@ -365,6 +366,34 @@ void TestDocumentParser::comradeTitleBeforeName()
            kPresident});
     QCOMPARE(text(m_parser->m_Persons.front().Name), QStringLiteral("Азгур Заир Исаакович"));
     QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons.front(), false)), QStringLiteral("скульптор"));
+}
+
+// the same cut as the decree itself: a patronymic takes the surname,
+// a capitalized word that is not a patronymic stays in the job
+void TestDocumentParser::splitUsesTheSameNameCut()
+{
+    PersonInfo shared;
+    shared.AwardId = 14;
+    shared.Ukaz.RussianLang = true;
+    shared.Name = L"Петров Петр Петрович";
+    shared.Description = L"слесаря Цех Иванова Ивана и токаря Петрова Петра Петровича";
+    QVERIFY(m_parser->SpltPersonInfo(shared));
+    QCOMPARE(int(m_parser->m_Persons.size()), 1);
+    const PersonInfo& cut = m_parser->m_Persons.front();
+    QCOMPARE(text(cut.Name), QStringLiteral("Иванов Иван"));
+    QCOMPARE(text(cut.Description), QStringLiteral("слесарь Цех"));
+    QCOMPARE(text(shared.Name), QStringLiteral("Петров Петр Петрович"));
+    QCOMPARE(text(shared.Description), QStringLiteral("токарь Петрова Петра Петровича"));
+
+    m_parser->ResetData();
+    PersonInfo withPatronymic;
+    withPatronymic.AwardId = 14;
+    withPatronymic.Ukaz.RussianLang = true;
+    withPatronymic.Description = L"слесаря цеха тов. Иванова Ивана Ивановича и токаря Петрова Петра Петровича";
+    QVERIFY(m_parser->SpltPersonInfo(withPatronymic));
+    const PersonInfo& full = m_parser->m_Persons.front();
+    QCOMPARE(text(full.Name), QStringLiteral("Иванов Иван Иванович"));
+    QCOMPARE(text(full.Description), QStringLiteral("слесарь цеха"));
 }
 
 void TestDocumentParser::singleAwardPosthumous()

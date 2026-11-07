@@ -313,6 +313,49 @@ void stripComradeTitle(std::wstring& text)
 	}
 }
 
+// The name is the last two capitalized words. A patronymic pulls the surname
+// in front of them ("слесаря цеха Иванова Ивана Ивановича"). Without one, a
+// capitalized word of the job stays in the job ("слесаря Цех Иванова Ивана").
+// "тов." before the surname is removed. False when that pair is not there.
+bool takePersonName(CNameConverter& names, std::wstring& text, LangType lang, NounCase nounCase, std::wstring& name)
+{
+	StrTrim(text);
+	stripComradeTitle(text);
+
+	bool bHasAlias = false;
+	size_t posBracket = text.rfind(L'(');
+	if (posBracket != std::wstring::npos && text.rfind(L')') > text.length() - 10)
+		bHasAlias = true;
+
+	size_t pos1 = bHasAlias ? text.rfind(' ', posBracket - 2) : text.rfind(' ');
+	size_t pos2 = text.rfind(' ', pos1 - 1);
+	if (pos1 == std::wstring::npos || pos2 == std::wstring::npos)
+		return false;
+
+	if (!IsCapital(text[pos1 + 1]) || !IsCapital(text[pos2 + 1]))
+		return false;
+
+	size_t sep = pos2;
+	bool nameOnly = false;
+	if (names.IsMiddleName(text.substr(pos1), lang, nounCase))
+	{
+		size_t pos3 = text.rfind(' ', pos2 - 1);
+		if (pos3 != std::wstring::npos && IsCapital(text[pos3 + 1]))
+			sep = pos3;
+		else if (pos3 == std::wstring::npos && IsCapital(text[0]))
+			nameOnly = true;
+	}
+
+	if (nameOnly) {
+		name = text;
+		text.clear();
+	} else {
+		name = text.substr(sep + 1);
+		text.erase(sep);
+	}
+	return true;
+}
+
 } // namespace
 
 // "15 мая 1997 г.№ 282": the number after "№", the date before "г"
@@ -656,48 +699,17 @@ void CDocumentParser::ExtractPersonInfo(std::wstring& curAward, std::wstring& st
 		strAwardedInfo.erase(posPost, strAwardedInfo.length() - posPost);
 	}
 
-	StrTrim(strAwardedInfo);
-	stripComradeTitle(strAwardedInfo);
-
-	// check for alias
-	bool bHasAlias = false;
-	size_t posBracket = strAwardedInfo.rfind(L'(');
-	if (posBracket != std::wstring::npos && strAwardedInfo.rfind(L')') > strAwardedInfo.length() - 10)
-		bHasAlias = true;
-
-	// lookup name parts
-	size_t pos1 = bHasAlias ? strAwardedInfo.rfind(' ', posBracket-2) : strAwardedInfo.rfind(' ');
-	size_t pos2 = strAwardedInfo.rfind(' ', pos1 - 1);
-	if (pos1 == std::wstring::npos || pos2 == std::wstring::npos)
+	const LangType lang = m_UkazInfo.RussianLang ? LangRU : LangBY;
+	std::wstring name;
+	if (!takePersonName(m_NameConverter, strAwardedInfo, lang, nounCase, name))
 		return;
-
-	if (!IsCapital(strAwardedInfo[pos1 + 1]) || !IsCapital(strAwardedInfo[pos2 + 1]))
-		return;
-
-	size_t sep = pos2;
-	// a name with nothing in front of it: "Иванова Ивана Ивановича"
-	bool nameOnly = false;
-
-	if (m_NameConverter.IsMiddleName(strAwardedInfo.substr(pos1), m_UkazInfo.RussianLang? LangRU : LangBY, nounCase))
-	{
-		size_t pos3 = strAwardedInfo.rfind(' ', pos2 - 1);
-		if (pos3 != std::wstring::npos && IsCapital(strAwardedInfo[pos3 + 1]))
-			sep = pos3;
-		else if (pos3 == std::wstring::npos && IsCapital(strAwardedInfo[0]))
-			nameOnly = true;
-	}
-
 
 	PersonInfo info;
 	info.Ukaz = m_UkazInfo;
 	info.FileName = m_FileName;
 	info.AwardId = awardId;
-	if (nameOnly) {
-		info.Name = strAwardedInfo;
-	} else {
-		info.Name = strAwardedInfo.substr(sep + 1);
-		info.Description = strAwardedInfo.substr(0, sep);
-	}
+	info.Name = std::move(name);
+	info.Description = std::move(strAwardedInfo);
 	info.Posthumous = bPosthumous;
 
 	NormalizePersonInfo(info);
@@ -726,23 +738,10 @@ bool CDocumentParser::SpltPersonInfo(PersonInfo& person)
 	}
 
 	std::wstring strAwardedInfo = person.Description.substr(0, posNextPerson);
-	stripComradeTitle(strAwardedInfo);
-
-	size_t pos1 = strAwardedInfo.rfind(' ');
-	size_t pos2 = strAwardedInfo.rfind(' ', pos1 - 1);
-	if (pos1 == std::wstring::npos || pos2 == std::wstring::npos)
+	const LangType lang = person.Ukaz.RussianLang ? LangRU : LangBY;
+	if (!takePersonName(m_NameConverter, strAwardedInfo, lang, nounCase, person2.Name))
 		return false;
-
-	if (!IsCapital(strAwardedInfo[pos1 + 1]) || !IsCapital(strAwardedInfo[pos2 + 1]))
-		return false;
-
-	size_t sep = pos2;
-	size_t pos3 = strAwardedInfo.rfind(' ', pos2 - 1);
-	if (pos3 != std::wstring::npos && IsCapital(strAwardedInfo[pos3 + 1]))
-		sep = pos3;
-
-	person2.Name = strAwardedInfo.substr(sep + 1);;
-	person2.Description = strAwardedInfo.substr(0, sep);
+	person2.Description = std::move(strAwardedInfo);
 
 	if (bSameProfession)
 	{
@@ -750,7 +749,7 @@ bool CDocumentParser::SpltPersonInfo(PersonInfo& person)
 		std::wstring strFirstWord = person2.Description.substr(0, posNext);
 
 		static const RulesList rulesPlural = { { SexAny, LangAny, L"ам", L"ов", L"--"} };
-		if (CNameConverter::ApplyRules(strFirstWord, rulesPlural, SexAny, person.Ukaz.RussianLang ? LangRU : LangBY, nounCase, false))
+		if (CNameConverter::ApplyRules(strFirstWord, rulesPlural, SexAny, lang, nounCase, false))
 		{
 			person2.Description.erase(0, posNext);
 			person2.Description.insert(0, strFirstWord);
@@ -763,7 +762,7 @@ bool CDocumentParser::SpltPersonInfo(PersonInfo& person)
 	else
 	{
 		person.Description.erase(0, posNextPerson + 3);
-		if (m_ProfessionConverter.ConvertProfession(person.Description, person.Ukaz.RussianLang ? LangRU : LangBY, nounCase))
+		if (m_ProfessionConverter.ConvertProfession(person.Description, lang, nounCase))
 			person.Flags |= PersonInfo::NF_PROFESSION;
 	}
 
