@@ -39,7 +39,8 @@ public:
 	bool UpdateDictionary(std::vector<NewDictItem>& newItems);
 
 	bool ConvertProfession(std::wstring& strSource, LangType lang, NounCase nounCase);
-	static std::wstring GetNextWord(std::wstring& strSource, size_t& posStart);
+	// posStart comes back on the first letter. posEnd, when set, is the separator after the word.
+	static std::wstring GetNextWord(std::wstring& strSource, size_t& posStart, size_t* posEnd = nullptr);
 	void FindNewWords(std::wstring& strSource, LangType lang, NounCase nounCase);
 	bool AddNewWord(std::wstring& word, LangType lang, NounCase nounCase);
 

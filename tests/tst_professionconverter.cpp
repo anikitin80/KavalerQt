@@ -27,6 +27,7 @@ private slots:
     void dictionaryRoundTrip();
     void otherCaseSuppliesTheNominative();
     void dictionaryKeysMatchLookup();
+    void adjectiveChainIsNotANewWord();
 };
 
 void TestProfessionConverter::initTestCase()
@@ -105,6 +106,14 @@ void TestProfessionConverter::convert_data()
                                    << QStringLiteral("хатняя гаспадыня вёскі");
     QTest::newRow("ru dat старому") << QStringLiteral("старому слесарю цеха") << LangRU << Dative
                                     << QStringLiteral("старый слесарь цеха");
+    // a repeated space stays put when the adjective gets shorter
+    QTest::newRow("ru dat double space") << QStringLiteral("старому  слесарю цеха") << LangRU << Dative
+                                         << QStringLiteral("старый  слесарь цеха");
+    // the hyphen belongs to the adjective, the profession after it is not pulled back
+    QTest::newRow("by dat hyphenated adjective") << QStringLiteral("вялікаму-новаму інспектару цэха") << LangBY << Dative
+                                                 << QStringLiteral("вялікі-новы інспектар цэха");
+    QTest::newRow("by dat en dash") << QStringLiteral("вялікаму\u2013інспектару цэха") << LangBY << Dative
+                                    << QStringLiteral("вялікі\u2013інспектар цэха");
 }
 
 void TestProfessionConverter::convert()
@@ -300,6 +309,19 @@ void TestProfessionConverter::dictionaryKeysMatchLookup()
     std::wstring onceMore = QStringLiteral("вадзіцелю цэха").toStdWString();
     QVERIFY(again.ConvertProfession(onceMore, LangBY, Dative));
     QCOMPARE(QString::fromStdWString(onceMore), QStringLiteral("вадзіцель цэха"));
+}
+
+// every leading adjective is skipped, not only the first
+void TestProfessionConverter::adjectiveChainIsNotANewWord()
+{
+    CProfessionConverter converter;
+    TestData::useTestDictionaries(converter);
+    std::wstring text = L"вялікаму сіняму новаму брынзалу";
+    QVERIFY(!converter.ConvertProfession(text, LangBY, Dative));
+    QCOMPARE(QString::fromStdWString(text), QStringLiteral("вялікаму сіняму новаму брынзалу"));
+    QCOMPARE(int(converter.newWords().size()), 1);
+    QCOMPARE(QString::fromStdWString(converter.newWords().front().Original), QStringLiteral("брынзалу"));
+    QCOMPARE(QString::fromStdWString(converter.newWords().front().Word), QStringLiteral("брынзал"));
 }
 
 QTEST_GUILESS_MAIN(TestProfessionConverter)

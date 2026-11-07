@@ -227,15 +227,19 @@ bool CProfessionConverter::UpdateDictionary(std::vector<NewDictItem>& newItems)
 	return bRes;
 }
 
-std::wstring CProfessionConverter::GetNextWord(std::wstring& strSource, size_t& posStart)
+std::wstring CProfessionConverter::GetNextWord(std::wstring& strSource, size_t& posStart, size_t* posEndOut)
 {
 	posStart = strSource.find_first_not_of(L" ,-–", posStart);
 	if (posStart == std::wstring::npos)
 		return L"";
 
-	size_t posEnd = strSource.find_first_of(L" ,-", posStart);
+	// the same separators at both ends: an en dash was a word start but not a word end,
+	// so "былому–інспектару" stayed one word
+	size_t posEnd = strSource.find_first_of(L" ,-–", posStart);
 	if (posEnd == std::wstring::npos)
 		posEnd = strSource.length();
+	if (posEndOut)
+		*posEndOut = posEnd;
 
 	std::wstring word;
 	if(posEnd > posStart)
@@ -553,14 +557,27 @@ void CProfessionConverter::ConvertLeadingAdjectives(std::wstring& strSource, siz
 	size_t posStart = 0;
 	while (posStart < posMainWord)
 	{
-		std::wstring word = GetNextWord(strSource, posStart);
-		if (word.empty())
+		size_t posEnd = posStart;
+		std::wstring word = GetNextWord(strSource, posStart, &posEnd);
+		if (word.empty() || posStart >= posMainWord)
 			break;
 
 		const size_t wordLength = word.length();
 		if (CNameConverter::ApplyRules(word, RulesAdjectives, SexAny, lang, nounCase, false))
+		{
 			strSource.replace(posStart, wordLength, word);
-		posStart += word.length() + 1;
+			// a shorter adjective must not pull the next word back under posMainWord
+			if (word.length() >= wordLength) {
+				const size_t grown = word.length() - wordLength;
+				posEnd += grown;
+				posMainWord += grown;
+			} else {
+				const size_t shrunk = wordLength - word.length();
+				posEnd -= shrunk;
+				posMainWord -= shrunk;
+			}
+		}
+		posStart = posEnd;
 	}
 }
 
@@ -576,7 +593,8 @@ bool CProfessionConverter::ConvertProfession(std::wstring& strSource, LangType l
 	size_t posStart = 0, posMainWord = 0;
 	for (int i = 0; i < maxProfessionWords && posStart < strSource.length(); i++)
 	{
-		const std::wstring word = ToLower(GetNextWord(strSource, posStart));
+		size_t posEnd = posStart;
+		const std::wstring word = ToLower(GetNextWord(strSource, posStart, &posEnd));
 		if (word.empty())
 			break;
 
@@ -605,7 +623,7 @@ bool CProfessionConverter::ConvertProfession(std::wstring& strSource, LangType l
 			break;
 		}
 
-		posStart += word.length() + 1;
+		posStart = posEnd;
 	}
 
 	if (!bResult)
@@ -631,19 +649,28 @@ void CProfessionConverter::FindNewWords(std::wstring& strSource, LangType lang, 
 	else
 		strEndings = { L"га", L"го" ,L"ую", L"юю" };
 
-	// try to check the first word - it could be new profession and we can add it to the dictionary
+	// the first word may be a new profession. An opening run of adjectives is not:
+	// "вялікаму сіняму новаму брынзалу" offers "брынзалу", not "сіняму"
 	size_t posStart = 0;
-	std::wstring word = GetNextWord(strSource, posStart);
-    if (word.length() <= 2)
-        return;
+	size_t posEnd = 0;
+	std::wstring word = GetNextWord(strSource, posStart, &posEnd);
+	if (word.length() <= 2)
+		return;
 
-	std::wstring strEnd = word.substr(word.length() - 2);
-	if (std::find(strEndings.begin(), strEndings.end(), strEnd) != strEndings.end())
+	const auto adjectiveEnding = [&strEndings](const std::wstring& candidate) {
+		if (candidate.length() < 2)
+			return false;
+		const std::wstring ending = candidate.substr(candidate.length() - 2);
+		return std::find(strEndings.begin(), strEndings.end(), ending) != strEndings.end();
+	};
+	while (adjectiveEnding(word))
 	{
-		posStart += word.length() + 1;
+		posStart = posEnd;
 		if (posStart >= strSource.length())
 			return;
-		word = GetNextWord(strSource, posStart);
+		word = GetNextWord(strSource, posStart, &posEnd);
+		if (word.empty())
+			return;
 	}
 
 	AddNewWord(word, lang, nounCase);
