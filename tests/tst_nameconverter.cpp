@@ -18,6 +18,7 @@ private slots:
     void foreignNameWithoutPatronymic();
     void uncertainSurnameIsReported();
     void aliasAtStartDoesNotThrow();
+    void unknownPatronymicIsReported();
     void isMiddleName_data();
     void isMiddleName();
     void sex();
@@ -44,6 +45,9 @@ void TestNameConverter::normalizeName_data()
                                      << QStringLiteral("Хомчик Алексей Сидорович");
     QTest::newRow("ru dat female") << QStringLiteral("Петровой Анне Сергеевне") << LangRU << Dative
                                    << QStringLiteral("Петрова Анна Сергеевна");
+    // the patronymic ending decides the sex; capitals must not make her male
+    QTest::newRow("ru dat female upper patronymic") << QStringLiteral("Никитиной Анне ИВАНОВНЕ") << LangRU << Dative
+                                                    << QStringLiteral("Никитина Анна ИВАНОВНа");
     QTest::newRow("ru dat exception Павел") << QStringLiteral("Сидорову Павлу Ивановичу") << LangRU << Dative
                                             << QStringLiteral("Сидоров Павел Иванович");
     QTest::newRow("ru dat exception Лев") << QStringLiteral("Сидорову Льву Ивановичу") << LangRU << Dative
@@ -148,6 +152,15 @@ void TestNameConverter::uncertainSurnameIsReported()
     QCOMPARE(QString::fromStdWString(name), QStringLiteral("Толстый Иван Петрович"));
 }
 
+// "оглы" is not a patronymic the rules know; the name stays for review
+void TestNameConverter::unknownPatronymicIsReported()
+{
+    CNameConverter converter;
+    std::wstring name = L"Иванову Ивану оглы";
+    QVERIFY(!converter.NormalizeName(name, LangRU, Dative));
+    QCOMPARE(QString::fromStdWString(name), QStringLiteral("Иванов Иван оглы"));
+}
+
 void TestNameConverter::aliasAtStartDoesNotThrow()
 {
     CNameConverter converter;
@@ -191,9 +204,13 @@ void TestNameConverter::sex()
     CNameConverter converter;
     std::wstring female = L"Николаевну";
     std::wstring femaleDat = L"Николаевне";
+    std::wstring femaleDatUpper = L"НИКОЛАЕВНЕ";
+    std::wstring femaleUpper = L"НИКОЛАЕВНУ";
     std::wstring male = L"Николаевича";
     QCOMPARE(converter.GetSex(female, Accusative), SexFemale);
     QCOMPARE(converter.GetSex(femaleDat, Dative), SexFemale);
+    QCOMPARE(converter.GetSex(femaleDatUpper, Dative), SexFemale);
+    QCOMPARE(converter.GetSex(femaleUpper, Accusative), SexFemale);
     QCOMPARE(converter.GetSex(male, Accusative), SexMale);
 }
 

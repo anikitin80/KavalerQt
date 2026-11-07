@@ -235,12 +235,14 @@ bool CNameConverter::NormalizeName(std::wstring& fullName, LangType lang, NounCa
 		firstName = fullName.substr(pos1 + 1);
 	StrTrim(firstName);
 
+	// an unrecognized patronymic is a failed name: the import window marks NF_NAME
+	bool middleNameOk = true;
 	SexType sex = SexMale;	// male by default
 	if (!middleName.empty())
 	{
 		sex = GetSex(middleName, nounCase);
 		// double patronymic: "Гедзімінасавіча-Альбертасавіча"
-		ForEachPart(middleName, [&](std::wstring& part) {
+		middleNameOk = ForEachPart(middleName, [&](std::wstring& part) {
 			return ApplyRules(part, RulesMiddleName, sex, lang, nounCase, false);
 		});
 	}
@@ -278,13 +280,17 @@ bool CNameConverter::NormalizeName(std::wstring& fullName, LangType lang, NounCa
 	if (!strAlias.empty())
 		fullName += L" (" + strAlias + L")";
 
-	return bResFN && bResLN;
+	return bResFN && bResLN && middleNameOk;
 }
 
 SexType CNameConverter::GetSex(std::wstring& middleName, NounCase nounCase)
 {
-	if (middleName.length() > 2 && middleName.substr(middleName.length() - 2) == (nounCase == Dative? L"не" : L"ну"))
-		return SexFemale;
+	if (middleName.length() > 2)
+	{
+		const std::wstring ending = ToLower(middleName.substr(middleName.length() - 2));
+		if (ending == (nounCase == Dative ? L"не" : L"ну"))
+			return SexFemale;
+	}
 
 	return SexMale;
 }
