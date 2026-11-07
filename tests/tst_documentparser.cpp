@@ -40,6 +40,9 @@ private slots:
 
     void awardId_data();
     void awardId();
+    void longestAwardMatch();
+    void awardPhraseCoversTheDecreeText();
+    void personAfterAward();
     void militaryRank_data();
     void militaryRank();
     void posthumousInDescription_data();
@@ -111,6 +114,108 @@ void TestDocumentParser::awardId()
     QFETCH(bool, russian);
     QFETCH(int, expected);
     QCOMPARE(m_parser->GetAwardId(award.toStdWString(), russian), expected);
+}
+
+// a shorter catalog name must not win when it is a prefix of a longer one
+void TestDocumentParser::longestAwardMatch()
+{
+    Parser parser;
+    std::map<long, DecreeAward> table;
+    DecreeAward shortMedal;
+    shortMedal.Type = DecreeAward::Medal;
+    shortMedal.Name = L"Медаль \"За отличие\"";
+    DecreeAward longMedal;
+    longMedal.Type = DecreeAward::Medal;
+    longMedal.Name = L"Медаль \"За отличие в службе\"";
+    table.emplace(1, shortMedal);
+    table.emplace(2, longMedal);
+    parser.Initialize(table);
+
+    const std::wstring longer = L"медалью «За отличие в службе» Иванова";
+    size_t length = 0;
+    QCOMPARE(parser.GetAwardId(longer, true, false, &length), 2);
+    QCOMPARE(text(longer.substr(0, length)), QStringLiteral("медалью «За отличие в службе»"));
+
+    const std::wstring shorter = L"медалью «За отличие» Иванова";
+    length = 0;
+    QCOMPARE(parser.GetAwardId(shorter, true, false, &length), 1);
+    QCOMPARE(text(shorter.substr(0, length)), QStringLiteral("медалью «За отличие»"));
+}
+
+void TestDocumentParser::awardPhraseCoversTheDecreeText()
+{
+    const auto phrase = [this](const wchar_t* line, bool russian) {
+        size_t length = 0;
+        const int id = m_parser->GetAwardId(line, russian, false, &length);
+        return qMakePair(id, text(std::wstring(line).substr(0, length)));
+    };
+
+    QCOMPARE(phrase(L"медалью «За отвагу» Иванова", true),
+             qMakePair(14, QStringLiteral("медалью «За отвагу»")));
+    QCOMPARE(phrase(L"медалью Франциска Скорины Иванова", true),
+             qMakePair(19, QStringLiteral("медалью Франциска Скорины")));
+    QCOMPARE(phrase(L"орденом Отечества ІІІ степени Иванова", true),
+             qMakePair(4, QStringLiteral("орденом Отечества ІІІ степени")));
+    QCOMPARE(phrase(L"почетное звание «Заслуженный врач Республики Беларусь» Иванову", true),
+             qMakePair(43, QStringLiteral("почетное звание «Заслуженный врач Республики Беларусь»")));
+    QCOMPARE(phrase(L"почетное звание «Народный артист\u00A0Беларуси» Иванову", true),
+             qMakePair(29, QStringLiteral("почетное звание «Народный артист\u00A0Беларуси»")));
+    QCOMPARE(phrase(L"ганаровае званне «Заслужаны ўрач Рэспублікі Беларусь» Іванову", false),
+             qMakePair(43, QStringLiteral("ганаровае званне «Заслужаны ўрач Рэспублікі Беларусь»")));
+
+    size_t length = 99;
+    QCOMPARE(m_parser->GetAwardId(L"медалью «Неизвестная»", true, false, &length), 0);
+    QCOMPARE(length, size_t(0));
+}
+
+// the person follows the award, so the cut is the phrase in the decree
+void TestDocumentParser::personAfterAward()
+{
+    parse({kUkazRu, QStringLiteral("15 мая 2001 г. № 260"),
+           QStringLiteral("За заслуги наградить медалью Франциска Скорины слесаря цеха Иванова Ивана Ивановича."),
+           kPresident});
+    QCOMPARE(int(m_parser->m_Persons.size()), 1);
+    PersonInfo& skorina = m_parser->m_Persons.front();
+    QCOMPARE(skorina.AwardId, 19);
+    QCOMPARE(text(skorina.Name), QStringLiteral("Иванов Иван Иванович"));
+    QCOMPARE(text(m_parser->GetPersonDescription(skorina, false)), QStringLiteral("слесарь цеха"));
+
+    m_parser->ResetData();
+    parse({kUkazRu, QStringLiteral("15 мая 2001 г. № 261"),
+           QStringLiteral("За заслуги наградить медалью «За отвагу» слесаря цеха Иванова Ивана Ивановича."),
+           kPresident});
+    PersonInfo& medal = m_parser->m_Persons.front();
+    QCOMPARE(medal.AwardId, 14);
+    QCOMPARE(text(medal.Name), QStringLiteral("Иванов Иван Иванович"));
+    QCOMPARE(text(m_parser->GetPersonDescription(medal, false)), QStringLiteral("слесарь цеха"));
+
+    m_parser->ResetData();
+    parse({kUkazRu, QStringLiteral("15 мая 2001 г. № 262"),
+           QStringLiteral("За заслуги присвоить почетное звание «Заслуженный врач Республики Беларусь» "
+                          "слесарю цеха Иванову Ивану Ивановичу."),
+           kPresident});
+    PersonInfo& title = m_parser->m_Persons.front();
+    QCOMPARE(title.AwardId, 43);
+    QCOMPARE(text(title.Name), QStringLiteral("Иванов Иван Иванович"));
+    QCOMPARE(text(m_parser->GetPersonDescription(title, false)), QStringLiteral("слесарь цеха"));
+
+    m_parser->ResetData();
+    parse({kUkazRu, QStringLiteral("15 мая 2001 г. № 263"),
+           QStringLiteral("За заслуги наградить орденом Отечества ІІІ степени Иванова Ивана Ивановича."),
+           kPresident});
+    PersonInfo& order = m_parser->m_Persons.front();
+    QCOMPARE(order.AwardId, 4);
+    QCOMPARE(text(order.Name), QStringLiteral("Иванов Иван Иванович"));
+    QCOMPARE(text(m_parser->GetPersonDescription(order, false)), QString());
+
+    m_parser->ResetData();
+    parse({kUkazBy, QStringLiteral("15 мая 2001 г. № 264"),
+           QStringLiteral("За мужнасць узнагародзіць медалём «За адвагу» слесара цэха Лагодзіча Юрыя Іванавіча."),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    PersonInfo& belarusian = m_parser->m_Persons.front();
+    QCOMPARE(belarusian.AwardId, 14);
+    QCOMPARE(text(belarusian.Name), QStringLiteral("Лагодзіч Юрый Іванавіч"));
+    QCOMPARE(text(m_parser->GetPersonDescription(belarusian, false)), QStringLiteral("слесар цэха"));
 }
 
 void TestDocumentParser::militaryRank_data()

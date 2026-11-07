@@ -67,7 +67,10 @@ protected:
 	void AddGroupInfo(const UkazInfo& ukaz, const std::wstring& fileName, const std::wstring& groupInfo);
 	bool GetGroupInfo(const UkazInfo& ukaz, std::wstring& info);
 
-	int  GetAwardId(std::wstring award, bool bRussian, bool bPochetNameOnly = false);
+	// phraseLength, when set, receives how many leading characters of award are the
+	// award phrase itself (quotes and a country suffix included), so the text after
+	// it is the person. 0 when nothing matched.
+	int  GetAwardId(std::wstring award, bool bRussian, bool bPochetNameOnly = false, size_t* phraseLength = nullptr);
 
 	std::map<std::wstring, int> m_mapFileMonth;
 	std::wstring m_FileName;
