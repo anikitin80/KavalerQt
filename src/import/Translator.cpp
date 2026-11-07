@@ -8,6 +8,7 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QSettings>
+#include <QTimer>
 
 namespace {
 
@@ -72,8 +73,11 @@ void applyTranslation(Person& person, Field field, QString text)
 }
 
 QStringList requestTranslation(QNetworkAccessManager& network, const QUrl& endpoint, const QString& apiKey,
-                               const QStringList& texts, QString* error)
+                               const QStringList& texts, QString* error, bool* canceled,
+                               const std::function<bool()>& stop)
 {
+    if (canceled)
+        *canceled = false;
     QJsonArray source;
     for (const QString& text : texts)
         source.append(text);
@@ -91,12 +95,33 @@ QStringList requestTranslation(QNetworkAccessManager& network, const QUrl& endpo
     QEventLoop loop;
     QNetworkReply* reply = network.post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
     QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
-    loop.exec();
+    QTimer timer;
+    if (stop) {
+        // "Отмена" while this reply is in flight: the button is delivered by this loop
+        QObject::connect(&timer, &QTimer::timeout, &loop, [reply, &stop] {
+            if (stop())
+                reply->abort();
+        });
+        timer.start(50);
+        if (stop())
+            reply->abort();
+    }
+    if (!reply->isFinished())
+        loop.exec();
+    timer.stop();
 
     const QByteArray payload = reply->readAll();
     const auto failure = reply->error();
     const QString failureText = reply->errorString();
     reply->deleteLater();
+
+    if (failure == QNetworkReply::OperationCanceledError) {
+        if (canceled)
+            *canceled = true;
+        if (error)
+            error->clear();
+        return {};
+    }
 
     const QJsonDocument document = QJsonDocument::fromJson(payload);
     if (failure != QNetworkReply::NoError) {
@@ -139,6 +164,11 @@ void setYandexApiKey(const QString& key)
         settings.setValue(QLatin1String(kApiKeySetting), key.trimmed());
 }
 
+int cloud::requestLength(const QString& text)
+{
+    return int(text.size()) + text.count(QLatin1Char('"')) + text.count(QLatin1Char('\\'));
+}
+
 QVector<QPair<int, int>> cloud::groupRequests(const QVector<int>& lengths, int limit)
 {
     QVector<QPair<int, int>> groups;
@@ -158,7 +188,8 @@ QVector<QPair<int, int>> cloud::groupRequests(const QVector<int>& lengths, int l
 }
 
 int cloud::translate(QVector<Person>& people, CloudScope scope, bool force, QString* error,
-                     const std::function<bool(int done)>& progress, const QUrl& endpoint, const QString& apiKey)
+                     const std::function<bool(int done)>& progress, const QUrl& endpoint, const QString& apiKey,
+                     const std::function<bool()>& canceled)
 {
     QVector<QVector<Field>> fields;
     QVector<int> lengths;
@@ -168,7 +199,7 @@ int cloud::translate(QVector<Person>& people, CloudScope scope, bool force, QStr
         fields.push_back(fieldsToTranslate(person, scope, force));
         int length = 0;
         for (Field field : fields.back())
-            length += int(sourceText(person, field).size());
+            length += requestLength(sourceText(person, field));
         lengths.push_back(length);
     }
 
@@ -195,7 +226,10 @@ int cloud::translate(QVector<Person>& people, CloudScope scope, bool force, QStr
                 texts.push_back(sourceText(people.at(i), field));
         }
         if (!texts.isEmpty()) {
-            const QStringList translated = requestTranslation(network, endpoint, apiKey, texts, error);
+            bool aborted = false;
+            const QStringList translated = requestTranslation(network, endpoint, apiKey, texts, error, &aborted, canceled);
+            if (aborted)
+                return first;
             if (translated.size() != texts.size())
                 return first;
             int index = 0;
@@ -211,10 +245,11 @@ int cloud::translate(QVector<Person>& people, CloudScope scope, bool force, QStr
 }
 
 int translateWithCloud(QVector<Person>& people, CloudScope scope, bool force, QString* error,
-                       const std::function<bool(int done)>& progress)
+                       const std::function<bool(int done)>& progress, const std::function<bool()>& canceled)
 {
     return cloud::translate(people, scope, force, error, progress,
-        QUrl(QStringLiteral("https://translate.api.cloud.yandex.net/translate/v2/translate")), yandexApiKey());
+        QUrl(QStringLiteral("https://translate.api.cloud.yandex.net/translate/v2/translate")), yandexApiKey(),
+        canceled);
 }
 
 bool translateWithCloud(Person& person, CloudScope scope, bool force, QString* error)

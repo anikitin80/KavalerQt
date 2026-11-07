@@ -760,7 +760,7 @@ void MainWindow::translateSelectedCloud(CloudScope scope)
     const int done = translateWithCloud(translated, scope, false, &failure, [&progress](int count) {
         progress.setValue(count);
         return !progress.wasCanceled();
-    });
+    }, [&progress] { return progress.wasCanceled(); });
     progress.reset();
 
     QVector<Person> changed;

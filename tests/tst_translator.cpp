@@ -18,7 +18,7 @@ namespace {
 class FakeYandex : public QObject
 {
 public:
-    explicit FakeYandex(int failAt = 0) : m_failAt(failAt)
+    explicit FakeYandex(int failAt = 0, bool hold = false) : m_failAt(failAt), m_hold(hold)
     {
         m_server.listen(QHostAddress::LocalHost);
         connect(&m_server, &QTcpServer::newConnection, this, [this] {
@@ -64,6 +64,8 @@ private:
                 translations.append(QJsonObject{{QStringLiteral("text"), QStringLiteral("ru:") + text.toString()}});
             }
             requests << texts;
+            if (m_hold)
+                return;
             const bool fail = int(requests.size()) == m_failAt;
             const QByteArray answer = fail
                 ? QByteArray(R"({"message":"quota exceeded"})")
@@ -77,6 +79,7 @@ private:
     QTcpServer m_server;
     QHash<QTcpSocket*, QByteArray> m_buffers;
     int m_failAt = 0;
+    bool m_hold = false;
 };
 
 Person belarusian(const QString& name, const QString& personal = {}, const QString& rank = {})
@@ -106,6 +109,19 @@ private slots:
         QCOMPARE(cloud::groupRequests({2, 25, 2}, 10), Groups({{0, 1}, {1, 2}, {2, 3}}));
         // people with nothing to translate join any group
         QCOMPARE(cloud::groupRequests({0, 10, 0, 0}, 10), Groups({{0, 4}}));
+    }
+
+    // " and \ take two characters in the JSON body. The raw sum still fits.
+    void quotesCountTowardsTheLimit()
+    {
+        const QString quotes(4, QLatin1Char('"'));
+        const QString slashes(4, QLatin1Char('\\'));
+        QCOMPARE(cloud::requestLength(QStringLiteral("abcd")), 4);
+        QCOMPARE(cloud::requestLength(quotes), 8);
+        QCOMPARE(cloud::requestLength(slashes), 8);
+        QCOMPARE(quotes.size() + slashes.size(), 8);
+        QCOMPARE(cloud::groupRequests({cloud::requestLength(quotes), cloud::requestLength(slashes)}, 10),
+                 Groups({{0, 1}, {1, 2}}));
     }
 
     void severalPeopleInOneRequestOverOneConnection()
@@ -194,6 +210,19 @@ private slots:
         QVERIFY(error.isEmpty());
         QCOMPARE(server.requests.size(), 1);
         QVERIFY(people.at(1).name.isEmpty());
+    }
+
+    // the reply in flight is aborted, and cancel is not reported as a network error
+    void cancelAbortsTheCurrentReply()
+    {
+        FakeYandex server(0, true);
+        QVector<Person> people{belarusian(QStringLiteral("Іван"))};
+        QString error = QStringLiteral("sentinel");
+        const int done = cloud::translate(people, CloudScope::All, false, &error, [](int) { return true; },
+                                          server.url(), QStringLiteral("k"), [] { return true; });
+        QCOMPARE(done, 0);
+        QVERIFY(error.isEmpty());
+        QVERIFY(people.at(0).name.isEmpty());
     }
 };
 
