@@ -198,6 +198,40 @@ const std::vector<std::wstring> searchGroup = { L"группу", L"группы"
 	L"сотрудников", L"ваеннаслужачых", L"военнослужащих" };
 const std::vector<std::wstring> searchGroupEnd = { L"государственными", L"орденом", L"медалью", L"дзяржаўнымі", L"ордэнам", L"медалём", L"почетные", L"почетное", L"почетных" };
 
+// Decrees of the early 1990s put "тов." in front of the name:
+// "скульптору тов. Гумилевскому Льву Николаевичу". The space after the period
+// is often a no-break space, so the surname stays glued to "тов." and the
+// name is left as given name and patronymic.
+void stripComradeTitle(std::wstring& text)
+{
+	const auto gap = [](wchar_t character) { return character == L' ' || character == L'\u00A0'; };
+	for (size_t pos = 0; pos < text.size(); )
+	{
+		const bool title = (text.compare(pos, 3, L"тов") == 0 || text.compare(pos, 3, L"Тов") == 0)
+			&& (pos == 0 || gap(text[pos - 1]));
+		if (!title) {
+			++pos;
+			continue;
+		}
+		size_t end = pos + 3;
+		if (end < text.size() && text[end] == L'.')
+			++end;
+		if (end < text.size() && gap(text[end])) {
+			size_t name = end;
+			while (name < text.size() && gap(text[name]))
+				++name;
+			if (name < text.size() && IsCapital(text[name])) {
+				// the space before "тов." may be a no-break space; the name split looks for a usual one
+				if (pos > 0 && text[pos - 1] == L'\u00A0')
+					text[pos - 1] = L' ';
+				text.erase(pos, name - pos);
+				continue;
+			}
+		}
+		pos = end > pos ? end : pos + 1;
+	}
+}
+
 } // namespace
 
 // "15 мая 1997 г.№ 282": the number after "№", the date before "г"
@@ -361,7 +395,9 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 				if (posActionEnd > 0 && strLine.back() != L':')
 				{
 					std::wstring strAwardedInfo;
-					if(posTargetStart - posActionEnd > 10)
+					// person and rank before the award ("...Кашкана ... орденом «...» (посмертно).")
+					const bool personBeforeAward = posTargetStart - posActionEnd > 10;
+					if (personBeforeAward)
 						strAwardedInfo = strLine.substr(posActionEnd, posTargetStart - posActionEnd);
 					else if (awardId > 0)
 					{
@@ -375,7 +411,29 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 					}
 
 					if(!strAwardedInfo.empty())
+					{
+						const size_t addedFrom = m_Persons.size();
 						ExtractPersonInfo(curAward, strAwardedInfo);
+						// the mark may sit after the award title, outside strAwardedInfo
+						if (personBeforeAward && awardId > 0 && m_Persons.size() > addedFrom)
+						{
+							auto iter = m_Awards.find(awardId);
+							if (iter != m_Awards.end())
+							{
+								const size_t nAwardLen = m_UkazInfo.RussianLang ? iter->second.Name.length() : iter->second.NameBY.length();
+								if (posTargetStart + nAwardLen < strLine.length())
+								{
+									const std::wstring tail = strLine.substr(posTargetStart + nAwardLen);
+									const wchar_t* mark = m_UkazInfo.RussianLang ? L"(посмертно)" : L"(пасмяротна)";
+									if (tail.find(mark) != std::wstring::npos)
+									{
+										for (size_t i = addedFrom; i < m_Persons.size(); ++i)
+											m_Persons[i].Posthumous = true;
+									}
+								}
+							}
+						}
+					}
 				}
 
 				if (strLine.back() == L':')
@@ -530,6 +588,7 @@ void CDocumentParser::ExtractPersonInfo(std::wstring& curAward, std::wstring& st
 	}
 
 	StrTrim(strAwardedInfo);
+	stripComradeTitle(strAwardedInfo);
 
 	// check for alias
 	bool bHasAlias = false;
@@ -590,6 +649,7 @@ bool CDocumentParser::SpltPersonInfo(PersonInfo& person)
 	}
 
 	std::wstring strAwardedInfo = person.Description.substr(0, posNextPerson);
+	stripComradeTitle(strAwardedInfo);
 
 	size_t pos1 = strAwardedInfo.rfind(' ');
 	size_t pos2 = strAwardedInfo.rfind(' ', pos1 - 1);
@@ -638,6 +698,8 @@ bool CDocumentParser::SpltPersonInfo(PersonInfo& person)
 
 void CDocumentParser::NormalizePersonInfo(PersonInfo& person)
 {
+	StrTrim(person.Name);
+	stripComradeTitle(person.Name);
 	StrTrim(person.Name);
 	StrTrim(person.Description);
 	std::replace(person.Description.begin(), person.Description.end(), L' ', L' ');
@@ -704,6 +766,7 @@ bool CDocumentParser::ExtractMilitaryRank(PersonInfo& person, LangType lang, Nou
 	{
 		person.Posthumous = true;
 		person.Description.erase(posPost, person.Description.length() - posPost);
+		StrTrim(person.Description);
 	}
 
 	size_t posComma = person.Description.rfind(L',');

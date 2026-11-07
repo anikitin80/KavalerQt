@@ -48,6 +48,8 @@ private slots:
     void decreeHeader();
     void singleAwardPersonBeforeAward();
     void singleAwardPosthumous();
+    void singleAwardPosthumousAfterAward();
+    void comradeTitleBeforeName();
     void listWithLineBreaks();
     void housewifeGetsTheCityOfTheSection();
     void listEndingWithDashDoesNotCrash();
@@ -197,6 +199,8 @@ void TestDocumentParser::posthumousInDescription()
     m_parser->ExtractMilitaryRank(person, lang, Dative);
     QCOMPARE(person.Posthumous, posthumous);
     QVERIFY(!text(person.Description).contains(QLatin1Char('(')) || !posthumous);
+    if (posthumous)
+        QVERIFY(!text(person.Description).endsWith(QLatin1Char(' ')));
 }
 
 void TestDocumentParser::decreeHeader()
@@ -226,6 +230,38 @@ void TestDocumentParser::singleAwardPersonBeforeAward()
     QVERIFY(!person.Posthumous);
 }
 
+// "тов." in front of the name, including a no-break space after the period
+void TestDocumentParser::comradeTitleBeforeName()
+{
+    parse({kUkazRu, QStringLiteral("10 октября 1991 г. № 1154-XII"),
+           QStringLiteral("За заслуги присвоить директору Республиканского радиотелецентра тов.\u00A0"
+                          "Чубату Георгию Дмитриевичу почетное звание «Заслуженный связист Республики Беларусь»."),
+           kPresident});
+    QCOMPARE(int(m_parser->m_Persons.size()), 1);
+    PersonInfo& awarded = m_parser->m_Persons.front();
+    QCOMPARE(text(awarded.Name), QStringLiteral("Чубат Георгий Дмитриевич"));
+    QCOMPARE(text(m_parser->GetPersonDescription(awarded, false)),
+             QStringLiteral("директор Республиканского радиотелецентра"));
+
+    m_parser->ResetData();
+    parse({kUkazRu, QStringLiteral("28 декабря 1992 г. № 2078"),
+           QStringLiteral("За достижения наградить скульптора тов. Азгура Заира Исааковича медалью Франциска Скорины."),
+           kPresident});
+    PersonInfo& medal = m_parser->m_Persons.front();
+    QCOMPARE(text(medal.Name), QStringLiteral("Азгур Заир Исаакович"));
+    QCOMPARE(text(m_parser->GetPersonDescription(medal, false)), QStringLiteral("скульптор"));
+
+    m_parser->ResetData();
+    parse({kUkazRu, QStringLiteral("9 апреля 1999 г.№ 206"),
+           QStringLiteral("За мужество наградить:"),
+           QStringLiteral("медалью «За отвагу»"),
+           QStringLiteral("тов. Азгура\vЗаира Исааковича"), QStringLiteral("–"),
+           QStringLiteral("скульптора"),
+           kPresident});
+    QCOMPARE(text(m_parser->m_Persons.front().Name), QStringLiteral("Азгур Заир Исаакович"));
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons.front(), false)), QStringLiteral("скульптор"));
+}
+
 void TestDocumentParser::singleAwardPosthumous()
 {
     parse({kUkazRu, QStringLiteral("22 октября 1996 г. № 434"),
@@ -236,6 +272,25 @@ void TestDocumentParser::singleAwardPosthumous()
     QCOMPARE(person.AwardId, 14);
     QCOMPARE(text(person.Name), QStringLiteral("Иванов Иван Иванович"));
     QCOMPARE(text(m_parser->GetPersonDescription(person, false)), QStringLiteral("водитель"));
+    QVERIFY(person.Posthumous);
+}
+
+// person and rank before the award, "(посмертно)" after the award name
+// (Кашкан, 28.09.2001 № 553; Гурин, 21.01.2005 № 50)
+void TestDocumentParser::singleAwardPosthumousAfterAward()
+{
+    parse({kUkazRu, QStringLiteral("28 сентября 2001 г. № 553"),
+           QStringLiteral("За мужество наградить водителя майора милиции Иванова Ивана Ивановича "
+                          "медалью «За отвагу» (посмертно)."),
+           kPresident});
+    QCOMPARE(int(m_parser->m_Persons.size()), 1);
+    PersonInfo& person = m_parser->m_Persons.front();
+    QCOMPARE(person.AwardId, 14);
+    QCOMPARE(text(person.Name), QStringLiteral("Иванов Иван Иванович"));
+    QCOMPARE(text(m_parser->GetPersonDescription(person, false)), QStringLiteral("водитель"));
+    QCOMPARE(text(person.MilitaryRank), QStringLiteral("майор милиции"));
+    QVERIFY(!text(person.Description).contains(QStringLiteral("(посмертно)")));
+    QVERIFY(!text(person.Description).contains(QStringLiteral("отвагу")));
     QVERIFY(person.Posthumous);
 }
 
