@@ -158,13 +158,30 @@ bool CNameConverter::ApplyRules(std::wstring& name, const RulesList& rules, SexT
 
 	const std::wstring nameLower = ToLower(name);
 
+	// a full word (the exception tables) keeps the first match. An ordinary ending
+	// keeps the longest one, so "Федуце" is "це", not the earlier "е". Equal length
+	// stays with the earlier rule ("ому" is "ы" in Belarusian and "ый" in Russian).
+	const Rule* matched = nullptr;
+	size_t matchedLength = 0;
 	for (const auto& rule : rules)
 	{
-		if (rule.Match(nameLower, sex, lang, nounCase, bFullWordMatch))
-			return rule.Apply(name);
+		if (!rule.Match(nameLower, sex, lang, nounCase, bFullWordMatch))
+			continue;
+		if (bFullWordMatch)
+		{
+			matched = &rule;
+			break;
+		}
+		const std::wstring& suffix = nounCase == Dative ? rule.SuffixDat : rule.SuffixAcc;
+		if (!matched || suffix.length() > matchedLength)
+		{
+			matched = &rule;
+			matchedLength = suffix.length();
+		}
 	}
-
-	return false;
+	if (!matched || !matched->Apply(name))
+		return false;
+	return !matched->Uncertain;
 }
 
 // applies convert to every part of a hyphenated word; true if all parts were converted
@@ -261,14 +278,7 @@ bool CNameConverter::NormalizeName(std::wstring& fullName, LangType lang, NounCa
 	bool bResLN = ForEachPart(lastName, [&](std::wstring& part) {
 		bool bRes = ApplyRules(part, ExceptionsLastName, sex, lang, nounCase, true);
 		if (!bRes)
-		{
 			bRes = ApplyRules(part, RulesLastName, sex, lang, nounCase, false);
-			if (!part.empty() && part.back() == '?')
-			{
-				part.pop_back();
-				bRes = false;
-			}
-		}
 		return bRes;
 	});
 

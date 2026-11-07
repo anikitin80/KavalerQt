@@ -86,6 +86,11 @@ void TestNameConverter::normalizeName_data()
                                  << QStringLiteral("Азярэц Юрый Іванавіч");
     QTest::newRow("ru dat -рцу") << QStringLiteral("Перцу Ивану Петровичу") << LangRU << Dative
                                  << QStringLiteral("Перец Иван Петрович");
+    // "е" is listed first, but "це" and "же" are the real endings
+    QTest::newRow("ru dat longer suffix Федуце") << QStringLiteral("Федуце Ивану Петровичу") << LangRU << Dative
+                                                 << QStringLiteral("Федута Иван Петрович");
+    QTest::newRow("ru dat longer suffix Серёже") << QStringLiteral("Сидорову Серёже Ивановичу") << LangRU << Dative
+                                                 << QStringLiteral("Сидоров Серёжа Иванович");
     QTest::newRow("by acc Заяц") << QStringLiteral("Зайца Юрыя Іванавіча") << LangBY << Accusative
                                  << QStringLiteral("Заяц Юрый Іванавіч");
     QTest::newRow("by acc -гага") << QStringLiteral("Доўгага Пятра Васільевіча") << LangBY << Accusative

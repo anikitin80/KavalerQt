@@ -30,6 +30,12 @@ struct Rule
 	Rule(SexType sex, LangType lang, const wchar_t* sDat, const wchar_t* sAcc, const wchar_t* sNom)
 		: Sex(sex), Language(lang), SuffixDat(sDat), SuffixAcc(sAcc), SuffixNom(sNom)
 	{
+		// "?" is not a letter of the stem: "---ый?" means the nominative is a guess
+		if (!SuffixNom.empty() && SuffixNom.back() == L'?')
+		{
+			Uncertain = true;
+			SuffixNom.pop_back();
+		}
 	};
 
 	bool Match(const std::wstring& nameLower, SexType sex, LangType lang, NounCase nounCase, bool bFullWordMatch) const
@@ -74,6 +80,7 @@ struct Rule
 	std::wstring SuffixDat;
 	std::wstring SuffixAcc;
 	std::wstring SuffixNom;
+	bool Uncertain = false;
 };
 
 typedef std::vector<Rule> RulesList;
