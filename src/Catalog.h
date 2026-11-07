@@ -96,6 +96,20 @@ public:
     bool remove(const QList<int>& ids, QString* error);
 
     QStringList translateName(const QString& nameBy) const;
+    // the same Belarusian full name stored with more than one Russian spelling.
+    // Whitespace is collapsed, so only the letters differ. Empty names are skipped.
+    struct NameVariant
+    {
+        QString name;
+        int count = 0;
+    };
+    struct NameConflict
+    {
+        QString nameBy;
+        int rows = 0;
+        QVector<NameVariant> names; // most frequent first
+    };
+    QVector<NameConflict> russianNameConflicts() const;
     QString professionRu(const QString& professionBy) const;
     QString rankRu(const QString& rankBy) const;
     bool fixQuotes(Person& person);

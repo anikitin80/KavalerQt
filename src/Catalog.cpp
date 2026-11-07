@@ -769,6 +769,42 @@ QStringList Catalog::translateName(const QString& nameBy) const
     return result;
 }
 
+QVector<Catalog::NameConflict> Catalog::russianNameConflicts() const
+{
+    QHash<QString, QHash<QString, int>> spellings;
+    for (const Person& person : m_people) {
+        const QString nameBy = person.nameBy.simplified();
+        const QString name = person.name.simplified();
+        if (nameBy.isEmpty() || name.isEmpty())
+            continue;
+        ++spellings[nameBy][name];
+    }
+
+    QVector<NameConflict> conflicts;
+    for (auto group = spellings.cbegin(); group != spellings.cend(); ++group) {
+        if (group.value().size() < 2)
+            continue;
+        NameConflict conflict;
+        conflict.nameBy = group.key();
+        for (auto spelling = group.value().cbegin(); spelling != group.value().cend(); ++spelling) {
+            conflict.rows += spelling.value();
+            conflict.names.push_back(NameVariant{spelling.key(), spelling.value()});
+        }
+        std::sort(conflict.names.begin(), conflict.names.end(), [](const NameVariant& a, const NameVariant& b) {
+            if (a.count != b.count)
+                return a.count > b.count;
+            return a.name < b.name;
+        });
+        conflicts.push_back(conflict);
+    }
+    std::sort(conflicts.begin(), conflicts.end(), [](const NameConflict& a, const NameConflict& b) {
+        if (a.rows != b.rows)
+            return a.rows > b.rows;
+        return a.nameBy < b.nameBy;
+    });
+    return conflicts;
+}
+
 QString Catalog::professionRu(const QString& professionBy) const
 {
     ensureDerived();

@@ -130,6 +130,7 @@ private slots:
     void identityFollowsEditsAndRemoval();
     void signalsOncePerChange();
     void derivedDataFollowsChanges();
+    void russianNameConflicts();
     void savingDeletedRecordFails();
     void failedOpenKeepsCurrentDatabase();
     void replaceTextSavesLikeAnEdit();
@@ -450,6 +451,39 @@ void TestCatalog::derivedDataFollowsChanges()
     for (const StatMonth& row : m_catalog->stats())
         total += row.total;
     QCOMPARE(total, 5);
+}
+
+// one Belarusian full name with two Russian spellings is reported; one spelling,
+// and a second record that differs only by spaces, is not
+void TestCatalog::russianNameConflicts()
+{
+    QCOMPARE(m_catalog->russianNameConflicts().size(), 0);
+
+    QString error;
+    Person first = *byNameBy(*m_catalog, QStringLiteral("Шульга Валерый Ігаравіч"));
+    first.name = QStringLiteral("Шульга Валерий Игоревич");
+    QVERIFY(m_catalog->save(first, &error));
+
+    Person spaced = first;
+    spaced.id = 0;
+    spaced.ukaseNo = 99;
+    spaced.ukaseDate = QDate(2022, 2, 2);
+    spaced.name = QStringLiteral("Шульга  Валерий   Игоревич");
+    spaced.nameBy = QStringLiteral("Шульга  Валерый\tІгаравіч");
+    QVERIFY(m_catalog->save(spaced, &error));
+    QCOMPARE(m_catalog->russianNameConflicts().size(), 0);
+
+    spaced.name = QStringLiteral("Шульга Валерій Игоревич");
+    QVERIFY(m_catalog->save(spaced, &error));
+    const QVector<Catalog::NameConflict> conflicts = m_catalog->russianNameConflicts();
+    QCOMPARE(conflicts.size(), 1);
+    QCOMPARE(conflicts.at(0).nameBy, QStringLiteral("Шульга Валерый Ігаравіч"));
+    QCOMPARE(conflicts.at(0).rows, 2);
+    QCOMPARE(conflicts.at(0).names.size(), 2);
+    QCOMPARE(conflicts.at(0).names.at(0).name, QStringLiteral("Шульга Валерий Игоревич"));
+    QCOMPARE(conflicts.at(0).names.at(0).count, 1);
+    QCOMPARE(conflicts.at(0).names.at(1).name, QStringLiteral("Шульга Валерій Игоревич"));
+    QCOMPARE(conflicts.at(0).names.at(1).count, 1);
 }
 
 // a copy saved after its record was deleted (e.g. a slow translation) must not

@@ -35,7 +35,7 @@ ctest --test-dir build -C Release --output-on-failure
 | `tst_documentparser` | награды, звания, «посмертно», форматы списков, сведения о группе |
 | `tst_decrees` | реальные указы из `tests/data/decrees` против записей каталога |
 | `tst_docxtext` | чтение docx (встроенный в Qt `QZipReader`) |
-| `tst_catalog` | каталог на временной базе: поиск дубликатов, латинская «i» в белорусских полях, резервная копия |
+| `tst_catalog` | каталог на временной базе: поиск дубликатов, латинская «i» в белорусских полях, одно белорусское ФИО с разными русскими, резервная копия |
 
 В `tests/data/decrees` лежат тексты указов (`<id>.txt`, `\v` означает разрыв строки
 Word) и ожидаемые записи (`<id>.expected.tsv`) в том виде, в котором они хранятся в
@@ -54,7 +54,12 @@ Word) и ожидаемые записи (`<id>.expected.tsv`) в том вид�
 ```bash
 build/tools/Release/decree_report --db D:/Awards/DB/Kavaler.sqlite --docs D:/Awards/AwardsDoc --out build/reports/<дата>
 build/tools/Release/decree_report --db D:/Awards/DB/Kavaler.sqlite --docs D:/Awards/AwardsDoc --out build/reports/<новая> --compare build/reports/<прошлая>
+build/tools/Release/decree_report --names --db D:/Awards/DB/Kavaler.sqlite --out build/reports/names
 ```
+
+`--names` смотрит только базу: одно белорусское ФИО и несколько русских написаний.
+Указы не читаются. В `names.tsv` строки групп, в `summary.txt` сколько групп и записей.
+Пустой список значит, что таких расхождений нет.
 
 В папке отчёта:
 - `summary.txt` — итоги, по годам, по полям, сравнение с прошлым прогоном;

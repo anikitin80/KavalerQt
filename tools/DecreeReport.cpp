@@ -3,6 +3,10 @@
 //
 //   decree_report --db D:/Awards/DB/Kavaler.sqlite --docs D:/Awards/AwardsDoc
 //                 --out build/reports/2026-11-06 [--compare build/reports/<previous>]
+//   decree_report --names --db D:/Awards/DB/Kavaler.sqlite --out build/reports/names
+//
+// --names does not read decrees. It lists Belarusian full names stored with more
+// than one Russian spelling (names.tsv). An empty list means there are none.
 //
 // The database is opened read-only. Output in --out:
 //   summary.txt  totals, by year, which fields differ, comparison with --compare
@@ -188,6 +192,41 @@ QString percent(int part, int total)
     return total ? QString::number(100.0 * part / total, 'f', 1) + QLatin1Char('%') : QStringLiteral("-");
 }
 
+// names.tsv and summary.txt: same Name_BY, several Name. Returns 0, or 1 on write failure.
+int reportNameConflicts(const Catalog& catalog, const QString& databasePath, const QString& outDir)
+{
+    QDir().mkpath(outDir);
+    QFile namesFile(QDir(outDir).filePath(QStringLiteral("names.tsv")));
+    QFile summaryFile(QDir(outDir).filePath(QStringLiteral("summary.txt")));
+    if (!namesFile.open(QIODevice::WriteOnly | QIODevice::Text) || !summaryFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        console() << "cannot write to " << outDir << "\n";
+        return 1;
+    }
+    QTextStream names(&namesFile);
+    names.setEncoding(QStringConverter::Utf8);
+    names << "rows\tname_by\tname\tcount\n";
+    const QVector<Catalog::NameConflict> conflicts = catalog.russianNameConflicts();
+    int rows = 0;
+    for (const Catalog::NameConflict& conflict : conflicts) {
+        rows += conflict.rows;
+        for (const Catalog::NameVariant& variant : conflict.names)
+            names << conflict.rows << '\t' << cell(conflict.nameBy) << '\t' << cell(variant.name) << '\t' << variant.count << '\n';
+    }
+
+    QString summary;
+    QTextStream s(&summary);
+    s << "Расхождения перевода ФИО\n"
+      << "база: " << databasePath << " (" << catalog.people().size() << " записей)\n"
+      << "Одинаковое белорусское ФИО с разными русскими: " << conflicts.size() << " групп, " << rows << " записей\n"
+      << "подробно: names.tsv\n";
+    s.flush();
+    QTextStream summaryOut(&summaryFile);
+    summaryOut.setEncoding(QStringConverter::Utf8);
+    summaryOut << summary;
+    console() << summary;
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -207,13 +246,26 @@ int main(int argc, char** argv)
     const QCommandLineOption filterOption(QStringLiteral("filter"), QStringLiteral("Only files whose path contains this text."), QStringLiteral("text"));
     const QCommandLineOption limitOption(QStringLiteral("limit"), QStringLiteral("Only the first N files."), QStringLiteral("N"));
     const QCommandLineOption allOption(QStringLiteral("all"), QStringLiteral("Write every person to persons.tsv, not only the differing ones."));
-    for (const auto& option : {dbOption, docsOption, outOption, compareOption, dictRuOption, dictByOption, filterOption, limitOption, allOption})
+    const QCommandLineOption namesOption(QStringLiteral("names"),
+                                         QStringLiteral("Report Belarusian full names with more than one Russian spelling. Does not read decrees."));
+    for (const auto& option : {dbOption, docsOption, outOption, compareOption, dictRuOption, dictByOption, filterOption, limitOption, allOption, namesOption})
         cli.addOption(option);
     cli.process(app);
-    if (!cli.isSet(dbOption) || !cli.isSet(docsOption) || !cli.isSet(outOption)) {
-        console() << "--db, --docs and --out are required, see --help\n";
+    const bool namesOnly = cli.isSet(namesOption);
+    if (!cli.isSet(dbOption) || !cli.isSet(outOption) || (!namesOnly && !cli.isSet(docsOption))) {
+        console() << (namesOnly ? "--db and --out are required, see --help\n"
+                                : "--db, --docs and --out are required, see --help\n");
         return 2;
     }
+
+    Catalog catalog;
+    QString error;
+    if (!catalog.open(cli.value(dbOption), &error, true)) {
+        console() << "cannot open the catalog: " << error << "\n";
+        return 1;
+    }
+    if (namesOnly)
+        return reportNameConflicts(catalog, cli.value(dbOption), cli.value(outOption));
 
     // profession dictionaries: explicit, or the ones the application uses
     QString dictRu = cli.value(dictRuOption);
@@ -227,13 +279,6 @@ int main(int argc, char** argv)
     }
     // the parser must not read or write the application's settings
     QCoreApplication::setOrganizationName(QStringLiteral("KavalerTools"));
-
-    Catalog catalog;
-    QString error;
-    if (!catalog.open(cli.value(dbOption), &error, true)) {
-        console() << "cannot open the catalog: " << error << "\n";
-        return 1;
-    }
 
     // catalog index: decree+name -> records (id order), and per award
     QHash<QString, QVector<const Person*>> byAward;
