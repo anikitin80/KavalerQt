@@ -73,7 +73,7 @@ public:
     explicit Catalog(QObject* parent = nullptr);
     ~Catalog() override;
 
-    // readOnly: for reports and tools; every save then fails
+    // readOnly: для отчётов и утилит; любое сохранение тогда не удаётся
     bool open(const QString& path, QString* error, bool readOnly = false);
     void close();
     bool isOpen() const;
@@ -82,28 +82,28 @@ public:
     const QVector<Award>& awards() const { return m_awards; }
     const QVector<Person>& people() const { return m_people; }
     const Award* award(int id) const;
-    // the order of awards everywhere: priority, then name, then id (<0, 0, >0)
+    // порядок наград везде: приоритет, затем имя, затем номер (<0, 0, >0)
     int compareAwards(int left, int right) const;
-    // the record with this id, nullptr if there is none; valid until the next change
+    // запись с этим номером, nullptr если её нет; годна до следующего изменения
     const Person* person(int id) const;
 
     bool save(Person& person, QString* error);
     bool saveMany(QVector<Person>& people, QString* error);
-    // records of the same person: decree number and date, award and name (Russian
-    // or Belarusian). count() > 1 means namesakes in one decree.
+    // записи одного человека: номер и дата указа, награда и имя (русское
+    // или белорусское). count() > 1 — тёзки в одном указе.
     int count(const Person& probe) const;
     bool contains(const Person& probe) const { return count(probe) > 0; }
     bool remove(const QList<int>& ids, QString* error);
 
-    // Russian spelling of a Belarusian full name already stored in the catalog.
-    // One entry is that name. Several entries are the spellings of this exact
-    // name, most frequent first: parts of other people are not mixed in.
-    // An unknown three-part name is composed only when each part has one spelling.
-    // The key collapses spaces and replaces Latin look-alikes, as identity does
-    // ("Iгар" and "Ігар" are one name).
+    // Русское написание белорусского полного имени, уже лежащего в каталоге.
+    // Одна запись — это имя. Несколько — написания именно этого
+    // имени, самое частое первым: части других людей не подмешиваются.
+    // Неизвестное имя из трёх частей составляется, только когда у каждой части одно написание.
+    // Ключ схлопывает пробелы и заменяет латинские двойники, как личность
+    // («Iгар» и «Ігар» — одно имя).
     QStringList translateName(const QString& nameBy) const;
-    // the same Belarusian full name stored with more than one Russian spelling.
-    // Whitespace is collapsed, so only the letters differ. Empty names are skipped.
+    // одно белорусское полное имя, сохранённое больше чем с одним русским написанием.
+    // Пробелы схлопнуты, так что отличаются только буквы. Пустые имена пропускаются.
     struct NameVariant
     {
         QString name;
@@ -113,57 +113,57 @@ public:
     {
         QString nameBy;
         int rows = 0;
-        QVector<NameVariant> names; // most frequent first
+        QVector<NameVariant> names; // самое частое первым
     };
     QVector<NameConflict> russianNameConflicts() const;
-    // the most common Russian spelling; a tie keeps the earliest decree
+    // самое частое русское написание; при равенстве остаётся самый ранний указ
     QString professionRu(const QString& professionBy) const;
-    // the most common Russian spelling; a tie keeps the first by Russian name
+    // самое частое русское написание; при равенстве остаётся первое по русскому имени
     QString rankRu(const QString& rankBy) const;
-    // Align dashes and quotation marks in the Russian job text with the Belarusian
-    // one. An en dash gets spaces around it; « » lose the spaces a translator
-    // puts inside. Straight and curly quotes count as the same marks.
+    // Выравнивает тире и кавычки в русском тексте должности с белорусским.
+    // Вокруг длинного тире ставятся пробелы; у « » пропадают пробелы, которые
+    // переводчик ставит внутри. Прямые и фигурные кавычки считаются теми же знаками.
     static bool fixQuotes(Person& person);
 
-    // Latin letters typed inside Cyrillic words ("Міxaйлаўна", "прядильщицa",
-    // "Iгар"; see NormalizeCyrillicText). save()/saveMany() always store the
-    // fixed text; this finds the records that still have them.
+    // Латинские буквы, набранные внутри кириллических слов («Міxaйлаўна», «прядильщицa»,
+    // «Iгар»; см. NormalizeCyrillicText). save()/saveMany() всегда пишут
+    // исправленный текст; это находит записи, где они ещё остались.
     struct LetterFix
     {
         int records = 0;
-        QMap<QString, int> fields; // field caption -> records
-        QStringList samples;       // "before → after"
+        QMap<QString, int> fields; // подпись поля → записи
+        QStringList samples;       // «было → стало»
     };
     LetterFix findLatinLetters(QVector<Person>* fixed = nullptr, int maxSamples = 8) const;
     static bool normalizeTextFields(Person& person);
-    // consistent copy of the open database (VACUUM INTO)
+    // цельная копия открытой базы (VACUUM INTO)
     bool backup(const QString& filePath, QString* error) const;
 
     int exportCsv(const QString& filePath, bool fromDate, const QDate& from, QString* error);
-    // records whose field would change (exact: the whole field equals find)
+    // записи, у которых поле изменится (точное: всё поле равно find)
     int countMatches(TextField field, bool exact, const QString& find) const;
     int replaceText(TextField field, bool exact, const QString& find, const QString& replace, QString* error);
 
-    // Derived data (statistics, name dictionary, profession/rank translations)
-    // is rebuilt on first use after a change. Callers must not keep these
-    // references across a change of the catalog: copy what you show.
+    // Производные данные (статистика, словарь имён, переводы должностей и званий)
+    // пересобираются при первом обращении после изменения. Эти ссылки нельзя
+    // держать через изменение каталога: копируйте то, что показываете.
     const QVector<StatMonth>& stats() const;
     const QVector<DictEntry>& dictionary() const;
     int yearMin() const { return 1990; }
     int yearMax() const;
-    // year of the latest decree (0 for an empty catalog), without the statistics
+    // год последнего указа (0 у пустого каталога), без статистики
     int latestYear() const;
 
 signals:
-    // emitted after the database was changed, right before the in-memory data
-    // changes: people() still has the old content (views save their state here)
+    // испускается после изменения базы, прямо перед сменой данных в памяти:
+    // people() ещё содержит старое (виды сохраняют состояние здесь)
     void aboutToChange();
     void dataChanged();
 
 private:
-    // a person is identified by decree number, decree date, award and name; the
-    // award matters: one decree may give a person an order and a title.
-    // Names are compared after NormalizeCyrillicText ("Iгар" == "Ігар").
+    // человека узнаём по номеру указа, дате, награде и имени;
+    // награда важна: один указ может дать человеку орден и звание.
+    // Имена сравниваются после NormalizeCyrillicText («Iгар» == «Ігар»).
     struct IdentityKey
     {
         int ukaseNo = 0;
@@ -210,7 +210,7 @@ private:
     mutable QHash<QString, QStringList> m_first;
     mutable QHash<QString, QStringList> m_last;
     mutable QHash<QString, QStringList> m_middle;
-    mutable QHash<QString, QStringList> m_nameRu; // whole Belarusian name -> Russian spellings
+    mutable QHash<QString, QStringList> m_nameRu; // целое белорусское имя → русские написания
     mutable QHash<QString, QString> m_profRu;
     mutable QHash<QString, QString> m_rankRu;
 };

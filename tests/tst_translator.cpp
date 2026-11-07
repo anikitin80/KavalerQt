@@ -1,6 +1,6 @@
-// Yandex translation against a local stand-in server: people are grouped into
-// requests, one connection serves every request, a failed or stopped run keeps
-// the people translated before it.
+// Перевод Яндекса на местном сервере-заменителе: люди собираются в
+// запросы, одно соединение обслуживает все, сбой или остановка оставляют
+// людей, переведённых до неё.
 
 #include "Translator.h"
 
@@ -13,8 +13,8 @@
 
 namespace {
 
-// HTTP/1.1 with keep-alive; every text comes back as "ru:" + text.
-// failAt: the request with this number (from 1) gets HTTP 500.
+// HTTP/1.1 с keep-alive; каждый текст возвращается как «ru:» + текст.
+// failAt: запрос с этим номером (с 1) получает HTTP 500.
 class FakeYandex : public QObject
 {
 public:
@@ -105,13 +105,13 @@ private slots:
         QCOMPARE(cloud::groupRequests({}, 10), Groups());
         QCOMPARE(cloud::groupRequests({3, 3, 3, 3}, 10), Groups({{0, 3}, {3, 4}}));
         QCOMPARE(cloud::groupRequests({5, 5, 5}, 10), Groups({{0, 2}, {2, 3}}));
-        // a person longer than the limit is sent alone, not split
+        // человек длиннее предела уходит одним запросом, не делится
         QCOMPARE(cloud::groupRequests({2, 25, 2}, 10), Groups({{0, 1}, {1, 2}, {2, 3}}));
-        // people with nothing to translate join any group
+        // люди без текста для перевода входят в любую группу
         QCOMPARE(cloud::groupRequests({0, 10, 0, 0}, 10), Groups({{0, 4}}));
     }
 
-    // " and \ take two characters in the JSON body. The raw sum still fits.
+    // «"» и «\» занимают два символа в теле JSON. Сырая сумма всё ещё влезает.
     void quotesCountTowardsTheLimit()
     {
         const QString quotes(4, QLatin1Char('"'));
@@ -130,8 +130,8 @@ private slots:
         QVector<Person> people;
         for (int i = 0; i < 5; ++i)
             people << belarusian(QStringLiteral("Імя %1").arg(i), QStringLiteral("пасада %1").arg(i));
-        people[2].name = QStringLiteral("Имя готово"); // kept: not forced
-        // long enough to need a second request
+        people[2].name = QStringLiteral("Имя готово"); // остаётся: force не задан
+        // достаточно длинно, чтобы понадобился второй запрос
         people << belarusian(QString(cloud::kCloudRequestChars - 10, QLatin1Char('a')));
 
         QString error;
@@ -142,7 +142,7 @@ private slots:
         QCOMPARE(done, 6);
         QVERIFY(error.isEmpty());
         QCOMPARE(server.requests.size(), 2);
-        QCOMPARE(server.requests.at(0).size(), 9); // 5 positions + 4 names
+        QCOMPARE(server.requests.at(0).size(), 9); // 5 должностей + 4 имени
         QCOMPARE(server.connections, 1);
         QCOMPARE(server.authorization, QByteArray("Api-Key key"));
         QCOMPARE(progress, QVector<int>({5, 6}));
@@ -212,7 +212,7 @@ private slots:
         QVERIFY(people.at(1).name.isEmpty());
     }
 
-    // the reply in flight is aborted, and cancel is not reported as a network error
+    // ответ в пути обрывается, и отмена не сообщается как сетевая ошибка
     void cancelAbortsTheCurrentReply()
     {
         FakeYandex server(0, true);

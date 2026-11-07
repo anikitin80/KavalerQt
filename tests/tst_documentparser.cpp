@@ -1,5 +1,5 @@
-// CDocumentParser on small hand-written decrees: award detection, ranks,
-// posthumous awards, list formats, several decrees and group information.
+// CDocumentParser на коротких указах, написанных вручную: распознавание наград, звания,
+// посмертные награды, форматы списков, несколько указов и сведения о группе.
 
 #include "TestData.h"
 
@@ -11,7 +11,7 @@ Q_DECLARE_METATYPE(NounCase)
 
 namespace {
 
-// exposes the protected steps of the parser
+// открывает защищённые шаги парсера
 class Parser : public CDocumentParser
 {
 public:
@@ -117,7 +117,7 @@ void TestDocumentParser::awardId()
     QCOMPARE(m_parser->GetAwardId(award.toStdWString(), russian), expected);
 }
 
-// a shorter catalog name must not win when it is a prefix of a longer one
+// более короткое название каталога не должно победить, если оно начало более длинного
 void TestDocumentParser::longestAwardMatch()
 {
     Parser parser;
@@ -169,7 +169,7 @@ void TestDocumentParser::awardPhraseCoversTheDecreeText()
     QCOMPARE(length, size_t(0));
 }
 
-// the person follows the award, so the cut is the phrase in the decree
+// человек идёт после награды, поэтому отрез — фраза в указе
 void TestDocumentParser::personAfterAward()
 {
     parse({kUkazRu, QStringLiteral("15 мая 2001 г. № 260"),
@@ -231,7 +231,7 @@ void TestDocumentParser::militaryRank_data()
                                  << QStringLiteral("капитан милиции") << QStringLiteral("командира роты");
     QTest::newRow("without comma") << QStringLiteral("старшего оперуполномоченного майора милиции") << LangRU << Accusative
                                    << QStringLiteral("майор милиции") << QStringLiteral("старшего оперуполномоченного");
-    // longer ranks contain shorter ones: the longest must win
+    // длинные звания содержат короткие: победить должно самое длинное
     QTest::newRow("старший прапорщик") << QStringLiteral("инспектору старшему прапорщику милиции") << LangRU << Dative
                                        << QStringLiteral("старший прапорщик милиции") << QStringLiteral("инспектору");
     QTest::newRow("генерал-майор") << QStringLiteral("начальнику управления генерал-майору") << LangRU << Dative
@@ -258,7 +258,7 @@ void TestDocumentParser::militaryRank_data()
     QTest::newRow("by rank in retirement") << QStringLiteral("прафесара кафедры, палкоўніка ўнутранай службы ў адстаўцы")
                                            << LangBY << Accusative << QStringLiteral("палкоўнік ўнутранай службы ў адстаўцы")
                                            << QStringLiteral("прафесара кафедры");
-    // positions, not ranks
+    // должности, не звания
     QTest::newRow("by саветнік is a position") << QStringLiteral("саветніка ўпраўлення кадравай работы")
                                                << LangBY << Accusative << QString() << QStringLiteral("саветніка ўпраўлення кадравай работы");
     QTest::newRow("by капітан-механік is a position") << QStringLiteral("капітана-механіка прадпрыемства водных шляхоў")
@@ -336,7 +336,7 @@ void TestDocumentParser::singleAwardPersonBeforeAward()
     QVERIFY(!person.Posthumous);
 }
 
-// "тов." in front of the name, including a no-break space after the period
+// «тов.» перед именем, в том числе с неразрывным пробелом после точки
 void TestDocumentParser::comradeTitleBeforeName()
 {
     parse({kUkazRu, QStringLiteral("10 октября 1991 г. № 1154-XII"),
@@ -368,8 +368,8 @@ void TestDocumentParser::comradeTitleBeforeName()
     QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons.front(), false)), QStringLiteral("скульптор"));
 }
 
-// the same cut as the decree itself: a patronymic takes the surname,
-// a capitalized word that is not a patronymic stays in the job
+// тот же отрез, что у самого указа: отчество забирает фамилию,
+// заглавное слово, которое не отчество, остаётся в должности
 void TestDocumentParser::splitUsesTheSameNameCut()
 {
     PersonInfo shared;
@@ -409,7 +409,7 @@ void TestDocumentParser::singleAwardPosthumous()
     QVERIFY(person.Posthumous);
 }
 
-// person and rank before the award, "(посмертно)" after the award name
+// человек и звание до награды, «(посмертно)» после названия награды
 // (Кашкан, 28.09.2001 № 553; Гурин, 21.01.2005 № 50)
 void TestDocumentParser::singleAwardPosthumousAfterAward()
 {
@@ -428,7 +428,7 @@ void TestDocumentParser::singleAwardPosthumousAfterAward()
     QVERIFY(person.Posthumous);
 }
 
-// current decree layout: a table with "Surname<br>Name Patronymic", "–", position
+// нынешняя вёрстка указа: таблица «Фамилия<br>Имя Отчество», «–», должность
 void TestDocumentParser::listWithLineBreaks()
 {
     parse({kUkazRu, QStringLiteral("9 апреля 1999 г.№ 206"),
@@ -454,8 +454,8 @@ void TestDocumentParser::listWithLineBreaks()
     QVERIFY(second.MilitaryRank.empty());
 }
 
-// the city section of a list ("па г. Мінску") gives the place of a housewife,
-// a region section has the place in the decree text and resets it
+// городской раздел списка («па г. Мінску») даёт место домохозяйке,
+// областной раздел имеет место в тексте указа и сбрасывает его
 void TestDocumentParser::housewifeGetsTheCityOfTheSection()
 {
     parse({kUkazBy, QStringLiteral("24 лютага 2023 г. № 56"),
@@ -468,7 +468,7 @@ void TestDocumentParser::housewifeGetsTheCityOfTheSection()
            QStringLiteral("па Брэсцкай вобласці"),
            QStringLiteral("Алейнікаву\vІрыну Мікалаеўну"), QStringLiteral("–"),
            QStringLiteral("хатнюю гаспадыню"),
-           QStringLiteral("па гораду Мінску"), // decree of 30 May 2022 No. 185
+           QStringLiteral("па гораду Мінску"), // указ от 30 мая 2022 г. № 185
            QStringLiteral("Ганчарэнка\vЯўгенію Іванаўну"), QStringLiteral("–"),
            QStringLiteral("хатнюю гаспадыню"),
            QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
@@ -492,7 +492,7 @@ void TestDocumentParser::listEndingWithDashDoesNotCrash()
 
 void TestDocumentParser::listStartingWithDashDoesNotCrash()
 {
-    // award line directly followed by a dash: there is no name line before it
+    // строка награды сразу с тире: строки имени перед ней нет
     std::vector<std::wstring> lines = {L"– водителя"};
     m_parser->ProcessFile(L"test.docx", lines);
     QVERIFY(m_parser->m_Persons.empty());
@@ -516,8 +516,8 @@ void TestDocumentParser::belarusianDecree()
     QCOMPARE(text(m_parser->GetPersonDescription(person, false)), QStringLiteral("старшы інспектар"));
 }
 
-// «Дзіцячы сад – сярэдняя школа» is a name, the dash does not start a second
-// profession; a dash after nested quotes («НВА «Цэнтр» – ...) still does
+// «Дзіцячы сад – сярэдняя школа» — название, тире не начинает вторую
+// должность; тире после вложенных кавычек («НВА «Цэнтр» – ...) всё ещё начинает
 void TestDocumentParser::dashInsideQuotesIsNotSecondProfession()
 {
     parse({kUkazBy, QStringLiteral("23 лютага 2006 г. № 120"),
@@ -554,7 +554,7 @@ void TestDocumentParser::twoDecreesInOneFile()
     QCOMPARE(text(m_parser->m_Persons[1].Name), QStringLiteral("Бодялова Мария Николаевна"));
 }
 
-// decree numbers restart every year: № 10 of 2019 and № 10 of 2020 are different decrees
+// номера указов каждый год с начала: № 10 2019 года и № 10 2020 года — разные указы
 void TestDocumentParser::groupInfoBelongsToItsDecree()
 {
     const auto decree = [](const QString& date, const QString& company) {
@@ -569,7 +569,7 @@ void TestDocumentParser::groupInfoBelongsToItsDecree()
     QCOMPARE(int(m_parser->m_Persons.size()), 2);
     QCOMPARE(int(m_parser->m_GroupsInfo.size()), 2);
 
-    // group information is added only after the user ticks it for the file
+    // сведения о группе добавляются, только когда пользователь отметил их для файла
     QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[0], false)), QStringLiteral("водитель"));
     m_parser->CheckGroupInfo(L"2019.docx", true);
     m_parser->CheckGroupInfo(L"2020.docx", true);
@@ -579,8 +579,8 @@ void TestDocumentParser::groupInfoBelongsToItsDecree()
              QStringLiteral("водитель работников ОАО «Гродно Азот»"));
 }
 
-// the purpose after the organisation is cut ("у развіццё ..."), the organisation
-// is not added a second time, "ваеннаслужачых" starts group info too
+// цель после организации отрезается («у развіццё ...»), организация
+// второй раз не добавляется, «ваеннаслужачых» тоже начинает сведения о группе
 void TestDocumentParser::groupInfoIsTheOrganisationOnly()
 {
     parse({kUkazBy, QStringLiteral("31 ліпеня 2001 г. № 412"),

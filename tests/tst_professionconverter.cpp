@@ -1,6 +1,6 @@
-// CProfessionConverter: the position before the name ("водителю автобуса",
-// "старшего инспектора отдела") back to the nominative case using the
-// profession dictionaries (tests use copies in tests/data).
+// CProfessionConverter: должность перед именем («водителю автобуса»,
+// «старшего инспектора отдела») обратно в именительный по словарям
+// должностей (тесты берут копии из tests/data).
 
 #include "ProfessionConverter.h"
 #include "TestData.h"
@@ -106,10 +106,10 @@ void TestProfessionConverter::convert_data()
                                    << QStringLiteral("хатняя гаспадыня вёскі");
     QTest::newRow("ru dat старому") << QStringLiteral("старому слесарю цеха") << LangRU << Dative
                                     << QStringLiteral("старый слесарь цеха");
-    // a repeated space stays put when the adjective gets shorter
+    // повторный пробел остаётся, когда прилагательное становится короче
     QTest::newRow("ru dat double space") << QStringLiteral("старому  слесарю цеха") << LangRU << Dative
                                          << QStringLiteral("старый  слесарь цеха");
-    // the hyphen belongs to the adjective, the profession after it is not pulled back
+    // дефис принадлежит прилагательному, должность после него назад не затягивается
     QTest::newRow("by dat hyphenated adjective") << QStringLiteral("вялікаму-новаму інспектару цэха") << LangBY << Dative
                                                  << QStringLiteral("вялікі-новы інспектар цэха");
     QTest::newRow("by dat en dash") << QStringLiteral("вялікаму\u2013інспектару цэха") << LangBY << Dative
@@ -139,7 +139,7 @@ void TestProfessionConverter::onlyFirstFiveWordsAreSearched()
     QCOMPARE(QString::fromStdWString(text), QStringLiteral("жительнице г. Минска по месту жительства водителю"));
 }
 
-// an unknown position is left as is and offered for the dictionary
+// незнакомая должность остаётся как есть и предлагается в словарь
 void TestProfessionConverter::unknownProfessionBecomesNewWord()
 {
     CProfessionConverter converter;
@@ -156,11 +156,11 @@ void TestProfessionConverter::unknownProfessionBecomesNewWord()
     QCOMPARE(words.front().Case, Dative);
 }
 
-// dictionary keys are looked up lower-case, so a capitalised first word must
-// be stored lower-case to be found next time
+// ключи словаря ищутся в нижнем регистре, поэтому слово с заглавной
+// надо хранить строчными, чтобы найти его в следующий раз
 void TestProfessionConverter::newWordsAreLowerCase()
 {
-    CProfessionConverter converter; // no files: UpdateDictionary only fills memory
+    CProfessionConverter converter; // без файлов: UpdateDictionary только заполняет память
     std::wstring text = L"Сварщику цеха";
     converter.ConvertProfession(text, LangRU, Dative);
     QCOMPARE(int(converter.newWords().size()), 1);
@@ -175,19 +175,19 @@ void TestProfessionConverter::newWordsAreLowerCase()
 
 void TestProfessionConverter::newWordsWorkWithoutDictionaryFile()
 {
-    CProfessionConverter converter; // no dictionary paths at all
+    CProfessionConverter converter; // путей словарей нет совсем
     std::wstring text = L"сварщику цеха";
     converter.ConvertProfession(text, LangRU, Dative);
     std::vector<NewDictItem> items = converter.newWords();
     QCOMPARE(int(items.size()), 1);
 
-    QVERIFY(!converter.UpdateDictionary(items)); // nowhere to save
+    QVERIFY(!converter.UpdateDictionary(items)); // сохранять некуда
     std::wstring again = L"сварщику участка";
-    QVERIFY(converter.ConvertProfession(again, LangRU, Dative)); // but usable in this session
+    QVERIFY(converter.ConvertProfession(again, LangRU, Dative)); // но в этом сеансе уже годится
     QCOMPARE(QString::fromStdWString(again), QStringLiteral("сварщик участка"));
 }
 
-// a broken line (empty nominative or form) is skipped, not used as a replacement
+// битая строка (пустой именительный или форма) пропускается и заменой не служит
 void TestProfessionConverter::emptyDictionaryValuesAreSkipped()
 {
     QTemporaryDir dir;
@@ -228,7 +228,7 @@ void TestProfessionConverter::dictionaryRoundTrip()
     QCOMPARE(QString::fromStdWString(again), QStringLiteral("сварщик участка"));
 }
 
-// a missing case is restored from the nominative already stored for the other case
+// недостающий падеж восстанавливается из именительного, уже лежащего в другом падеже
 void TestProfessionConverter::otherCaseSuppliesTheNominative()
 {
     QTemporaryDir dir;
@@ -265,7 +265,7 @@ void TestProfessionConverter::otherCaseSuppliesTheNominative()
     QCOMPARE(QString::fromStdWString(converter.newWords().front().Word), QStringLiteral("зваршчык"));
 }
 
-// "Вадзiцель" and "вадзіцель" are one dictionary word: lower case, Cyrillic "і"
+// «Вадзiцель» и «вадзіцель» — одно словарное слово: нижний регистр, кириллическая «і»
 void TestProfessionConverter::dictionaryKeysMatchLookup()
 {
     QTemporaryDir dir;
@@ -311,7 +311,7 @@ void TestProfessionConverter::dictionaryKeysMatchLookup()
     QCOMPARE(QString::fromStdWString(onceMore), QStringLiteral("вадзіцель цэха"));
 }
 
-// every leading adjective is skipped, not only the first
+// пропускается каждое начальное прилагательное, не только первое
 void TestProfessionConverter::adjectiveChainIsNotANewWord()
 {
     CProfessionConverter converter;

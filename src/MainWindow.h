@@ -52,8 +52,8 @@ private:
     QString storedDatabasePath() const;
     void rememberDatabasePath(const QString& path);
     bool saveChanged(QVector<Person>& people);
-    // change() edits a copy of each selected person and says whether it changed;
-    // the changed ones are saved together (saved: what was saved)
+    // change() правит копию каждого выбранного и говорит, изменился ли он;
+    // изменённые сохраняются вместе (saved: что сохранилось)
     bool modifySelected(const std::function<bool(Person&)>& change, QVector<Person>* saved = nullptr);
     QVector<Person> selectedPeople() const;
     void capturePeopleState();
@@ -61,19 +61,19 @@ private:
     void selectPerson(int personId);
     void refreshVisibleTab();
 
-    // what the user sees in the people list, by person id: survives model resets
+    // то, что пользователь видит в списке людей, по номеру человека: переживает сброс модели
     struct PeopleViewState
     {
         bool valid = false;
         int currentId = 0;
         int currentColumn = 1;
         bool currentVisible = false;
-        int nextId = 0;     // neighbours of the current row: used when it disappears
+        int nextId = 0;     // соседи текущей строки: нужны, когда она пропадает
         int previousId = 0;
-        int topId = 0;      // first visible row
+        int topId = 0;      // первая видимая строка
         int scrollValue = 0;
         QSet<int> selectedIds;
-        QHash<int, bool> expandedGroups; // award id -> expanded
+        QHash<int, bool> expandedGroups; // номер награды -> раскрыта
     };
 
     Catalog m_catalog;

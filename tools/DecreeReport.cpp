@@ -1,29 +1,29 @@
-// decree_report: runs the decree parser over the whole archive and compares the
-// result with the catalog, the way the import window would see it.
+// decree_report: прогоняет парсер указов по всему архиву и сравнивает
+// результат с каталогом так, как его увидело бы окно импорта.
 //
 //   decree_report --db D:/Awards/DB/Kavaler.sqlite --docs D:/Awards/AwardsDoc
 //                 --out build/reports/2026-11-06 [--compare build/reports/<previous>]
 //   decree_report --names --db D:/Awards/DB/Kavaler.sqlite --out build/reports/names
 //
-// --names does not read decrees. It lists Belarusian full names stored with more
-// than one Russian spelling (names.tsv). An empty list means there are none.
+// --names указы не читает. Выписывает белорусские полные имена, сохранённые
+// больше чем с одним русским написанием (names.tsv). Пустой список — таких нет.
 //
-// The database is opened read-only. Output in --out:
-//   summary.txt  totals, by year, which fields differ, comparison with --compare
-//   persons.tsv  parsed persons that differ from the catalog (all with --all)
-//   files.tsv    per decree file, with the indexes of the persons that matched
-//                exactly ("0-12,14"): --compare needs them, persons.tsv omits them
-//   changes.tsv  (with --compare) persons whose status or parsed values changed
+// База открывается только для чтения. В --out:
+//   summary.txt  итоги, по годам, какие поля расходятся, сравнение с --compare
+//   persons.tsv  разобранные люди, отличные от каталога (все с --all)
+//   files.tsv    по файлу указа, с индексами людей, совпавших
+//                точно («0-12,14»): они нужны --compare, persons.tsv их не пишет
+//   changes.tsv  (с --compare) люди, у которых сменился статус или разобранные значения
 //
-// Status of a parsed person (same matching as ImportMatch: decree, award and
-// name without Latin look-alikes; the k-th namesake in a file is matched with
-// the k-th catalog record):
-//   EXACT        found, description, rank and posthumous equal the catalog
-//   DIFF         found, but description, rank or posthumous differ
-//   OTHER_AWARD  the decree has this name, but under another award
-//   NEW          no record with this decree and name (wrong name form, or
-//                really not imported)
-//   BAD_HEADER   the decree number or date was not recognised
+// Статус разобранного человека (то же сопоставление, что ImportMatch: указ, награда
+// и имя без латинских двойников; k-й тёзка в файле сопоставляется
+// с k-й записью каталога):
+//   EXACT        найден, должность, звание и посмертность равны каталогу
+//   DIFF         найден, но должность, звание или посмертность отличаются
+//   OTHER_AWARD  в указе это имя есть, но под другой наградой
+//   NEW          нет записи с этим указом и именем (неверная форма имени
+//                или действительно не импортирован)
+//   BAD_HEADER   номер или дата указа не распознаны
 
 #include "Catalog.h"
 #include "DocumentParser.h"
@@ -109,7 +109,7 @@ QString rowKey(const QString& file, int index)
     return file + QChar(0x1F) + QString::number(index);
 }
 
-// "0-3,5" for {0, 1, 2, 3, 5}
+// «0-3,5» для {0, 1, 2, 3, 5}
 QString indexRanges(const QVector<int>& sorted)
 {
     QStringList parts;
@@ -124,8 +124,8 @@ QString indexRanges(const QVector<int>& sorted)
     return parts.join(QLatin1Char(','));
 }
 
-// files.tsv of an earlier run: keys (file|index) of the persons that matched
-// exactly; reports written before the exact_index column give an empty set
+// files.tsv прошлого прогона: ключи (файл|индекс) людей, совпавших
+// точно; отчёты без столбца exact_index дают пустое множество
 QSet<QString> readExactKeys(const QString& path)
 {
     QSet<QString> keys;
@@ -153,7 +153,7 @@ QSet<QString> readExactKeys(const QString& path)
     return keys;
 }
 
-// persons.tsv of an earlier run: file|index -> row
+// persons.tsv прошлого прогона: файл|индекс → строка
 QHash<QString, Row> readRows(const QString& path)
 {
     QHash<QString, Row> rows;
@@ -162,7 +162,7 @@ QHash<QString, Row> readRows(const QString& path)
         return rows;
     QTextStream in(&file);
     in.setEncoding(QStringConverter::Utf8);
-    in.readLine(); // header
+    in.readLine(); // заголовок
     while (!in.atEnd()) {
         const QStringList c = in.readLine().split(QLatin1Char('\t'));
         if (c.size() < 14)
@@ -192,7 +192,7 @@ QString percent(int part, int total)
     return total ? QString::number(100.0 * part / total, 'f', 1) + QLatin1Char('%') : QStringLiteral("-");
 }
 
-// names.tsv and summary.txt: same Name_BY, several Name. Returns 0, or 1 on write failure.
+// names.tsv и summary.txt: одно Name_BY, несколько Name. Возвращает 0 или 1, если записать не удалось.
 int reportNameConflicts(const Catalog& catalog, const QString& databasePath, const QString& outDir)
 {
     QDir().mkpath(outDir);
@@ -267,7 +267,7 @@ int main(int argc, char** argv)
     if (namesOnly)
         return reportNameConflicts(catalog, cli.value(dbOption), cli.value(outOption));
 
-    // profession dictionaries: explicit, or the ones the application uses
+    // словари должностей: заданные явно или те, которыми пользуется программа
     QString dictRu = cli.value(dictRuOption);
     QString dictBy = cli.value(dictByOption);
     {
@@ -277,10 +277,10 @@ int main(int argc, char** argv)
         if (dictBy.isEmpty())
             dictBy = appSettings.value(QStringLiteral("DictionaryBY")).toString();
     }
-    // the parser must not read or write the application's settings
+    // парсер не должен читать и писать настройки программы
     QCoreApplication::setOrganizationName(QStringLiteral("KavalerTools"));
 
-    // catalog index: decree+name -> records (id order), and per award
+    // указатель каталога: указ+имя → записи (по номеру) и отдельно по награде
     QHash<QString, QVector<const Person*>> byAward;
     QHash<QString, QVector<const Person*>> byName;
     {
@@ -351,7 +351,7 @@ int main(int argc, char** argv)
     QMap<QString, int> diffFields;
     QHash<QString, Row> current;
     int emptyFiles = 0;
-    int groupFiles = 0; // files where the group info is added to the description
+    int groupFiles = 0; // файлы, где сведения о группе добавлены к должности
     QElapsedTimer timer;
     timer.start();
 
@@ -366,8 +366,8 @@ int main(int argc, char** argv)
         if (!lines.empty())
             parser.ProcessFile(QFileInfo(path).fileName().toStdWString(), lines);
 
-        // group info ("работнікаў ... завода") is added to the description in the
-        // import dialog by a check box per file: use it when more people match
+        // сведения о группе («работнікаў ... завода») в окне импорта добавляются
+        // к должности флажком на файл: берём их, когда совпадает больше людей
         const std::wstring fileName = QFileInfo(path).fileName().toStdWString();
         bool useGroup = false;
         QString groupText;
@@ -478,7 +478,7 @@ int main(int argc, char** argv)
     personsFile.close();
     filesFile.close();
 
-    // summary
+    // сводка
     int total = 0;
     for (int value : totals)
         total += value;
@@ -508,7 +508,7 @@ int main(int argc, char** argv)
 
     if (cli.isSet(compareOption)) {
         const QHash<QString, Row> previous = readRows(QDir(cli.value(compareOption)).filePath(QStringLiteral("persons.tsv")));
-        // persons that matched exactly last time are not in its persons.tsv
+        // люди, совпавшие точно в прошлый раз, в том persons.tsv отсутствуют
         const QSet<QString> previousExact = readExactKeys(QDir(cli.value(compareOption)).filePath(QStringLiteral("files.tsv")));
         QFile changesFile(QDir(outDir).filePath(QStringLiteral("changes.tsv")));
         changesFile.open(QIODevice::WriteOnly | QIODevice::Text);
@@ -524,7 +524,7 @@ int main(int argc, char** argv)
             if (was == previous.cend() && previousExact.contains(it.key())) {
                 if (now.status == QLatin1String("EXACT"))
                     continue;
-                // matched the catalog last time: the old values were the catalog's
+                // в прошлый раз совпало с каталогом: старые значения были каталожными
                 ++worse;
                 ++transitions[QStringLiteral("EXACT -> ") + now.status];
                 changes << "worse\t" << cell(now.file) << '\t' << now.index << "\tEXACT\t" << now.status << "\t\t"

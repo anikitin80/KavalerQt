@@ -1,7 +1,7 @@
 #pragma once
 
-// Shared helpers for the parser tests: fixture paths, award table and a
-// parser set up with the test copies of the profession dictionaries.
+// Общие помощники тестов парсера: пути фикстур, таблица наград и
+// парсер с тестовыми копиями словарей должностей.
 
 #include "DocumentParser.h"
 
@@ -23,14 +23,14 @@ inline QString path(const QString& relative)
     return QStringLiteral(KAVALER_TEST_DATA "/") + relative;
 }
 
-// Never read the real user's settings (dictionary paths etc.) from tests.
+// Тесты не читают настоящие настройки пользователя (пути словарей и прочее).
 inline void isolateSettings()
 {
     QCoreApplication::setOrganizationName(QStringLiteral("KavalerTests"));
     QCoreApplication::setApplicationName(QStringLiteral("KavalerTests"));
 }
 
-// Lines of a UTF-8 text file; "\v" escapes stand for Word's manual line break.
+// Строки текстового файла UTF-8; экраны «\v» — ручной разрыв строки Word.
 inline QStringList readLines(const QString& file)
 {
     QFile input(file);
@@ -56,7 +56,7 @@ inline std::vector<std::wstring> toWide(const QStringList& lines)
     return result;
 }
 
-// tests/data/awards.tsv: id, type, priority, name, name_by (copy of the Awards table)
+// tests/data/awards.tsv: номер, тип, приоритет, имя, name_by (копия таблицы Awards)
 inline std::map<long, DecreeAward> awards()
 {
     std::map<long, DecreeAward> result;

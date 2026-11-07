@@ -43,7 +43,7 @@ struct PersonInfo
     std::wstring Name;
     std::wstring Description;
     std::wstring MilitaryRank;
-    // the name as written in the decree (dative or accusative) and its NounCase
+    // имя, как написано в указе (дательный или винительный), и его NounCase
     std::wstring SourceName;
     int SourceCase = 0;
     UkazInfo Ukaz;

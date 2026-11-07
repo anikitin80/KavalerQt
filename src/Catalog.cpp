@@ -63,7 +63,7 @@ QString joinAlt(const QStringList& values)
     return values.mid(1).join(QStringLiteral(", "));
 }
 
-// collapsed spaces and Latin look-alikes replaced, the same letters identity compares
+// схлопнутые пробелы и заменённые латинские двойники, те же буквы, что сравнивает личность
 QString belarusianNameKey(const QString& name)
 {
     return NormalizeCyrillicText(name.simplified(), true);
@@ -229,8 +229,8 @@ void Catalog::bindText(QSqlQuery& query, const QString& text) const
         query.addBindValue(text);
 }
 
-// opens the file on a separate connection and reads both tables: an unusable file
-// is rejected before the current database is closed
+// открывает файл отдельным соединением и читает обе таблицы: негодный файл
+// отвергается до закрытия текущей базы
 static bool probeDatabase(const QString& path, QString* error)
 {
     const QString connection = QStringLiteral("kavaler-probe");
@@ -257,7 +257,7 @@ static bool probeDatabase(const QString& path, QString* error)
 bool Catalog::open(const QString& path, QString* error, bool readOnly)
 {
     if (!QFileInfo::exists(path)) {
-        // SQLite would silently create an empty file
+        // SQLite молча создал бы пустой файл
         if (error)
             *error = QStringLiteral("Файл не найден: %1").arg(QDir::toNativeSeparators(path));
         return false;
@@ -269,7 +269,7 @@ bool Catalog::open(const QString& path, QString* error, bool readOnly)
     if (wasOpen)
         emit aboutToChange();
     close();
-    // from here on a failure leaves no database: views are told to show nothing
+    // отсюда сбой оставляет без базы: видам говорят показать пустоту
     const auto fail = [&] {
         close();
         if (wasOpen)
@@ -318,7 +318,7 @@ bool Catalog::load(QString* error)
     }
 
     QSqlQuery people(m_db);
-    people.setForwardOnly(true); // rows are read once: no cache of all 78k rows
+    people.setForwardOnly(true); // строки читаются один раз: без кэша всех 78 тысяч
     if (!people.exec(QStringLiteral(
             "SELECT ID, Award_ID, Name, Name_BY, Personal_Info, Personal_Info_BY, "
             "Awarded_For, Rank, Rank_BY, Ukase_No, Ukase_Date, Posthumous, Ukase_Lang "
@@ -364,7 +364,7 @@ void Catalog::rebuildDerived() const
     m_profRu.clear();
     m_rankRu.clear();
 
-    // one Belarusian job -> Russian spelling -> how often, and which decree would win a tie
+    // одна белорусская должность → русское написание → как часто, и какой указ победит при равенстве
     struct ProfSpelling {
         int count = 0;
         QDate earliest;
@@ -452,7 +452,7 @@ void Catalog::rebuildDerived() const
         return cmp < 0;
     });
 
-    // one Belarusian rank -> Russian spelling -> how often, and where that spelling first stands in byName
+    // одно белорусское звание → русское написание → как часто, и где это написание впервые стоит в byName
     struct RankSpelling {
         int count = 0;
         int sortPos = 0;
@@ -539,7 +539,7 @@ void Catalog::rebuildIdentity()
 
 namespace {
 
-// names compared without Latin look-alike letters ("Mixaіл" == "Міхаіл")
+// имена сравниваются без латинских букв-двойников («Mixaіл» == «Міхаіл»)
 QString keyName(const QString& name, bool belarusian)
 {
     return NormalizeCyrillicText(name, belarusian);
@@ -547,7 +547,7 @@ QString keyName(const QString& name, bool belarusian)
 
 } // namespace
 
-// counts, not a set: two records may share a key, editing one must keep the other
+// счётчики, не множество: у двух записей может быть один ключ, правка одной должна оставить другую
 void Catalog::addIdentity(const Person& person)
 {
     const qint64 day = person.ukaseDate.toJulianDay();
@@ -584,8 +584,8 @@ int Catalog::count(const Person& probe) const
     return result;
 }
 
-// Latin look-alike letters in every text field; the Belarusian "і" only in
-// Belarusian fields ("Награжден за" is in the language of the decree)
+// латинские буквы-двойники в каждом текстовом поле; белорусская «і» только в
+// белорусских полях («Награжден за» на языке указа)
 bool Catalog::normalizeTextFields(Person& person)
 {
     bool changed = false;
@@ -709,7 +709,7 @@ bool Catalog::writePerson(Person& person, QString* error)
 
     if (!exec(query, error))
         return false;
-    // a record deleted meanwhile (or never saved) must not come back in memory
+    // запись, удалённая тем временем (или так и не сохранённая), не должна вернуться в память
     if (update && query.numRowsAffected() != 1) {
         if (error)
             *error = QStringLiteral("Запись %1 не найдена в базе: возможно, она была удалена.").arg(person.id);
@@ -753,7 +753,7 @@ bool Catalog::saveMany(QVector<Person>& people, QString* error)
             *error = m_db.lastError().text();
         return false;
     }
-    // ids of new records are assigned by INSERT; a rollback must take them back
+    // номера новых записей назначает INSERT; откат должен их забрать
     QVector<int> originalIds;
     originalIds.reserve(people.size());
     for (const Person& person : people)
@@ -788,8 +788,8 @@ bool Catalog::remove(const QList<int>& ids, QString* error)
     if (ids.isEmpty())
         return true;
 
-    // one prepared statement per id in one transaction: an "IN (?, ...)" list is
-    // limited by the number of SQL parameters (32766)
+    // один подготовленный запрос на номер в одной транзакции: список «IN (?, ...)»
+    // ограничен числом параметров SQL (32766)
     if (!m_db.transaction()) {
         if (error)
             *error = m_db.lastError().text();
@@ -813,8 +813,8 @@ bool Catalog::remove(const QList<int>& ids, QString* error)
 
     emit aboutToChange();
     const QSet<int> drop(ids.begin(), ids.end());
-    // the identity counts do not depend on positions: only the dropped people
-    // leave them (no 156k name normalisations); positions by id are renumbered
+    // счётчики личности не зависят от позиций: их покидают только удалённые
+    // (без 156 тысяч нормализаций имён); позиции по номеру перенумеровываются
     for (const Person& person : m_people) {
         if (drop.contains(person.id))
             removeIdentity(person);
@@ -837,7 +837,7 @@ QStringList Catalog::translateName(const QString& nameBy) const
     if (exact != m_nameRu.cend())
         return exact.value();
 
-    // a new full name: compose it only when every part is unambiguous
+    // новое полное имя: составляем его, только когда каждая часть однозначна
     const QStringList parts = key.split(QLatin1Char(' '), Qt::SkipEmptyParts);
     if (parts.size() != 3)
         return {};
@@ -905,7 +905,7 @@ bool Catalog::fixQuotes(Person& person)
     QString& text = person.personal;
     bool changed = false;
     const QString dashes = QStringLiteral("-–");
-    // a translator writes ", “ ” or „ where the decree has « »
+    // переводчик пишет ", “ ” или „ там, где в указе « »
     const QString quotesBySet = QStringLiteral("«»\"");
     const QString quotesRuSet = QStringLiteral("«»\"“”„");
     const QVector<QChar> dashBy = collectChars(person.personalBy, dashes);
@@ -1031,8 +1031,8 @@ int Catalog::exportCsv(const QString& filePath, bool fromDate, const QDate& from
     return count;
 }
 
-// the field text after the replacement; false if nothing matches. Exact: the
-// whole field equals the text; otherwise the first occurrence is replaced
+// текст поля после замены; ложь, если ничего не совпало. Точное: всё
+// поле равно тексту; иначе заменяется первое вхождение
 static bool replacedText(const QString& text, bool exact, const QString& find, const QString& replace, QString* result)
 {
     if (exact) {
@@ -1063,7 +1063,7 @@ int Catalog::countMatches(TextField field, bool exact, const QString& find) cons
     return count;
 }
 
-// saved like any edit (saveMany): one transaction, text normalisation, identity
+// сохраняется как любая правка (saveMany): одна транзакция, нормализация текста, личность
 int Catalog::replaceText(TextField field, bool exact, const QString& find, const QString& replace, QString* error)
 {
     if (find.isEmpty())

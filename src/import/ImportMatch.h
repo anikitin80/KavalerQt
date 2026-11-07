@@ -1,11 +1,11 @@
 #pragma once
 
-// Which parsed persons are already in the catalog and which ones to import.
+// Какие разобранные люди уже есть в каталоге и кого импортировать.
 //
-// A person is identified by decree number and date, award and name. Namesakes:
-// the k-th person of a decree file with the same key is known when the catalog
-// has at least k such records, so two different people with one name in one
-// decree are both imported, while the same decree in two files is imported once.
+// Человека узнаём по номеру и дате указа, награде и имени. Тёзки:
+// k-й человек файла указа с тем же ключом известен, когда в каталоге
+// не меньше k таких записей, поэтому двое разных людей с одним именем в одном
+// указе импортируются оба, а один указ в двух файлах — один раз.
 
 #include "ParserTypes.h"
 
@@ -17,13 +17,13 @@ class Catalog;
 
 struct ImportMatch
 {
-    bool known = false; // already in the catalog
-    int namesakes = 1;  // persons with this decree, award and name in the same file
+    bool known = false; // уже в каталоге
+    int namesakes = 1;  // люди с этим указом, наградой и именем в том же файле
 };
 
 QVector<ImportMatch> matchImported(const std::vector<PersonInfo>& persons, const Catalog& catalog);
 
-// indexes of the persons to import, in order; wanted[i] is false for persons
-// hidden by the current filter (they still count as namesakes)
+// индексы людей к импорту, по порядку; wanted[i] ложен для людей,
+// скрытых текущим фильтром (тёзок они всё равно считают)
 QVector<int> personsToImport(const std::vector<PersonInfo>& persons, const QVector<bool>& wanted,
                              const Catalog& catalog);

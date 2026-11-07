@@ -10,20 +10,23 @@ bool FindTokens(const std::wstring& str, const std::vector<std::wstring>& tokens
 std::vector<std::wstring> SplitString(const std::wstring& str, wchar_t sep);
 void StrTrim(std::wstring& str);
 std::wstring ToLower(const std::wstring& str);
-// Latin "i" typed instead of the Belarusian "і"; capitalToo also replaces "I"
-// (not for whole lines: "I катэгорыі", Roman numerals)
+// следующая « или » после pos — закрывающая, значит pos внутри кавычек.
+// Вложенные кавычки закрываются один раз («НВА «Цэнтр»), более ранние не считаются.
+bool InsideQuotes(const std::wstring& text, size_t pos);
+// латинская «i» вместо белорусской «і»; capitalToo заменяет и «I»
+// (не для целых строк: «I катэгорыі», римские цифры)
 void ToCyrillicI(std::wstring& text, bool capitalToo);
 
 class QString;
-// Latin "i"/"I" typed inside a Cyrillic word ("Iгар", "Мiхайлавіч") becomes the
-// Belarusian "і"/"І". A letter is replaced only when a neighbour is Cyrillic, so
-// Roman numerals ("I класа", "III ступені") and Latin words ("iPhone") stay.
+// латинские «i»/«I» внутри кириллического слова («Iгар», «Мiхайлавіч») становятся
+// белорусскими «і»/«І». Буква заменяется, только если сосед кириллический, поэтому
+// римские цифры («I класа», «III ступені») и латинские слова («iPhone») остаются.
 QString NormalizeBelarusianI(const QString& text);
 bool HasLatinBelarusianI(const QString& text);
 
-// The same for every Latin letter that looks like a Cyrillic one (a c e o p x y
-// A B C E H K M O P T X Y, plus i/I for Belarusian text): "Міxaйлаўна",
-// "прядильщицa", "пaдпaлкоўнік". Standalone lower-case letters between Cyrillic
-// words become the Cyrillic conjunction or preposition ("a", "c", "o", "y").
+// То же для каждой латинской буквы, похожей на кириллическую (a c e o p x y
+// A B C E H K M O P T X Y, плюс i/I в белорусском тексте): «Міxaйлаўна»,
+// «прядильщицa», «пaдпaлкоўнік». Отдельные строчные между кириллическими
+// словами становятся кириллическим союзом или предлогом («a», «c», «o», «y»).
 QString NormalizeCyrillicText(const QString& text, bool belarusian);
 bool HasLatinLookalikes(const QString& text, bool belarusian);

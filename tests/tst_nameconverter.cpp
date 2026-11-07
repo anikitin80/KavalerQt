@@ -1,5 +1,5 @@
-// CNameConverter: full names from the decree text (dative for honorary titles
-// and "Hero", accusative for orders and medals) to the nominative case.
+// CNameConverter: полные имена из текста указа (дательный для почётных званий
+// и «Героя», винительный для орденов и медалей) в именительный падеж.
 
 #include "NameConverter.h"
 
@@ -31,21 +31,21 @@ void TestNameConverter::normalizeName_data()
     QTest::addColumn<NounCase>("nounCase");
     QTest::addColumn<QString>("expected");
 
-    // accusative: "наградить орденом ... Бодялову Марию Николаевну"
+    // винительный: «наградить орденом ... Бодялову Марию Николаевну»
     QTest::newRow("ru acc female") << QStringLiteral("Бодялову Марию Николаевну") << LangRU << Accusative
                                    << QStringLiteral("Бодялова Мария Николаевна");
     QTest::newRow("ru acc male -ев") << QStringLiteral("Худолеева Александра Николаевича") << LangRU << Accusative
                                      << QStringLiteral("Худолеев Александр Николаевич");
     QTest::newRow("ru acc male soft") << QStringLiteral("Пусенкова Игоря Петровича") << LangRU << Accusative
                                       << QStringLiteral("Пусенков Игорь Петрович");
-    // dative: "присвоить почетное звание ... Рускевичу Владимиру Сафроновичу"
+    // дательный: «присвоить почетное звание ... Рускевичу Владимиру Сафроновичу»
     QTest::newRow("ru dat male") << QStringLiteral("Рускевичу Владимиру Сафроновичу") << LangRU << Dative
                                  << QStringLiteral("Рускевич Владимир Сафронович");
     QTest::newRow("ru dat male -ей") << QStringLiteral("Хомчику Алексею Сидоровичу") << LangRU << Dative
                                      << QStringLiteral("Хомчик Алексей Сидорович");
     QTest::newRow("ru dat female") << QStringLiteral("Петровой Анне Сергеевне") << LangRU << Dative
                                    << QStringLiteral("Петрова Анна Сергеевна");
-    // the patronymic ending decides the sex; capitals must not make her male
+    // окончание отчества решает пол; заглавные не должны сделать её мужчиной
     QTest::newRow("ru dat female upper patronymic") << QStringLiteral("Никитиной Анне ИВАНОВНЕ") << LangRU << Dative
                                                     << QStringLiteral("Никитина Анна ИВАНОВНа");
     QTest::newRow("ru dat exception Павел") << QStringLiteral("Сидорову Павлу Ивановичу") << LangRU << Dative
@@ -73,7 +73,7 @@ void TestNameConverter::normalizeName_data()
                                             << QStringLiteral("Шульга Валерый Ігаравіч");
     QTest::newRow("by dat male -оў, exception Пётр") << QStringLiteral("Іванову Пятру Сяргеевічу") << LangBY << Dative
                                                      << QStringLiteral("Іваноў Пётр Сяргеевіч");
-    // fleeting vowels and other endings checked on the whole decree archive (decree_report)
+    // беглые гласные и другие окончания, проверенные по всему архиву указов (decree_report)
     QTest::newRow("by acc -шка") << QStringLiteral("Мяшка Андрэя Іванавіча") << LangBY << Accusative
                                  << QStringLiteral("Мяшок Андрэй Іванавіч");
     QTest::newRow("by acc -лька") << QStringLiteral("Каралька Сяргея Іванавіча") << LangBY << Accusative
@@ -86,7 +86,7 @@ void TestNameConverter::normalizeName_data()
                                  << QStringLiteral("Азярэц Юрый Іванавіч");
     QTest::newRow("ru dat -рцу") << QStringLiteral("Перцу Ивану Петровичу") << LangRU << Dative
                                  << QStringLiteral("Перец Иван Петрович");
-    // "е" is listed first, but "це" and "же" are the real endings
+    // «е» стоит первым, но настоящие окончания — «це» и «же»
     QTest::newRow("ru dat longer suffix Федуце") << QStringLiteral("Федуце Ивану Петровичу") << LangRU << Dative
                                                  << QStringLiteral("Федута Иван Петрович");
     QTest::newRow("ru dat longer suffix Серёже") << QStringLiteral("Сидорову Серёже Ивановичу") << LangRU << Dative
@@ -119,7 +119,7 @@ void TestNameConverter::normalizeName_data()
                                               << QStringLiteral("Петрайціс Юозас Гедзімінасавіч-Альбертасавіч");
     QTest::newRow("ru dat Воробей") << QStringLiteral("Воробей Анне Ивановне") << LangRU << Dative
                                     << QStringLiteral("Воробей Анна Ивановна");
-    // Latin "i" typed instead of Belarusian "і" is fixed on the way
+    // латинская «i» вместо белорусской «і» по дороге исправляется
     QTest::newRow("by latin i") << QStringLiteral("Лагодзiча Юрыя Іванавiча") << LangBY << Accusative
                                 << QStringLiteral("Лагодзіч Юрый Іванавіч");
     QTest::newRow("by latin capital I") << QStringLiteral("Лагодзiча Юрыя Iванавiча") << LangBY << Accusative
@@ -139,7 +139,7 @@ void TestNameConverter::normalizeName()
     QCOMPARE(QString::fromStdWString(name), expected);
 }
 
-// foreigners: "Джону Смиту" (first name first), the order is kept
+// иностранцы: «Джону Смиту» (сначала имя), порядок сохраняется
 void TestNameConverter::foreignNameWithoutPatronymic()
 {
     CNameConverter converter;
@@ -148,7 +148,7 @@ void TestNameConverter::foreignNameWithoutPatronymic()
     QCOMPARE(QString::fromStdWString(name), QStringLiteral("Джон Смит"));
 }
 
-// "-ому" may be "-ый" or "-ой": the result is a guess and is reported as such
+// «-ому» может быть «-ый» или «-ой»: результат — догадка, и так и сообщается
 void TestNameConverter::uncertainSurnameIsReported()
 {
     CNameConverter converter;
@@ -157,7 +157,7 @@ void TestNameConverter::uncertainSurnameIsReported()
     QCOMPARE(QString::fromStdWString(name), QStringLiteral("Толстый Иван Петрович"));
 }
 
-// "оглы" is not a patronymic the rules know; the name stays for review
+// «оглы» — не отчество, которое знают правила; имя остаётся на проверку
 void TestNameConverter::unknownPatronymicIsReported()
 {
     CNameConverter converter;

@@ -27,7 +27,7 @@ private:
     bool chooseDictionaries();
     void fillAwards();
     Person personFromInfo(const PersonInfo& info);
-    void markKnown(); // see ImportMatch.h
+    void markKnown(); // см. ImportMatch.h
 
     Catalog* m_catalog;
     CDocumentParser m_parser;

@@ -83,7 +83,7 @@ void CDocumentParser::Initialize(std::map<long, DecreeAward>& awards)
 		else if (award.second.Type == DecreeAward::Pochet)
 		{
 			name.erase(0, name.find(' ') + 1);
-			// cut the country suffix together with the space before it
+			// страну отрезаем вместе с пробелом перед ней
 			auto cutFrom = [](std::wstring& text, const wchar_t* token) {
 				const size_t pos = text.find(token);
 				if (pos != std::wstring::npos)
@@ -99,7 +99,7 @@ void CDocumentParser::Initialize(std::map<long, DecreeAward>& awards)
 		}
 	}
 
-	// some old names (only when the award exists in the database)
+	// старые названия, только если награда есть в базе
 	if (m_Awards.count(42))
 		m_PochetDetector.push_back({ L"Заслуженный работник народного образования", 42 });
 	if (m_Awards.count(37))
@@ -121,9 +121,9 @@ void CDocumentParser::ResetData()
 
 namespace {
 
-// award text as it is compared with the catalog names, and where each kept
-// character sits in the decree line. Quotes are dropped; "І" in a degree
-// ("ІІІ степени") becomes Latin "I"; a no-break space becomes a usual one.
+// текст награды для сравнения с названиями каталога и место каждой
+// оставленной буквы в строке указа. Кавычки убираются; «І» в степени
+// («ІІІ степени») становится латинской «I»; неразрывный пробел — обычным.
 struct AwardText
 {
 	std::wstring text;
@@ -162,8 +162,8 @@ bool atWordEnd(const std::wstring& text, size_t pos)
 	return true;
 }
 
-// index past the last character of the phrase. A closing quote stands after the
-// last letter and was not part of the compared text.
+// индекс за последним символом фразы. Закрывающая кавычка стоит после
+// последней буквы и в сравнение не входила.
 size_t phraseEnd(const std::wstring& award, const std::vector<size_t>& origin, size_t normEnd)
 {
 	if (normEnd == 0 || normEnd > origin.size())
@@ -223,8 +223,8 @@ int CDocumentParser::GetAwardId(std::wstring award, bool bRussian, bool bPochetN
 	if (bestId == 0)
 		return 0;
 
-	// honorary titles are stored without "Республики Беларусь" / "Беларуси":
-	// the decree still writes the suffix, and it belongs to the award phrase
+	// почётные звания в базе без «Республики Беларусь» / «Беларуси»:
+	// в указе суффикс есть, и он часть фразы награды
 	if (honorTitle) {
 		static const wchar_t* suffixes[] = {
 			L" Республики Беларусь", L" Рэспублікі Беларусь", L" Беларуси", L" Беларусі"
@@ -267,7 +267,7 @@ bool CDocumentParser::IsMilitaryAward(int awardId)
 
 namespace {
 
-// words of a decree; Belarusian lines have Cyrillic "і" (Latin "i" is replaced first)
+// слова указа; в белорусских строках «і» кириллическая (латинскую «i» уже заменили)
 const std::vector<std::wstring> searchTargetsRU = { L"медалью", L"орденом", L"почетное звание", L"почетные звания" };
 const std::vector<std::wstring> searchTargetsBY = { L"медалём", L"ордэнам", L"ганаровае званн", L"ганаровыя званн" };
 const std::vector<std::wstring> searchFinishBY = { L"Прэзідэнт Рэспублікі Беларусь" };
@@ -279,10 +279,25 @@ const std::vector<std::wstring> searchGroup = { L"группу", L"группы"
 	L"сотрудников", L"ваеннаслужачых", L"военнослужащих" };
 const std::vector<std::wstring> searchGroupEnd = { L"государственными", L"орденом", L"медалью", L"дзяржаўнымі", L"ордэнам", L"медалём", L"почетные", L"почетное", L"почетных" };
 
-// Decrees of the early 1990s put "тов." in front of the name:
-// "скульптору тов. Гумилевскому Льву Николаевичу". The space after the period
-// is often a no-break space, so the surname stays glued to "тов." and the
-// name is left as given name and patronymic.
+const wchar_t* posthumousMark(bool russian)
+{
+	return russian ? L"(посмертно)" : L"(пасмяротна)";
+}
+
+// вырезает пометку и всё после неё
+bool cutPosthumous(std::wstring& text, bool russian)
+{
+	const size_t pos = text.find(posthumousMark(russian));
+	if (pos == std::wstring::npos)
+		return false;
+	text.erase(pos);
+	return true;
+}
+
+// В указах начала 1990-х перед именем стоит «тов.»:
+// «скульптору тов. Гумилевскому Льву Николаевичу». Пробел после точки
+// часто неразрывный, фамилия слипается с «тов.», и от имени остаются
+// имя и отчество.
 void stripComradeTitle(std::wstring& text)
 {
 	const auto gap = [](wchar_t character) { return character == L' ' || character == L'\u00A0'; };
@@ -302,7 +317,7 @@ void stripComradeTitle(std::wstring& text)
 			while (name < text.size() && gap(text[name]))
 				++name;
 			if (name < text.size() && IsCapital(text[name])) {
-				// the space before "тов." may be a no-break space; the name split looks for a usual one
+				// пробел перед «тов.» может быть неразрывным; имя режется по обычному
 				if (pos > 0 && text[pos - 1] == L'\u00A0')
 					text[pos - 1] = L' ';
 				text.erase(pos, name - pos);
@@ -313,10 +328,10 @@ void stripComradeTitle(std::wstring& text)
 	}
 }
 
-// The name is the last two capitalized words. A patronymic pulls the surname
-// in front of them ("слесаря цеха Иванова Ивана Ивановича"). Without one, a
-// capitalized word of the job stays in the job ("слесаря Цех Иванова Ивана").
-// "тов." before the surname is removed. False when that pair is not there.
+// Имя — два последних слова с заглавной. Отчество забирает фамилию
+// перед ними («слесаря цеха Иванова Ивана Ивановича»). Без отчества
+// заглавное слово должности остаётся в должности («слесаря Цех Иванова Ивана»).
+// «тов.» перед фамилией убирается. Ложь, если такой пары нет.
 bool takePersonName(CNameConverter& names, std::wstring& text, LangType lang, NounCase nounCase, std::wstring& name)
 {
 	StrTrim(text);
@@ -358,7 +373,7 @@ bool takePersonName(CNameConverter& names, std::wstring& text, LangType lang, No
 
 } // namespace
 
-// "15 мая 1997 г.№ 282": the number after "№", the date before "г"
+// «15 мая 1997 г.№ 282»: номер после «№», дата до «г»
 void CDocumentParser::ParseDecreeHeader(const std::wstring& strLine)
 {
 	size_t pos = strLine.find(L'№');
@@ -374,8 +389,8 @@ void CDocumentParser::ParseDecreeHeader(const std::wstring& strLine)
 	}
 }
 
-// a section of a list ("па Брэсцкай вобласці", "па г. Мінску"): people of a city
-// section may have no place in the decree, it is the city ("г. Мінск")
+// раздел списка («па Брэсцкай вобласці», «па г. Мінску»): у людей городского
+// раздела места в указе может не быть, это город («г. Мінск»)
 void CDocumentParser::ParseSection(const std::wstring& strLine)
 {
 	std::wstring line = strLine;
@@ -396,7 +411,7 @@ void CDocumentParser::ParseSection(const std::wstring& strLine)
 	if (cityStart != std::wstring::npos && rest.length() > cityStart + 1
 		&& rest.find(L' ', cityStart) == std::wstring::npos)
 	{
-		std::wstring city = rest.substr(cityStart); // dative: "Мінску", "Минску"
+		std::wstring city = rest.substr(cityStart); // дательный: «Мінску», «Минску»
 		if (city.back() == L'у')
 			city.pop_back();
 		m_SectionCity = L"г. " + city;
@@ -405,8 +420,8 @@ void CDocumentParser::ParseSection(const std::wstring& strLine)
 		m_SectionCity.clear();
 }
 
-// info about a group: text after the group token up to the end of the sentence
-// or up to the award type ("орденом", "медалью", ...)
+// сведения о группе: текст после слова группы до конца предложения
+// или до вида награды («орденом», «медалью», ...)
 void CDocumentParser::ParseGroupInfo(const std::wstring& strLine)
 {
 	size_t posStart = 0, posEnd = 0;
@@ -418,13 +433,13 @@ void CDocumentParser::ParseGroupInfo(const std::wstring& strLine)
 		groupInfo.erase(posEnd);
 	if (FindTokens(groupInfo, searchGroupEnd, posStart, posEnd) && posStart > 0)
 		groupInfo.erase(posStart - 1);
-	// the purpose after the organisation is not part of it: "«Мінскі трактарны
-	// завод» у развіццё трактарабудавання", "органаў пракуратуры ва ўмацаванне ..."
+	// цель после организации к ней не относится: ««Мінскі трактарны
+	// завод» у развіццё трактарабудавання», «органаў пракуратуры ва ўмацаванне ...»
 	for (const wchar_t* preposition : { L" у ", L" ў ", L" в ", L" ва ", L" во ", L" за " })
 	{
 		for (size_t pos = groupInfo.find(preposition); pos != std::wstring::npos; pos = groupInfo.find(preposition, pos + 1))
 		{
-			// not inside quotes: the next quote after it is an opening one (or none)
+			// не внутри кавычек: следующая кавычка открывающая или её нет
 			const size_t posQuote = groupInfo.find_first_of(L"«»", pos);
 			if (posQuote == std::wstring::npos || groupInfo[posQuote] == L'«')
 			{
@@ -448,7 +463,7 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 	int awardId = 0;
 	int nAwardedCount = 0;
 	size_t posStart = 0, posEnd = 0;
-	// the award being read is over: count its people
+	// читаемая награда кончилась: считаем её людей
 	const auto finishAward = [&] {
 		UpdateAwardStat(awardId, curAward, nAwardedCount);
 		curAward.clear();
@@ -457,7 +472,7 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 
 	for (auto itrLine = arrLines.begin(); itrLine != arrLines.end(); itrLine++)
 	{
-		// new ukaze of president found
+		// найден новый указ президента
 		if (FindTokens(*itrLine, searchUkazStart, posStart, posEnd))
 		{
 			finishAward();
@@ -478,11 +493,11 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 		if (0 == m_UkazInfo.Number)
 			ParseDecreeHeader(strLine);
 
-		// replace latin 'i' with belorussian
+		// латинскую «i» заменяем белорусской
 		if (!m_UkazInfo.RussianLang)
 			ToCyrillicI(strLine, false);
 
-		// order about awarding found
+		// найден приказ о награждении
 		if (FindTokens(strLine, m_UkazInfo.RussianLang ? searchActionsRU : searchActionsBY, posStart, posEnd))
 		{
 			bAwardStarted = true;
@@ -497,7 +512,7 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 
 		if (bAwardStarted)
 		{
-			// no more orders or medals further
+			// дальше орденов и медалей нет
 			if (bAwardTypeFound && FindTokens(strLine, m_UkazInfo.RussianLang ? searchFinishRU : searchFinishBY, posStart, posEnd))
 			{
 				bUkazStarted = bAwardStarted = bAwardTypeFound = false;
@@ -505,7 +520,7 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 				continue;
 			}
 
-			// find award type
+			// вид награды
 			if (FindTokens(strLine, m_UkazInfo.RussianLang ? searchTargetsRU : searchTargetsBY, posStart, posEnd))
 			{
 				bAwardTypeFound = true;
@@ -513,16 +528,16 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 				finishAward();
 				curAward = strLine.substr(posTargetStart);
 				curAward.erase(curAward.find_last_not_of(L" :\t\n\r.") + 1);
-				// length of the phrase in the decree, not of the catalog name:
-				// "медалью «За отвагу»" is longer than "Медаль "За отвагу""
+				// длина фразы в указе, а не названия в каталоге:
+				// «медалью «За отвагу»» длиннее, чем «Медаль "За отвагу"»
 				size_t awardPhrase = 0;
 				awardId = GetAwardId(curAward, m_UkazInfo.RussianLang, false, &awardPhrase);
 
-				// single awarding description
+				// одно награждение в строке
 				if (posActionEnd > 0 && strLine.back() != L':')
 				{
 					std::wstring strAwardedInfo;
-					// person and rank before the award ("...Кашкана ... орденом «...» (посмертно).")
+					// человек и звание до награды («...Кашкана ... орденом «...» (посмертно).»)
 					const bool personBeforeAward = posTargetStart - posActionEnd > 10;
 					if (personBeforeAward)
 						strAwardedInfo = strLine.substr(posActionEnd, posTargetStart - posActionEnd);
@@ -533,13 +548,12 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 					{
 						const size_t addedFrom = m_Persons.size();
 						ExtractPersonInfo(curAward, strAwardedInfo);
-						// the mark may sit after the award title, outside strAwardedInfo
+						// пометка может стоять после названия награды, вне strAwardedInfo
 						if (personBeforeAward && awardId > 0 && awardPhrase > 0 && m_Persons.size() > addedFrom
 							&& posTargetStart + awardPhrase < strLine.length())
 						{
 							const std::wstring tail = strLine.substr(posTargetStart + awardPhrase);
-							const wchar_t* mark = m_UkazInfo.RussianLang ? L"(посмертно)" : L"(пасмяротна)";
-							if (tail.find(mark) != std::wstring::npos)
+							if (tail.find(posthumousMark(m_UkazInfo.RussianLang)) != std::wstring::npos)
 							{
 								for (size_t i = addedFrom; i < m_Persons.size(); ++i)
 									m_Persons[i].Posthumous = true;
@@ -585,7 +599,7 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 				bResult = true;
 				if (awardId > 0)
 				{
-					// awarding list
+					// список награждённых
 					size_t pos = strLine.find_first_of(L"–-", 0);
 					if (pos == std::wstring::npos)
 						continue;
@@ -597,8 +611,8 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 
 					if(pos == 0)
 					{
-						// new format of persons list in the docx:
-						// name on the previous line, description on the next one
+						// новый формат списка в docx:
+						// имя на предыдущей строке, должность на следующей
 						if (itrLine == arrLines.begin() || itrLine + 1 == arrLines.end())
 							continue;
 						nAwardedCount++;
@@ -612,7 +626,7 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 					}
 					else if ((bPossibleGroupStart || bMultiplePochet) && strLine[pos] == L'–')
 					{
-						// old format of persons list in the docx
+						// старый формат списка в docx
 						nAwardedCount++;
 
 						info.Name = strLine.substr(0, pos);
@@ -646,7 +660,7 @@ void CDocumentParser::UpdateAwardStat(int id, std::wstring& award, int nCount)
 		{
 			bFound = true;
 
-			awardInfo.CountByFiles[m_FileName] += nCount ? nCount : 1; // a new file starts at 0
+			awardInfo.CountByFiles[m_FileName] += nCount ? nCount : 1; // новый файл начинается с 0
 			awardInfo.TotalCount += nCount ? nCount : 1;
 			if (0 == nCount)
 			{
@@ -691,13 +705,7 @@ void CDocumentParser::ExtractPersonInfo(std::wstring& curAward, std::wstring& st
 
 	NounCase nounCase = GetNounCaseByAwardId(awardId);
 
-	bool bPosthumous = false;
-	size_t posPost = strAwardedInfo.find(m_UkazInfo.RussianLang? L"(посмертно)" : L"(пасмяротна)");
-	if (posPost != std::wstring::npos)
-	{
-		bPosthumous = true;
-		strAwardedInfo.erase(posPost, strAwardedInfo.length() - posPost);
-	}
+	const bool bPosthumous = cutPosthumous(strAwardedInfo, m_UkazInfo.RussianLang);
 
 	const LangType lang = m_UkazInfo.RussianLang ? LangRU : LangBY;
 	std::wstring name;
@@ -791,24 +799,19 @@ void CDocumentParser::NormalizePersonInfo(PersonInfo& person)
 	if (ExtractMilitaryRank(person, lang, nounCase))
 		person.Flags |= PersonInfo::NF_RANK;
 
-	// "наладчык – брыгадзір ...": the second profession after a dash, but not a
-	// dash inside quotes («Дзіцячы сад – сярэдняя школа»): there the next quote
-	// is a closing one. Nested quotes are closed once («НВА «Цэнтр»), so the
-	// quotes before the dash are not counted.
-	// every part after a dash is a profession of its own: "намесніка начальніка –
-	// начальніка аддзела – урача-фтызіятра"
+	// «наладчык – брыгадзір ...»: вторая должность после тире, но не
+	// тире внутри кавычек («Дзіцячы сад – сярэдняя школа»): там следующая
+	// кавычка закрывающая. Вложенные кавычки закрываются один раз («НВА «Цэнтр»),
+	// кавычки до тире не считаются.
+	// каждая часть после тире — своя должность: «намесніка начальніка –
+	// начальніка аддзела – урача-фтызіятра»
 	std::vector<std::wstring> professions;
 	std::wstring rest = person.Description;
 	for (;;)
 	{
 		size_t posSep = rest.find(L" – ");
-		while (posSep != std::wstring::npos)
-		{
-			const size_t posQuote = rest.find_first_of(L"«»", posSep);
-			if (posQuote == std::wstring::npos || rest[posQuote] == L'«')
-				break;
+		while (posSep != std::wstring::npos && InsideQuotes(rest, posSep))
 			posSep = rest.find(L" – ", posSep + 3);
-		}
 		if (posSep == std::wstring::npos)
 			break;
 		professions.push_back(rest.substr(0, posSep));
@@ -825,8 +828,8 @@ void CDocumentParser::NormalizePersonInfo(PersonInfo& person)
 	for (size_t i = 1; i < professions.size(); i++)
 		person.Description += L" – " + professions[i];
 
-	// a housewife in the city section of a list has no place in the decree:
-	// "па г. Мінску ... хатнюю гаспадыню" -> "хатняя гаспадыня, г. Мінск"
+	// у домохозяйки в городском разделе списка места в указе нет:
+	// «па г. Мінску ... хатнюю гаспадыню» → «хатняя гаспадыня, г. Мінск»
 	if (!m_SectionCity.empty())
 	{
 		const std::wstring description = ToLower(person.Description);
@@ -837,11 +840,9 @@ void CDocumentParser::NormalizePersonInfo(PersonInfo& person)
 
 bool CDocumentParser::ExtractMilitaryRank(PersonInfo& person, LangType lang, NounCase nounCase)
 {
-	size_t posPost = person.Description.find(lang == LangRU ? L"(посмертно)" : L"(пасмяротна)");
-	if (posPost != std::wstring::npos)
+	if (cutPosthumous(person.Description, lang == LangRU))
 	{
 		person.Posthumous = true;
-		person.Description.erase(posPost, person.Description.length() - posPost);
 		StrTrim(person.Description);
 	}
 
@@ -856,8 +857,8 @@ bool CDocumentParser::ExtractMilitaryRank(PersonInfo& person, LangType lang, Nou
 	std::wstring strCheck = person.Description.substr(posStart);
 	ToCyrillicI(strCheck, false);
 
-	// check longer ranks first: "старшему прапорщику" contains "прапорщику",
-	// "генерал-майору" contains "майору" etc. (sorted once per language and case)
+	// сначала более длинные звания: «старшему прапорщику» содержит «прапорщику»,
+	// «генерал-майору» содержит «майору» и т.д. (сортировка один раз на язык и падеж)
 	const auto sortedRanks = [](const std::vector<RankInfo>& allRanks, NounCase nounCase) {
 		std::vector<const RankInfo*> ranks;
 		ranks.reserve(allRanks.size());
@@ -883,9 +884,9 @@ bool CDocumentParser::ExtractMilitaryRank(PersonInfo& person, LangType lang, Nou
 		if (rankOriginal.length() > strCheck.length())
 			continue;
 
-		// a rank is followed by a few words at most ("міліцыі", "унутранай службы ў адстаўцы",
-		// "медыцынскай службы запасу"): "капітана-механіка", "капітана – зменнага
-		// механіка цеплахода", "капітана нацыянальнай каманды па тэнісу" are positions
+		// после звания слов немного («міліцыі», «унутранай службы ў адстаўцы»,
+		// «медыцынскай службы запасу»): «капітана-механіка», «капітана – зменнага
+		// механіка цеплахода», «капітана нацыянальнай каманды па тэнісу» — должности
 		{
 			const size_t posRank = strCheck.find(rankOriginal);
 			if (posRank != std::wstring::npos)
@@ -897,8 +898,8 @@ bool CDocumentParser::ExtractMilitaryRank(PersonInfo& person, LangType lang, Nou
 			}
 		}
 
-		// "саветнік" is a rank only as "саветнік юстыцыі" or with a class
-		// ("дзяржаўны саветнік ... 3 класа"); "саветнік упраўлення ..." is a position
+		// «саветнік» — звание только как «саветнік юстыцыі» или с классом
+		// («дзяржаўны саветнік ... 3 класа»); «саветнік упраўлення ...» — должность
 		if (rank.Nominative.find(L"саветнік") != std::wstring::npos)
 		{
 			const size_t posRank = strCheck.find(rankOriginal);
@@ -951,7 +952,7 @@ std::wstring CDocumentParser::GetPersonDescription(PersonInfo& person, bool bGet
 	if (GetGroupInfo(person.Ukaz, strGroupInfo))
 	{
 		StrTrim(strGroupInfo);
-		// not twice: "дырэктар ААТ «Белкард»" already names the organisation
+		// второй раз не добавляем: «дырэктар ААТ «Белкард»» уже называет организацию
 		if (!strGroupInfo.empty() && strDesc.find(strGroupInfo) == std::wstring::npos)
 		{
 			if(!strDesc.empty())
@@ -970,7 +971,7 @@ std::wstring CDocumentParser::GetPersonDescription(PersonInfo& person, bool bGet
 	return strDesc;
 }
 
-// decree numbers restart every year, so a decree is identified by number and date
+// номера указов каждый год с начала, указ узнаём по номеру и дате
 void CDocumentParser::AddGroupInfo(const UkazInfo& ukaz, const std::wstring& fileName, const std::wstring& groupInfo)
 {
 	for (auto iter = m_GroupsInfo.begin(); iter != m_GroupsInfo.end(); iter++)

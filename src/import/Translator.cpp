@@ -22,7 +22,7 @@ enum class Field
     Rank
 };
 
-// the Belarusian texts of one person that need a translation, in request order
+// белорусские тексты одного человека, которым нужен перевод, в порядке запроса
 QVector<Field> fieldsToTranslate(const Person& person, CloudScope scope, bool force)
 {
     QVector<Field> fields;
@@ -50,7 +50,7 @@ const QString& sourceText(const Person& person, Field field)
     return person.rankBy;
 }
 
-// an empty translation keeps the stored text
+// пустой перевод оставляет сохранённый текст
 void applyTranslation(Person& person, Field field, QString text)
 {
     if (text.isEmpty())
@@ -90,14 +90,14 @@ QStringList requestTranslation(QNetworkAccessManager& network, const QUrl& endpo
     QNetworkRequest request(endpoint);
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     request.setRawHeader("Authorization", "Api-Key " + apiKey.toUtf8());
-    request.setTransferTimeout(30000); // no answer in 30 s: OperationCanceledError
+    request.setTransferTimeout(30000); // нет ответа 30 с: OperationCanceledError
 
     QEventLoop loop;
     QNetworkReply* reply = network.post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
     QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
     QTimer timer;
     if (stop) {
-        // "Отмена" while this reply is in flight: the button is delivered by this loop
+        // «Отмена», пока этот ответ в пути: кнопку доставляет этот цикл
         QObject::connect(&timer, &QTimer::timeout, &loop, [reply, &stop] {
             if (stop())
                 reply->abort();
@@ -203,7 +203,7 @@ int cloud::translate(QVector<Person>& people, CloudScope scope, bool force, QStr
         lengths.push_back(length);
     }
 
-    // people with nothing to translate cost nothing and need no request
+    // людям без текста для перевода запрос не нужен и ничего не стоит
     bool anything = false;
     for (int length : lengths)
         anything = anything || length > 0;
@@ -217,7 +217,7 @@ int cloud::translate(QVector<Person>& people, CloudScope scope, bool force, QStr
         return 0;
     }
 
-    // one manager for every request: the TLS connection to Yandex is reused
+    // один менеджер на все запросы: TLS-соединение с Яндексом переиспользуется
     QNetworkAccessManager network;
     for (const auto& [first, last] : groupRequests(lengths, kCloudRequestChars)) {
         QStringList texts;

@@ -2,8 +2,8 @@
 
 #include <QXmlStreamReader>
 
-// a .docx is a zip archive; QZipReader is Qt's internal zip reader (Qt6::CorePrivate),
-// hundreds of times faster than extracting with tar.exe for every file
+// .docx — это zip-архив; QZipReader — внутренний читатель zip в Qt (Qt6::CorePrivate),
+// в сотни раз быстрее, чем распаковывать каждый файл через tar.exe
 #include <private/qzipreader_p.h>
 
 QStringList readDocxParagraphs(const QString& path, QString* error)
@@ -36,8 +36,8 @@ QStringList readDocxParagraphs(const QString& path, QString* error)
             else if (name == QLatin1String("tab"))
                 paragraph += QLatin1Char('\t');
             else if (name == QLatin1String("br") || name == QLatin1String("cr"))
-                // manual line break stays inside the paragraph as '\v', like Word's
-                // Range.Text: the parser expects "Surname\vName Patronymic" in one line
+                // ручной разрыв строки остаётся внутри абзаца как '\v', как Word
+                // Range.Text: парсер ждёт «Фамилия\vИмя Отчество» в одной строке
                 paragraph += QLatin1Char('\v');
         } else if (reader.isCharacters() && inText) {
             paragraph += reader.text();

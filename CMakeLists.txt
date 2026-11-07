@@ -10,7 +10,7 @@ option(KAVALER_BUILD_TESTS "Build the decree parser tests" ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets Sql Network PrintSupport)
 
-# decree parser: text of docx -> persons; no GUI, shared with the tests
+# парсер указов: текст docx → люди; без интерфейса, общий с тестами
 add_library(KavalerParser STATIC
     src/import/TextUtil.h
     src/import/TextUtil.cpp
@@ -25,7 +25,7 @@ add_library(KavalerParser STATIC
     src/import/DocxText.cpp
 )
 target_include_directories(KavalerParser PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src/import")
-# Qt6::CorePrivate: QZipReader for reading .docx (DocxText.cpp)
+# Qt6::CorePrivate: QZipReader для чтения .docx (DocxText.cpp)
 target_link_libraries(KavalerParser PUBLIC Qt6::Core PRIVATE Qt6::CorePrivate)
 
 add_executable(Kavaler WIN32
@@ -51,13 +51,13 @@ target_include_directories(Kavaler PRIVATE
 )
 target_link_libraries(Kavaler PRIVATE KavalerParser Qt6::Widgets Qt6::Sql Qt6::Network Qt6::PrintSupport)
 
-# cmake --install build --config Release --prefix <folder>: a folder that runs on
-# a machine without Qt. Everything lies next to Kavaler.exe: the Qt libraries and
-# plugins (SQLite driver, TLS for the Yandex translation, print support) from
-# windeployqt, and the MSVC runtime. The application loads no Qt translations.
+# cmake --install build --config Release --prefix <папка>: папка, которая запускается
+# на машине без Qt. Всё лежит рядом с Kavaler.exe: библиотеки Qt и
+# плагины (драйвер SQLite, TLS для перевода Яндекса, печать) из
+# windeployqt и среда MSVC. Программа переводы Qt не загружает.
 set(CMAKE_INSTALL_BINDIR ".")
 install(TARGETS Kavaler RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
-# the Qt deploy support file defaults to bin/; Qt plugins go to plugins/ (qt.conf)
+# файл развёртывания Qt по умолчанию кладёт всё в bin/; плагины Qt идут в plugins/ (qt.conf)
 install(CODE "set(QT_DEPLOY_BIN_DIR \".\")")
 if(Qt6_VERSION VERSION_GREATER_EQUAL 6.5)
     qt_generate_deploy_app_script(TARGET Kavaler OUTPUT_SCRIPT kavaler_deploy_script

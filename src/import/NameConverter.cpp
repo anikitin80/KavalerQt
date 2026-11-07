@@ -3,7 +3,7 @@
 
 #include <algorithm>
 
-// restores nominative case of names
+// приводит имена к именительному падежу
 
 const RulesList CNameConverter::ExceptionsLastName = ExpandRules({
 	{ SexMale, LangRU, L"вию,сою,цою,хою", L"вия,соя,цоя,хоя", L"-й" },
@@ -13,7 +13,7 @@ const RulesList CNameConverter::ExceptionsLastName = ExpandRules({
 	{ SexMale, LangBY, L"кату,крату", L"ката,крата", L"---от" },
 	{ SexMale, LangBY, L"дзятлу", L"дзятла", L"---цел" },
 	{ SexMale, LangBY, L"рогу", L"рога", L"-" },
-	// fleeting vowels the general rules cannot restore
+	// беглые гласные, которые общие правила не восстанавливают
 	{ SexMale, LangAny, L"зайцу", L"зайца", L"---яц" },
 	{ SexMale, LangAny, L"буслу", L"бусла", L"--ел" },
 	{ SexMale, LangBY, L"бугру", L"бугра", L"--ор" },
@@ -37,7 +37,7 @@ const RulesList CNameConverter::RulesLastName = ExpandRules({
 	{ SexFemale,LangBY,	L"іной,ыной",	L"",			L"--а"},	// Кузьміной
 	{ SexFemale,LangBY,	L"ой",			L"",			L"--ая?"},	// Лясной
 	{ SexFemale,LangAny,L"ай,ой",		L"",			L"--а"},	// Никитиной
-	{ SexFemale,LangAny,L"бей",			L"",			L""},		// Воробей: before "-ей"
+	{ SexFemale,LangAny,L"бей",			L"",			L""},		// Воробей: раньше «-ей»
 	{ SexFemale,LangAny,L"ей",			L"ую",			L"--ая"},
 	{ SexFemale,LangBY, L"а",			L"а",			L"" },
 	{ SexFemale,LangBY, L"ня",			L"ня",			L"" },
@@ -54,17 +54,17 @@ const RulesList CNameConverter::RulesLastName = ExpandRules({
 	{ SexMale,	LangAny,L"ую,ею,аю,ою,эю,ыю,iю,ію,яю", L"уя,ея,ая,оя,эя,ыя,iя,ія,яя", L"-й"},
 	{ SexMale,	LangRU, L"ию",			L"",			L"-й"},		// Виолентию
 	{ SexMale,	LangAny,L"йцу,льцу",	L"йца,льца",	L"---ец" },
-	{ SexMale,	LangBY, L"рцу",			L"рца",			L"--эц" },	// Азярэц: "р" is always hard in Belarusian
+	{ SexMale,	LangBY, L"рцу",			L"рца",			L"--эц" },	// Азярэц: «р» в белорусском всегда твёрдое
 	{ SexMale,	LangAny,L"пцу,бцу,вцу,нцу,мцу,рцу", L"пца,бца,вца,нца,мца,рца", L"--ец" },
 	{ SexMale,	LangRU, L"енку,ёнку",	L"енка,ёнка",	L"--ок" },
 	{ SexMale,	LangBY, L"онку,ёнку",	L"онка,ёнка",	L"--ак" },
 	{ SexMale,	LangBY, L"анку,енку,энку",	L"",		L"-а" },// Краўчанку, Лукашэнку, Гардзеенку
 	{ SexMale,	LangBY, L"чку,тку,пку,бку,нку", L"чка,тка,пка,бка,нка", L"--ок" },
-	{ SexMale,	LangBY, L"",			L"шка,зка,жка,дка", L"--ок" },	// Мяшок, Палазок (dative "-шку" is mostly "-шка")
+	{ SexMale,	LangBY, L"",			L"шка,зка,жка,дка", L"--ок" },	// Мяшок, Палазок (дательный «-шку» чаще «-шка»)
 	{ SexMale,	LangBY, L"",			L"лька,нька,йка", L"---ёк" },	// Каралёк, Канёк, Кіёк
 	{ SexMale,	LangAny,L"аку,іку,уку,яку,ыку,юку",	L"",L"-" },		// Климчуку, Антончыку, Прасняку, Бібіку, Манчаку, Панасюку
 	{ SexMale,	LangBY, L"ўцу",			L"ўца",			L"---вец"}, // Грыцавец
-	{ SexMale,	LangBY, L"цу,лу,ту,ку,пу", L"",		L"-а" },	// Кухту, Жыгалу ("-ру" is mostly "-р": Косару)
+	{ SexMale,	LangBY, L"цу,лу,ту,ку,пу", L"",		L"-а" },	// Кухту, Жыгалу («-ру» чаще «-р»: Косару)
 	{ SexAny,	LangAny,L"те",			L"",			L"-а" },	// Федуте
 	{ SexAny,	LangAny,L"це",			L"",			L"--та" },	// Федуце
 	{ SexAny,	LangRU, L"о",			L"о",			L"" },
@@ -96,7 +96,7 @@ const RulesList CNameConverter::RulesFirstName = ExpandRules({
 	{ SexAny,	LangAny, L"",			L"ю",		L"-я" },	// Наталью, Илью
 	{ SexAny,	LangRU, L"ье,ое",		L"",		L"-я" },	// Наталье, Зое
 	{ SexFemale,LangRU, L"ии",			L"",		L"-я" },	// Марии, Алиции
-	// Latin "i" is already replaced with "і" here (ApplyRules)
+	// латинская «i» здесь уже заменена на «і» (ApplyRules)
 	{ SexAny,	LangBY, L"еі,оі,ьі,лі,іі,ыі,сі,’і,'і",L"", L"-я" },	// Наталлi, Надзеi, Зоі, Алесі, Соф’і
 	{ SexFemale,LangBY, L"дзе",			L"",		L"--а" },	// Зинаидзе
 	{ SexFemale,LangBY, L"зе",			L"",		L"--га" },	// Ядвизе
@@ -151,16 +151,16 @@ bool CNameConverter::ApplyRules(std::wstring& name, const RulesList& rules, SexT
 {
 	if (lang == LangBY)
 	{
-		// replace Latin letters with Belorussian ("Iгар" is often typed with Latin I;
-		// duplicates are found alphabet-blind, see Catalog::IdentityKey)
+		// латинские буквы заменяем белорусскими («Iгар» часто набран латинской I;
+		// дубли ищутся без учёта алфавита, см. Catalog::IdentityKey)
 		ToCyrillicI(name, true);
 	}
 
 	const std::wstring nameLower = ToLower(name);
 
-	// a full word (the exception tables) keeps the first match. An ordinary ending
-	// keeps the longest one, so "Федуце" is "це", not the earlier "е". Equal length
-	// stays with the earlier rule ("ому" is "ы" in Belarusian and "ый" in Russian).
+	// целое слово (таблицы исключений) берёт первое совпадение. Обычное окончание
+	// берёт самое длинное, поэтому «Федуце» — это «це», а не более раннее «е».
+	// При равной длине остаётся более раннее правило («ому» — «ы» в белорусском и «ый» в русском).
 	const Rule* matched = nullptr;
 	size_t matchedLength = 0;
 	for (const auto& rule : rules)
@@ -184,7 +184,7 @@ bool CNameConverter::ApplyRules(std::wstring& name, const RulesList& rules, SexT
 	return !matched->Uncertain;
 }
 
-// applies convert to every part of a hyphenated word; true if all parts were converted
+// применяет преобразование к каждой части слова через дефис; истина, если преобразованы все
 bool CNameConverter::ForEachPart(std::wstring& word, const std::function<bool(std::wstring&)>& convert)
 {
 	if (word.find(L'-') == std::wstring::npos)
@@ -192,7 +192,7 @@ bool CNameConverter::ForEachPart(std::wstring& word, const std::function<bool(st
 
 	bool bRes = true;
 	std::wstring result;
-	const std::vector<std::wstring> parts = SplitString(word, L'-'); // keeps empty parts
+	const std::vector<std::wstring> parts = SplitString(word, L'-'); // пустые части сохраняются
 	for (size_t i = 0; i < parts.size(); i++)
 	{
 		std::wstring part = parts[i];
@@ -220,9 +220,7 @@ bool CNameConverter::IsMiddleName(const std::wstring& name, LangType lang, NounC
 
 bool CNameConverter::NormalizeName(std::wstring& fullName, LangType lang, NounCase nounCase)
 {
-	bool bRes = false;
-
-	// check for alias
+	// псевдоним в скобках
 	std::wstring strAlias;
 	size_t posBracket2 = fullName.rfind(L')');
 	size_t posBracket1 = fullName.rfind(L'(', posBracket2);
@@ -230,7 +228,7 @@ bool CNameConverter::NormalizeName(std::wstring& fullName, LangType lang, NounCa
 	{
 		strAlias = fullName.substr(posBracket1 + 1, posBracket2 - posBracket1 - 1);
 		NormalizeName(strAlias, lang, nounCase);
-		// remove " (alias)" together with the leading space
+		// убираем « (псевдоним)» вместе с пробелом перед скобкой
 		const size_t eraseFrom = posBracket1 > 0 ? posBracket1 - 1 : 0;
 		fullName.erase(eraseFrom, posBracket2 + 1 - eraseFrom);
 	}
@@ -252,13 +250,13 @@ bool CNameConverter::NormalizeName(std::wstring& fullName, LangType lang, NounCa
 		firstName = fullName.substr(pos1 + 1);
 	StrTrim(firstName);
 
-	// an unrecognized patronymic is a failed name: the import window marks NF_NAME
+	// неузнанное отчество — неразобранное имя: окно импорта смотрит на NF_NAME
 	bool middleNameOk = true;
-	SexType sex = SexMale;	// male by default
+	SexType sex = SexMale;	// по умолчанию мужской
 	if (!middleName.empty())
 	{
 		sex = GetSex(middleName, nounCase);
-		// double patronymic: "Гедзімінасавіча-Альбертасавіча"
+		// двойное отчество: «Гедзімінасавіча-Альбертасавіча»
 		middleNameOk = ForEachPart(middleName, [&](std::wstring& part) {
 			return ApplyRules(part, RulesMiddleName, sex, lang, nounCase, false);
 		});
@@ -268,18 +266,16 @@ bool CNameConverter::NormalizeName(std::wstring& fullName, LangType lang, NounCa
 		std::swap(firstName, lastName);
 	}
 
-	// double first name: "Хайнца-Рудольфа"
+	// двойное имя: «Хайнца-Рудольфа»
 	bool bResFN = ForEachPart(firstName, [&](std::wstring& part) {
 		return ApplyRules(part, ExceptionsFirstName, sex, lang, nounCase, true)
 			|| ApplyRules(part, RulesFirstName, sex, lang, nounCase, false);
 	});
 
-	// double surname: each part is declined, "Карпінскую-Пешка", "Денисовой-Клебанович"
+	// двойная фамилия: склоняется каждая часть, «Карпінскую-Пешка», «Денисовой-Клебанович»
 	bool bResLN = ForEachPart(lastName, [&](std::wstring& part) {
-		bool bRes = ApplyRules(part, ExceptionsLastName, sex, lang, nounCase, true);
-		if (!bRes)
-			bRes = ApplyRules(part, RulesLastName, sex, lang, nounCase, false);
-		return bRes;
+		return ApplyRules(part, ExceptionsLastName, sex, lang, nounCase, true)
+			|| ApplyRules(part, RulesLastName, sex, lang, nounCase, false);
 	});
 
 	if(middleName.empty())

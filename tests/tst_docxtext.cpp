@@ -1,5 +1,5 @@
-// readDocxParagraphs on a real decree (tests/data/docx) and the whole path
-// docx -> paragraphs -> parser.
+// readDocxParagraphs на настоящем указе (tests/data/docx) и весь путь
+// docx → абзацы → парсер.
 
 #include "DocxText.h"
 #include "TestData.h"
@@ -33,23 +33,23 @@ void TestDocxText::paragraphs()
     QString error;
     const QStringList lines = readDocxParagraphs(TestData::path(kDecree), &error);
     QVERIFY2(error.isEmpty(), qPrintable(error));
-    // the header has a non-breaking space after "УКАЗ"
+    // в шапке после «УКАЗ» стоит неразрывный пробел
     QVERIFY(lines.contains(QStringLiteral("УКАЗ ПРЕЗИДЕНТА РЕСПУБЛИКИ БЕЛАРУСЬ")));
     QVERIFY(lines.contains(QStringLiteral("15 мая 1997 г.№ 282")));
     QVERIFY(lines.contains(QStringLiteral("–")));
     for (const QString& line : lines)
         QVERIFY2(!line.isEmpty(), "empty paragraphs are skipped");
 
-    // the fixture text used by tst_decrees is this output; the header paragraph of
-    // the source document has CR/LF inside, which the text fixture keeps as separate lines
+    // текст фикстуры tst_decrees — этот вывод; абзац шапки
+    // исходного документа содержит CR/LF, текстовая фикстура хранит их отдельными строками
     QStringList asFixture;
     for (QString line : lines)
         asFixture += line.remove(QLatin1Char('\r')).split(QLatin1Char('\n'));
     QCOMPARE(asFixture, TestData::readLines(TestData::path(QStringLiteral("decrees/ru-1997-282-mothers-list.txt"))));
 }
 
-// <w:br/> between surname and name must not split the paragraph:
-// the parser takes the name from the line before the dash
+// <w:br/> между фамилией и именем не должен рвать абзац:
+// парсер берёт имя со строки перед тире
 void TestDocxText::manualLineBreakStaysInParagraph()
 {
     const QStringList lines = readDocxParagraphs(TestData::path(kDecree), nullptr);

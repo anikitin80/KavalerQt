@@ -17,8 +17,8 @@ bool hasBelarusianLetters(const QString& text)
     return text.contains(QChar(0x0406)) || text.contains(QChar(0x045E)) || text.contains(QStringLiteral("шч"));
 }
 
-// the same sequence of these characters in both texts ("«»" and "«»" yes,
-// "«»" and "" no), without building the sequences
+// одна и та же последовательность этих знаков в обоих текстах ("«»" и "«»" — да,
+// "«»" и "" — нет), без сборки самих последовательностей
 template <typename IsChar>
 bool sameChars(const QString& left, const QString& right, IsChar isChar)
 {
@@ -185,7 +185,7 @@ QString PersonModel::displayPersonal(const Person& person) const
 
 QString PersonModel::displayUkase(const Person& person) const
 {
-    // "dd.MM.yyyy № N" by hand: QDate::toString with a format parses it every call
+    // «dd.MM.yyyy № N» вручную: QDate::toString с форматом разбирает его при каждом вызове
     const auto twoDigits = [](int value) { return QString::number(value).rightJustified(2, QLatin1Char('0')); };
     const QString number = QChar(0x2116) + QLatin1Char(' ') + QString::number(person.ukaseNo);
     if (!person.ukaseDate.isValid())
@@ -382,7 +382,7 @@ PersonModel::QuickFilter PersonModel::makeQuickFilter(const QString& quick) cons
         if (award.name.contains(quick, Qt::CaseInsensitive))
             filter.awards.insert(award.id);
     }
-    // displayUkase() has only digits, dots, spaces and "№"
+    // displayUkase() содержит только цифры, точки, пробелы и «№»
     filter.ukase = std::all_of(quick.cbegin(), quick.cend(), [](QChar c) {
         return c.isDigit() || c == QLatin1Char('.') || c == QLatin1Char(' ') || c == QChar(0x2116);
     });
@@ -392,7 +392,7 @@ PersonModel::QuickFilter PersonModel::makeQuickFilter(const QString& quick) cons
     return filter;
 }
 
-// the same result as searching the shown column texts, without building them
+// тот же результат, что поиск по показанным текстам столбцов, без их сборки
 bool PersonModel::matchesQuick(const Person& person, const QuickFilter& filter) const
 {
     const auto has = [&](const QString& text) {
@@ -404,7 +404,7 @@ bool PersonModel::matchesQuick(const Person& person, const QuickFilter& filter) 
         if (has(displayPersonal(person)))
             return true;
     } else {
-        // without a comma the text cannot span the ", " between position and rank
+        // без запятой текст не может захватить «, » между должностью и званием
         if (has(person.personal.isEmpty() ? person.personalBy : person.personal)
             || has(!person.rank.isEmpty() ? person.rank : person.rankBy))
             return true;
@@ -416,7 +416,7 @@ bool PersonModel::matchesQuick(const Person& person, const QuickFilter& filter) 
     return filter.mark && has(translationMark(person).text);
 }
 
-// text of the sort column for the text columns, empty for the others
+// текст столбца сортировки для текстовых столбцов, пусто для остальных
 QString PersonModel::sortText(const Person& person) const
 {
     switch (m_sortColumn) {
@@ -427,8 +427,8 @@ QString PersonModel::sortText(const Person& person) const
     }
 }
 
-// text columns: the collation key of every row is made once per sort, not in
-// each of the ~1.3 million comparisons; equal keys keep the order by id
+// текстовые столбцы: ключ сортировки каждой строки делается один раз на сортировку,
+// а не в каждом из ~1,3 миллиона сравнений; равные ключи сохраняют порядок по номеру
 void PersonModel::sortPeople(QVector<int>& rows) const
 {
     if (m_sortColumn != 1 && m_sortColumn != 2 && m_sortColumn != 5) {
@@ -481,7 +481,7 @@ void PersonModel::sort(int column, Qt::SortOrder order)
     if (m_rows.isEmpty())
         return;
     emit layoutAboutToBeChanged({}, QAbstractItemModel::VerticalSortHint);
-    // selection and current row are persistent indexes: move them with their people
+    // выделение и текущая строка — устойчивые индексы: переносим их вместе с людьми
     const QModelIndexList before = persistentIndexList();
     sortRows();
     QHash<int, int> rowOfCatalogIndex;
@@ -501,8 +501,8 @@ void PersonModel::sort(int column, Qt::SortOrder order)
 void PersonModel::apply(int awardId, int year, const QString& name, const QString& quick,
                         bool needTranslationOnly, bool checkQuotes, bool groupByAward)
 {
-    // the model must look unchanged until beginResetModel(): views and the
-    // selection model still read it while handling modelAboutToBeReset
+    // модель должна выглядеть прежней до beginResetModel(): виды и
+    // модель выделения ещё читают её, обрабатывая modelAboutToBeReset
     beginResetModel();
     m_checkQuotes = checkQuotes;
     m_grouped = groupByAward && awardId == -1;

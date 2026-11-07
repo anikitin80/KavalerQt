@@ -125,8 +125,8 @@ MainWindow::MainWindow(QWidget* parent)
     m_stats = new StatsModel(&m_catalog, this);
     m_dictionary = new DictionaryModel(&m_catalog, this);
 
-    // a toolbar/menu action: icon from the toolbar strip, menu text, short text
-    // under the icon (the menu text when empty), tool tip
+    // действие панели и меню: значок из полосы, текст меню, короткий текст
+    // под значком (текст меню, если пусто), подсказка
     const auto makeAction = [this](int icon, const QString& text, const QString& iconText, const QString& toolTip,
                                    auto&& slot) {
         auto* action = new QAction(toolbarIcon(icon), text, this);
@@ -212,7 +212,7 @@ MainWindow::MainWindow(QWidget* parent)
     auto* groupAction = viewMenu->addAction(QStringLiteral("Группировать по награде"));
     groupAction->setCheckable(true);
     groupAction->setChecked(true);
-    // only keeps the menu item and the check box in sync: the check box refreshes
+    // только держит пункт меню и флажок в одном состоянии
     connect(groupAction, &QAction::toggled, this, [this](bool checked) {
         if (m_group && m_group->isChecked() != checked)
             m_group->setChecked(checked);
@@ -274,8 +274,8 @@ MainWindow::MainWindow(QWidget* parent)
     m_peopleView->viewport()->installEventFilter(this);
     connect(m_peopleView->header(), &QHeaderView::sectionResized, this,
             [this](int logical, int, int newSize) { adjustPeopleColumn(logical, newSize); });
-    // filters, grouping and sorting reset the model; catalog changes are
-    // captured earlier (Catalog::aboutToChange) while people() is still old
+    // фильтры, группировка и сортировка сбрасывают модель; изменения каталога
+    // запоминаются раньше (Catalog::aboutToChange), пока people() ещё старый
     connect(m_people, &QAbstractItemModel::modelAboutToBeReset, this, [this] {
         if (!m_peopleState.valid && !m_openingDatabase)
             capturePeopleState();
@@ -347,7 +347,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_quotes, &QCheckBox::toggled, this, [this](bool checked) { m_people->setCheckQuotes(checked); });
     connect(m_needTranslation, &QCheckBox::toggled, this, refresh);
     connect(m_group, &QCheckBox::toggled, this, refresh);
-    // both text filters wait for a pause in typing
+    // оба текстовых фильтра ждут паузы в наборе
     auto* quickTimer = new QTimer(this);
     quickTimer->setSingleShot(true);
     quickTimer->setInterval(200);
@@ -365,7 +365,7 @@ MainWindow::MainWindow(QWidget* parent)
     });
     connect(&m_catalog, &Catalog::dataChanged, this, [this] {
         refreshPeople();
-        // statistics and the name dictionary are rebuilt only when looked at
+        // статистика и словарь имён пересобираются, только когда на них смотрят
         m_statsStale = true;
         m_dictionaryStale = true;
         refreshVisibleTab();
@@ -381,7 +381,7 @@ MainWindow::MainWindow(QWidget* parent)
 
 QString MainWindow::storedDatabasePath() const
 {
-    // empty on the first start: the window asks to open a database
+    // пусто при первом запуске: окно просит открыть базу
     return QSettings().value(QStringLiteral("Database")).toString();
 }
 
@@ -403,14 +403,14 @@ void MainWindow::chooseDatabase()
 void MainWindow::openDatabase(const QString& path)
 {
     QString error;
-    // another database: ids of the old one mean nothing, start with a fresh view
+    // другая база: номера старой ничего не значат, вид начинаем заново
     m_openingDatabase = true;
     m_peopleState = {};
     const bool opened = m_catalog.open(path, &error);
     m_openingDatabase = false;
     if (!opened) {
-        // an unusable file is rejected before the current database is closed;
-        // only a failure while loading leaves no database open
+        // негодный файл отвергается до закрытия текущей базы;
+        // без открытой базы остаёмся только если сбой случился при загрузке
         if (!m_catalog.isOpen()) {
             setWindowTitle(QStringLiteral("Кавалер"));
             fillFilters();
@@ -444,7 +444,7 @@ void MainWindow::fillFilters()
     m_year->clear();
     m_year->addItem(QStringLiteral("<Все>"), -1);
     int latestYear = 0;
-    // not stats(): that would build all derived data at startup
+    // не stats(): иначе при запуске соберётся всё производное
     latestYear = qMax(latestYear, m_catalog.latestYear());
     const int currentYear = QDate::currentDate().year();
     for (int year = m_catalog.yearMin(); year <= currentYear; ++year) {
@@ -500,7 +500,7 @@ void MainWindow::capturePeopleState()
     PeopleViewState state;
     state.valid = true;
 
-    // nearest person row from index (group rows are skipped)
+    // ближайшая строка человека от index (строки групп пропускаются)
     const auto personId = [this](QModelIndex index, bool down) {
         for (int step = 0; index.isValid() && step < 64; ++step) {
             if (const Person* person = m_people->personAt(index))
@@ -559,8 +559,8 @@ void MainWindow::restorePeopleState()
         return index.isValid() && (!index.parent().isValid() || m_peopleView->isExpanded(index.parent()));
     };
 
-    // neighbouring rows become one range: the view checks every painted cell
-    // against all ranges, one range per row makes a big selection crawl
+    // соседние строки становятся одним диапазоном: вид сверяет каждую рисуемую ячейку
+    // со всеми диапазонами, диапазон на строку тормозит большое выделение
     QModelIndexList rows;
     for (int id : state.selectedIds) {
         const QModelIndex index = found.value(id);
@@ -582,7 +582,7 @@ void MainWindow::restorePeopleState()
         i = j + 1;
     }
 
-    // the current person may be gone (deleted, filtered out): take a neighbour
+    // текущего человека может не быть (удалён, отфильтрован): берём соседа
     QModelIndex current = found.value(state.currentId);
     const bool replaced = !current.isValid();
     if (replaced) {
@@ -633,7 +633,7 @@ QVector<Person> MainWindow::selectedPeople() const
     return people;
 }
 
-// one transaction and one refresh for the whole selection
+// одна транзакция и одно обновление на всё выделение
 bool MainWindow::saveChanged(QVector<Person>& people)
 {
     if (people.isEmpty())
@@ -750,8 +750,8 @@ void MainWindow::translateSelectedCloud(CloudScope scope)
     QString failure;
     const QVector<Person> selected = selectedPeople();
     QVector<Person> translated = selected;
-    // the requests run a nested event loop: a modal progress keeps the user from
-    // editing or deleting these records meanwhile (their copies are saved below)
+    // запросы крутят вложенный цикл событий: модальный прогресс не даёт
+    // править или удалять эти записи, пока идёт перевод (копии сохраняются ниже)
     QProgressDialog progress(QStringLiteral("Перевод через Яндекс..."), QStringLiteral("Отмена"), 0,
                              int(selected.size()), this);
     progress.setWindowModality(Qt::WindowModal);
@@ -770,7 +770,7 @@ void MainWindow::translateSelectedCloud(CloudScope scope)
         if (person.name != original.name || person.personal != original.personal || person.rank != original.rank)
             changed.push_back(person);
     }
-    // keep what was translated before a network error
+    // оставляем то, что успели перевести до сетевой ошибки
     const bool saved = saveChanged(changed);
     if (!failure.isEmpty()) {
         QMessageBox::critical(this, windowTitle(), saved && !changed.isEmpty()
@@ -986,7 +986,7 @@ void MainWindow::exportCsv()
         return;
 
     QSettings settings;
-    // on the stack: the dialog and its widgets are deleted when the function returns
+    // на стеке: диалог и его виджеты удалятся, когда функция вернётся
     QDialog dialogObject(this);
     QDialog* dialog = &dialogObject;
     dialog->setWindowTitle(QStringLiteral("Экспорт награждений в CSV файл"));
@@ -1043,7 +1043,7 @@ void MainWindow::replaceText()
     if (!m_catalog.isOpen())
         return;
 
-    // on the stack: the dialog and its widgets are deleted when the function returns
+    // на стеке: диалог и его виджеты удалятся, когда функция вернётся
     QDialog dialogObject(this);
     QDialog* dialog = &dialogObject;
     dialog->setWindowTitle(QStringLiteral("Поиск и замена"));
@@ -1101,7 +1101,7 @@ void MainWindow::replaceText()
         QMessageBox::information(this, windowTitle(), QStringLiteral("%1 записей были обновлены.").arg(count));
 }
 
-// one-off clean-up of old records; new and edited ones are fixed on save
+// разовая чистка старых записей; новые и правленые исправляются при сохранении
 void MainWindow::fixLatinBelarusianI()
 {
     if (!m_catalog.isOpen())

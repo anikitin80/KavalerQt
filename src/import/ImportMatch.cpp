@@ -8,7 +8,7 @@
 
 namespace {
 
-// decree, award and name; Belarusian names compared like the catalog does
+// указ, награда и имя; белорусские имена сравниваются так же, как в каталоге
 QString identityKey(const PersonInfo& info)
 {
     const QString name = QString::fromStdWString(info.Name);
@@ -55,16 +55,16 @@ QVector<int> personsToImport(const std::vector<PersonInfo>& persons, const QVect
                              const Catalog& catalog)
 {
     QVector<int> result;
-    QHash<QString, int> inFile;  // persons with the key seen so far in the same file
-    QHash<QString, int> planned; // persons with the key already chosen for import
+    QHash<QString, int> inFile;  // люди с этим ключом, уже встреченные в том же файле
+    QHash<QString, int> planned; // люди с этим ключом, уже выбранные к импорту
     for (size_t i = 0; i < persons.size(); ++i) {
         const PersonInfo& info = persons[i];
         const int ordinal = inFile[fileKey(info)]++;
         if (!wanted.value(int(i), true))
             continue;
         const QString key = identityKey(info);
-        // the catalog plus what is planned already has this person: known, or
-        // the same decree parsed from another file
+        // каталог плюс уже запланированное уже содержит этого человека: известен
+        // или тот же указ разобран из другого файла
         if (catalog.count(probe(info)) + planned.value(key) > ordinal)
             continue;
         result.push_back(int(i));

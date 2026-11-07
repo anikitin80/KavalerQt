@@ -31,13 +31,13 @@ public:
     bool isGrouped() const { return m_grouped; }
     int shownCount() const;
     const Person* personAt(const QModelIndex& index) const;
-    // indexes (column 0) of the shown people with these ids, by id
+    // индексы (столбец 0) показанных людей с этими номерами, по номеру
     QHash<int, QModelIndex> indexesOfPersons(const QSet<int>& personIds) const;
-    // award id of a group row (grouped view), 0 for other rows
+    // номер награды у строки группы (групповой вид), 0 у остальных строк
     int groupAwardId(const QModelIndex& index) const;
     QModelIndex groupIndex(int awardId) const;
     QStringList suggestions(int personId) const;
-    // names to choose from, by person id; the name column is repainted once
+    // имена на выбор, по номеру человека; столбец имени перерисовывается один раз
     void setSuggestions(const QHash<int, QStringList>& suggestions);
     void clearSuggestions(int personId);
 
@@ -57,15 +57,15 @@ private:
     Mark translationMark(const Person& person) const;
     QString columnText(const Person& person, int column) const;
     bool less(int left, int right) const;
-    // what does not depend on the person is decided once per filter
+    // то, что не зависит от человека, решается один раз на фильтр
     struct QuickFilter
     {
         QString text;
-        QSet<int> awards;        // awards whose name contains the text
-        bool ukase = false;      // the text can be part of "dd.MM.yyyy № N"
-        bool comma = false;      // the text can span "position, rank"
-        bool posthumous = false; // the text is "X"
-        bool mark = false;       // the text can be part of a translation mark
+        QSet<int> awards;        // награды, в названии которых есть текст
+        bool ukase = false;      // текст может быть частью «dd.MM.yyyy № N»
+        bool comma = false;      // текст может захватить «должность, звание»
+        bool posthumous = false; // текст — «X»
+        bool mark = false;       // текст может быть частью пометки перевода
     };
     QuickFilter makeQuickFilter(const QString& quick) const;
     bool matchesQuick(const Person& person, const QuickFilter& filter) const;
@@ -93,8 +93,8 @@ private:
     Qt::SortOrder m_sortOrder = Qt::AscendingOrder;
     bool m_checkQuotes = false;
     bool m_grouped = false;
-    // Russian collation: "Ё" after "Е", Belarusian "і"/"ў" next to "и"/"у",
-    // numbers by value ("5-й" before "12-й")
+    // русская сортировка: «Ё» после «Е», белорусские «і»/«ў» рядом с «и»/«у»,
+    // числа по значению («5-й» раньше «12-й»)
     QCollator m_collator;
     QHash<int, QStringList> m_suggestions;
 };
@@ -115,7 +115,7 @@ public:
 private:
     Catalog* m_catalog;
     bool m_byMonth = true;
-    QVector<StatMonth> m_months; // own copy: the catalog rebuilds its statistics lazily
+    QVector<StatMonth> m_months; // своя копия: каталог пересобирает статистику лениво
     QVector<int> m_awardIds;
     QHash<QPair<int, int>, int> m_yearCount;
     QVector<int> m_years;
@@ -136,5 +136,5 @@ public:
 
 private:
     Catalog* m_catalog;
-    QVector<DictEntry> m_rows; // own copy, see StatsModel
+    QVector<DictEntry> m_rows; // своя копия, см. StatsModel
 };

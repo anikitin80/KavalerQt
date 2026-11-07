@@ -159,8 +159,8 @@ ImportDialog::ImportDialog(Catalog* catalog, QWidget* parent)
     auto* importAll = new QPushButton(QStringLiteral("Импорт всех"));
     auto* close = new QPushButton(QStringLiteral("Закрыть"));
 
-    // the layout of the original dialog (IDD_DOC_PARSER): file/folder, path,
-    // start with the rename option, progress, awards, persons, group info, import
+    // раскладка исходного диалога (IDD_DOC_PARSER): файл/папка, путь,
+    // старт с переименованием, прогресс, награды, люди, сведения о группе, импорт
     auto* modeRow = new QHBoxLayout;
     modeRow->addWidget(m_fileMode);
     modeRow->addWidget(folderMode);
@@ -191,7 +191,7 @@ ImportDialog::ImportDialog(Catalog* catalog, QWidget* parent)
     layout->addLayout(pathRow);
     layout->addLayout(startRow);
     layout->addWidget(m_progress);
-    layout->addWidget(m_awards, 88);   // heights as in the original: 88 and 153
+    layout->addWidget(m_awards, 88);   // высоты как в исходном: 88 и 153
     layout->addWidget(m_personCount);
     layout->addWidget(m_persons, 153);
     layout->addLayout(groupRow);
@@ -228,7 +228,7 @@ ImportDialog::ImportDialog(Catalog* catalog, QWidget* parent)
         if (index < 0 || index >= int(m_parser.m_Persons.size()))
             return;
         m_parser.m_Persons[size_t(index)].Name = toWide(item->text());
-        // a corrected name may match the catalog or another person now
+        // исправленное имя может теперь совпасть с каталогом или другим человеком
         m_filling = true;
         markKnown();
         m_filling = false;
@@ -371,7 +371,7 @@ void ImportDialog::offerNewWords()
         chooseDictionaries();
     }
 
-    // words are applied to this session even if the dictionary can't be saved
+    // слова применяются к этому сеансу, даже если словарь не удалось сохранить
     if (!converter.UpdateDictionary(items)) {
         QMessageBox::warning(this, windowTitle(), missingPath()
             ? QStringLiteral("Файлы словарей не заданы: новые слова будут использованы только до закрытия окна.")
@@ -401,7 +401,7 @@ bool ImportDialog::chooseDictionaries()
         auto* edit = new QLineEdit(QDir::toNativeSeparators(fromWide(converter.DictionaryPath(lang))));
         auto* browse = new QPushButton(QStringLiteral("..."));
         connect(browse, &QPushButton::clicked, &dialog, [&dialog, edit, label] {
-            // an existing file is loaded, a new one is created on the first save
+            // существующий файл загружается, новый создаётся при первом сохранении
             const QString file = QFileDialog::getSaveFileName(&dialog, label, edit->text(),
                 QStringLiteral("Словарь (*.txt *.csv);;Все файлы (*.*)"), nullptr,
                 QFileDialog::DontConfirmOverwrite);
@@ -535,7 +535,7 @@ void ImportDialog::showPersons()
     m_filling = false;
 }
 
-// bold: already in the catalog; yellow: namesakes in one decree, check positions
+// жирный: уже в каталоге; жёлтый: тёзки в одном указе, проверьте должности
 void ImportDialog::markKnown()
 {
     const QVector<ImportMatch> matches = matchImported(m_parser.m_Persons, *m_catalog);

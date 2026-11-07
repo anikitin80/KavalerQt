@@ -14,7 +14,7 @@ QDate ParseDate(std::wstring strDate, bool russian)
 {
     StrTrim(strDate);
     strDate.erase(std::remove(strDate.begin(), strDate.end(), L' '), strDate.end());
-    if (!russian) // "лiпеня" typed with Latin i
+    if (!russian) // «лiпеня» набрано латинской i
         ToCyrillicI(strDate, false);
 
     const size_t sep1 = strDate.find_first_not_of(L"0123456789");
@@ -79,26 +79,27 @@ bool isCyrillicLetter(QChar c)
     return code >= 0x0400 && code <= 0x04FF && c.isLetter();
 }
 
-// nearest letter before/after position (skipping spaces and punctuation) is Cyrillic
-bool cyrillicAround(const QString& text, int pos)
+// ближайшая буква от index шагом +1 или -1, пробелы и знаки пропускаются
+bool nearestLetterIsCyrillic(const QString& text, int index, int step)
 {
-    for (int i = pos - 1; i >= 0; --i) {
-        if (text.at(i).isLetter())
-            return isCyrillicLetter(text.at(i));
+    for (; index >= 0 && index < text.size(); index += step) {
+        if (text.at(index).isLetter())
+            return isCyrillicLetter(text.at(index));
     }
     return false;
+}
+
+bool cyrillicAround(const QString& text, int pos)
+{
+    return nearestLetterIsCyrillic(text, pos - 1, -1);
 }
 
 bool cyrillicAfter(const QString& text, int pos)
 {
-    for (int i = pos + 1; i < text.size(); ++i) {
-        if (text.at(i).isLetter())
-            return isCyrillicLetter(text.at(i));
-    }
-    return false;
+    return nearestLetterIsCyrillic(text, pos + 1, 1);
 }
 
-// Cyrillic letter that looks like the Latin one, or a null QChar
+// кириллическая буква, похожая на латинскую, или пустой QChar
 QChar cyrillicTwin(QChar c, bool belarusian, bool onlyI)
 {
     switch (c.unicode()) {
@@ -132,14 +133,14 @@ QChar cyrillicTwin(QChar c, bool belarusian, bool onlyI)
     }
 }
 
-// position of a Latin letter to replace by its Cyrillic twin, or -1:
-// - inside a Cyrillic word: "Iгар", "Міxaйлаўна", "прядильщицa";
-// - a lower-case letter standing alone between Cyrillic words: the
-//   conjunctions and prepositions "і", "а", "с", "о", "у" typed in Latin.
-//   A standalone capital is left alone: Roman numerals ("I класа"),
-//   driving licence categories ("категории B").
-// the word around pos is a Roman numeral, possibly typed with Cyrillic І/Х
-// ("XXІ", "XІV" in "XXІ стагоддзя"): it stays as it is
+// позиция латинской буквы, которую надо заменить кириллической парой, или -1:
+// - внутри кириллического слова: «Iгар», «Міxaйлаўна», «прядильщицa»;
+// - строчная буква одна между кириллическими словами: союзы и предлоги
+//   «і», «а», «с», «о», «у», набранные латиницей.
+//   Отдельная заглавная остаётся: римские цифры («I класа»),
+//   категории водительских прав («категории B»).
+// слово вокруг pos — римская цифра, возможно с кириллическими І/Х
+// («XXІ», «XІV» в «XXІ стагоддзя»): оно остаётся как есть
 bool romanNumeralAt(const QString& text, int pos)
 {
     int begin = pos;
@@ -179,8 +180,8 @@ QString normalize(const QString& text, bool belarusian, bool onlyI)
     if (pos < 0)
         return text;
     QString result = text;
-    // rescan from the start: a replaced letter can make its Latin neighbour
-    // part of the Cyrillic word too ("Mixaіл" -> "Міхаіл")
+    // снова с начала: заменённая буква может сделать латинского соседа
+    // тоже частью кириллического слова («Mixaіл» → «Міхаіл»)
     while (pos >= 0) {
         result[pos] = cyrillicTwin(result.at(pos), belarusian, onlyI);
         pos = latinInCyrillicWord(result, 0, belarusian, onlyI);
@@ -220,6 +221,12 @@ void ToCyrillicI(std::wstring& text, bool capitalToo)
 std::wstring ToLower(const std::wstring& str)
 {
     return QString::fromStdWString(str).toLower().toStdWString();
+}
+
+bool InsideQuotes(const std::wstring& text, size_t pos)
+{
+    const size_t quote = text.find_first_of(L"«»", pos);
+    return quote != std::wstring::npos && text[quote] == L'»';
 }
 
 void StrTrim(std::wstring& str)

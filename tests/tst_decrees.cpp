@@ -1,11 +1,11 @@
-// End-to-end parser tests on real decrees.
+// Сквозные тесты парсера на настоящих указах.
 //
-// tests/data/decrees/<id>.txt          decree paragraphs as readDocxParagraphs returns them
-// tests/data/decrees/<id>.expected.tsv persons as they are stored in the catalog database
+// tests/data/decrees/<id>.txt          абзацы указа, как их возвращает readDocxParagraphs
+// tests/data/decrees/<id>.expected.tsv люди, как они лежат в базе каталога
 //
-// A non-empty "known_issue" column marks a person the parser currently gets
-// wrong; the test then expects the mismatch (QEXPECT_FAIL) and starts to fail
-// (XPASS) once the parser is fixed, so the marker can be removed.
+// Непустой столбец «known_issue» помечает человека, которого парсер пока
+// разбирает неверно; тест тогда ждёт расхождение (QEXPECT_FAIL) и начинает падать
+// (XPASS), когда парсер исправлен, — метку можно убрать.
 
 #include "TestData.h"
 
@@ -128,7 +128,7 @@ void TestDecrees::decree_data()
         QTest::newRow(qPrintable(id)) << id;
 }
 
-// decree number, date, language and the number of persons
+// номер указа, дата, язык и число людей
 void TestDecrees::decree()
 {
     QFETCH(QString, id);
@@ -154,7 +154,7 @@ void TestDecrees::person_data()
         const Expected expected = readExpected(id);
         for (int index = 0; index < expected.persons.size(); ++index) {
             const ExpectedPerson& person = expected.persons.at(index);
-            // ASCII tag: the console may not show Cyrillic, the name is in the compared text
+            // метка ASCII: консоль может не показать кириллицу, имя есть в сравниваемом тексте
             QTest::addRow("%s #%d", qPrintable(id), index + 1)
                 << id << index
                 << describe(person.name, person.awardId, person.description, person.rank, person.posthumous)
@@ -163,7 +163,7 @@ void TestDecrees::person_data()
     }
 }
 
-// name in nominative case, award, description and rank as in the catalog
+// имя в именительном, награда, должность и звание, как в каталоге
 void TestDecrees::person()
 {
     QFETCH(QString, id);

@@ -22,8 +22,8 @@ namespace {
 
 const char kGeometryKey[] = "EditDialog/Geometry";
 
-// Two language panels side by side when there is enough room, one above
-// the other in a narrow window.
+// Две языковые панели рядом, когда места хватает, и одна над
+// другой в узком окне.
 class LanguagePanels : public QWidget
 {
 public:
@@ -50,8 +50,8 @@ protected:
     }
 
 private:
-    // must stay above the side-by-side minimum width, otherwise the window
-    // could not be narrowed enough to reach the switch point
+    // должно оставаться шире минимума для панелей рядом, иначе окно
+    // не сузить до точки переключения
     int threshold() const
     {
         const int sideBySide = m_first->minimumSizeHint().width() + m_second->minimumSizeHint().width()
@@ -68,7 +68,7 @@ QLabel* rowLabel(const QString& text, bool multiline)
 {
     auto* label = new QLabel(text);
     if (multiline) {
-        // line up with the first text line of the multi-line editor
+        // выровнять с первой строкой многострочного редактора
         label->setAlignment(Qt::AlignLeft | Qt::AlignTop);
         label->setContentsMargins(0, 4, 0, 0);
     } else {
@@ -87,7 +87,7 @@ QPlainTextEdit* textBox(const QString& text, int minLines)
     return edit;
 }
 
-// ФИО / Личные данные / Звание for one language
+// ФИО / Личные данные / Звание одного языка
 QGroupBox* languagePanel(const QString& title, QLineEdit* name, QPlainTextEdit* personal, QLineEdit* rank)
 {
     auto* box = new QGroupBox(title);
@@ -208,7 +208,7 @@ EditDialog::EditDialog(Catalog* catalog, const Person& person, QWidget* parent)
     layout->addSpacing(4);
     layout->addLayout(buttonRow);
 
-    // Russian fields first, then Belarusian, whatever the panel arrangement
+    // сначала русские поля, потом белорусские, как бы ни стояли панели
     const QWidget* order[] = {m_award, m_ukaseNo, m_date, m_posthumous, m_name, m_personal, m_rank,
                               m_nameBy, m_personalBy, m_rankBy, m_awardedFor, translate, buttons};
     for (size_t i = 1; i < std::size(order); ++i)

@@ -30,7 +30,7 @@ struct Rule
 	Rule(SexType sex, LangType lang, const wchar_t* sDat, const wchar_t* sAcc, const wchar_t* sNom)
 		: Sex(sex), Language(lang), SuffixDat(sDat), SuffixAcc(sAcc), SuffixNom(sNom)
 	{
-		// "?" is not a letter of the stem: "---ый?" means the nominative is a guess
+		// «?» — не буква основы: «---ый?» значит, что именительный угадан
 		if (!SuffixNom.empty() && SuffixNom.back() == L'?')
 		{
 			Uncertain = true;
@@ -93,9 +93,8 @@ public:
 	bool IsMiddleName(const std::wstring& name, LangType lang, NounCase nounCase);
 
 	static bool ApplyRules(std::wstring& name, const RulesList& rules, SexType sex, LangType lang, NounCase nounCase, bool bFullWordMatch);
-	// a rule with endings "ую,ею" / "уя,ея" becomes one rule per pair of endings;
-	// every rule table is built with it (a table written without it would never
-	// match its comma lists)
+	// правило с окончаниями «ую,ею» / «уя,ея» становится отдельным правилом на каждую пару;
+	// им собирается каждая таблица (без него списки через запятую никогда не совпадут)
 	static RulesList ExpandRules(const RulesList& rules);
 
 protected:

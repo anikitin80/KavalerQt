@@ -1,4 +1,4 @@
-# command line tools for checking the parser on the whole decree archive
+# утилиты командной строки, чтобы проверить парсер на всём архиве указов
 find_package(Qt6 REQUIRED COMPONENTS Sql)
 
 add_executable(decree_report

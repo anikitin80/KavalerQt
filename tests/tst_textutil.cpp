@@ -1,4 +1,4 @@
-// TextUtil: dates in decree headers and small string helpers used by the parser.
+// TextUtil: даты в шапках указов и мелкие строковые помощники парсера.
 
 #include "TextUtil.h"
 
@@ -30,7 +30,7 @@ void TestTextUtil::parseDate_data()
     QTest::addColumn<bool>("russian");
     QTest::addColumn<QDate>("expected");
 
-    // the parser passes the header text before "г." ("15 мая 1997 г.№ 282")
+    // парсер передаёт текст шапки до «г.» («15 мая 1997 г.№ 282»)
     QTest::newRow("ru may") << QStringLiteral("15 мая 1997 ") << true << QDate(1997, 5, 15);
     QTest::newRow("ru april") << QStringLiteral("9 апреля 1999 ") << true << QDate(1999, 4, 9);
     QTest::newRow("ru december") << QStringLiteral("31 декабря 2020") << true << QDate(2020, 12, 31);
@@ -39,7 +39,7 @@ void TestTextUtil::parseDate_data()
     QTest::newRow("by march") << QStringLiteral("1 сакавіка 2020") << false << QDate(2020, 3, 1);
     QTest::newRow("by october") << QStringLiteral("1 кастрычніка 2024 ") << false << QDate(2024, 10, 1);
     QTest::newRow("by november") << QStringLiteral("6 лістапада 2025") << false << QDate(2025, 11, 6);
-    // decrees often type the Belarusian "і" as Latin "i"
+    // в указах белорусскую «і» часто набирают латинской «i»
     QTest::newRow("by july latin i") << QStringLiteral("2 лiпеня 2019") << false << QDate(2019, 7, 2);
     QTest::newRow("by may same as ru")<< QStringLiteral("5 мая 2016") << false << QDate(2016, 5, 5);
     QTest::newRow("wrong language months") << QStringLiteral("28 студзеня 2015") << true << QDate();
@@ -101,7 +101,7 @@ void TestTextUtil::findTokens()
     QCOMPARE(start, size_t(10));
     QCOMPARE(end, size_t(17));
 
-    // the first token of the list wins, not the earliest position in the text
+    // побеждает первый знак списка, а не самая ранняя позиция в тексте
     QVERIFY(FindTokens(L"орденом и медалью", tokens, start, end));
     QCOMPARE(start, size_t(10));
 
@@ -161,7 +161,7 @@ void TestTextUtil::normalizeCyrillicText_data()
     QTest::addColumn<bool>("belarusian");
     QTest::addColumn<QString>("expected");
 
-    // real cases from the catalog
+    // настоящие случаи из каталога
     QTest::newRow("ru ending") << QStringLiteral("прядильщицa фабрики") << false << QStringLiteral("прядильщица фабрики");
     QTest::newRow("ru surname") << QStringLiteral("Дорoxoва Анна Васильевна") << false << QStringLiteral("Дорохова Анна Васильевна");
     QTest::newRow("ru capital") << QStringLiteral("Aршaвская Ирина") << false << QStringLiteral("Аршавская Ирина");
@@ -171,12 +171,12 @@ void TestTextUtil::normalizeCyrillicText_data()
     QTest::newRow("by name with i") << QStringLiteral("Іcaeва Валянціна") << true << QStringLiteral("Ісаева Валянціна");
     QTest::newRow("by rank") << QStringLiteral("пaдпaлкоўнік") << true << QStringLiteral("падпалкоўнік");
     QTest::newRow("by i and c") << QStringLiteral("Kipaўcкі раён") << true << QStringLiteral("Кіраўскі раён");
-    // standalone lower-case letters between Cyrillic words
+    // отдельные строчные буквы между кириллическими словами
     QTest::newRow("ru preposition c") << QStringLiteral("работает c 1990 года в колхозе") << false
                                       << QStringLiteral("работает с 1990 года в колхозе");
     QTest::newRow("ru conjunction a") << QStringLiteral("слесарь a также механик") << false << QStringLiteral("слесарь а также механик");
     QTest::newRow("by preposition y") << QStringLiteral("настаўнік y школе") << true << QStringLiteral("настаўнік у школе");
-    // must stay
+    // должно остаться
     QTest::newRow("roman latin") << QStringLiteral("першай паловы XIX стагоддзя") << true << QStringLiteral("першай паловы XIX стагоддзя");
     QTest::newRow("roman mixed script") << QStringLiteral("XXІ стагоддзя") << true << QStringLiteral("XXІ стагоддзя");
     QTest::newRow("roman ru") << QStringLiteral("участник XXIV съезда") << false << QStringLiteral("участник XXIV съезда");

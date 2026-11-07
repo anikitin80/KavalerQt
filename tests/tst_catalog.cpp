@@ -1,5 +1,5 @@
-// Catalog on a small SQLite database created by the test: duplicate
-// detection, Latin "i" in Belarusian fields, save/remove bookkeeping, backup.
+// Catalog на маленькой базе SQLite, которую создаёт тест: поиск
+// дублей, латинская «i» в белорусских полях, учёт сохранения и удаления, резервная копия.
 
 #include "Catalog.h"
 #include "ImportMatch.h"
@@ -63,7 +63,7 @@ bool createDatabase(const QString& path, const QVector<Row>& rows)
     return ok;
 }
 
-// value of one column of one record, read directly from the file
+// значение одного столбца одной записи, прочитанное прямо из файла
 QString stored(const QString& path, int id, const QString& column)
 {
     QString value;
@@ -82,7 +82,7 @@ QString stored(const QString& path, int id, const QString& column)
     return value;
 }
 
-// a person as the decree parser returns it (Belarusian decree № 13 of 11.01.2021)
+// человек, как его возвращает парсер указов (белорусский указ № 13 от 11.01.2021)
 PersonInfo parsed(const QString& name, int awardId = 14, const QString& file = QStringLiteral("a.docx"))
 {
     PersonInfo info;
@@ -95,7 +95,7 @@ PersonInfo parsed(const QString& name, int awardId = 14, const QString& file = Q
     return info;
 }
 
-const QString kShulha = QStringLiteral("Шульга Валерый Ігаравіч"); // in the test catalog once
+const QString kShulha = QStringLiteral("Шульга Валерый Ігаравіч"); // в тестовом каталоге один раз
 
 const Person* byNameBy(const Catalog& catalog, const QString& nameBy)
 {
@@ -151,18 +151,18 @@ void TestCatalog::init()
     QVERIFY(m_dir.isValid());
     m_path = m_dir.filePath(QStringLiteral("catalog-%1.sqlite").arg(QTest::currentTestFunction()));
     const QVector<Row> rows = {
-        // Latin capital and small i in a Belarusian name and position
+        // латинские заглавная и строчная i в белорусском имени и должности
         {QStringLiteral("Вышиванюк Игорь Михайлович"), QStringLiteral("Вышыванюк Iгар Мiхайлавіч"),
          QStringLiteral("контролер"), QStringLiteral("кантралёр аддзялення пагранiчнага кантролю"),
          QStringLiteral("прапаршчык"), QString()},
-        // conjunction "i" typed in Latin, Roman numeral must stay
+        // союз «i», набранный латиницей; римская цифра должна остаться
         {QString(), QStringLiteral("Іваноў Ігар Пятровіч"), QString(),
          QStringLiteral("загадчык кафедры лагістыкі i цэнавай палітыкі, юрыст I класа"), QString(),
          QStringLiteral("За асабiсты ўклад")},
-        // Russian decree: Russian text is never touched
+        // русский указ: русский текст не трогается
         {QStringLiteral("Петров Петр Петрович"), QString(), QStringLiteral("водитель i механик"), QString(),
          QString(), QStringLiteral("За заслуги i труд"), 11, QStringLiteral("1999-04-09"), kLangRussian},
-        // clean record
+        // чистая запись
         {QString(), QStringLiteral("Шульга Валерый Ігаравіч"), QString(), QStringLiteral("галоўны саветнік"),
          QString(), QString(), 13, QStringLiteral("2021-01-11")},
     };
@@ -179,28 +179,28 @@ void TestCatalog::cleanup()
     m_catalog = nullptr;
 }
 
-// a decree imported again must find the person whatever "i" was typed
+// повторный импорт указа должен найти человека, какой бы «i» ни набрали
 void TestCatalog::containsIgnoresLatinI()
 {
     Person probe;
     probe.ukaseNo = 10;
     probe.ukaseDate = QDate(2015, 1, 28);
     probe.awardId = 14;
-    probe.nameBy = QStringLiteral("Вышыванюк Ігар Міхайлавіч"); // stored as "Iгар Мiхайлавіч"
+    probe.nameBy = QStringLiteral("Вышыванюк Ігар Міхайлавіч"); // в базе лежит «Iгар Мiхайлавіч»
     QVERIFY(m_catalog->contains(probe));
     probe.nameBy = QStringLiteral("Вышыванюк Iгар Мiхайлавiч");
     QVERIFY(m_catalog->contains(probe));
-    probe.nameBy = QStringLiteral("Іваноў Iгар Пятровiч"); // stored in Cyrillic
+    probe.nameBy = QStringLiteral("Іваноў Iгар Пятровiч"); // в базе кириллицей
     QVERIFY(m_catalog->contains(probe));
 
-    probe.ukaseNo = 11; // other decree
+    probe.ukaseNo = 11; // другой указ
     QVERIFY(!m_catalog->contains(probe));
     probe.ukaseNo = 10;
-    probe.ukaseDate = QDate(2016, 1, 28); // same number, other year
+    probe.ukaseDate = QDate(2016, 1, 28); // тот же номер, другой год
     QVERIFY(!m_catalog->contains(probe));
 }
 
-// an athlete gets an order and the title "Заслуженный мастер спорта" in one decree
+// спортсмен получает орден и звание «Заслуженный мастер спорта» в одном указе
 void TestCatalog::secondAwardInOneDecreeIsNotADuplicate()
 {
     Person title = *byNameBy(*m_catalog, QStringLiteral("Шульга Валерый Ігаравіч"));
@@ -213,10 +213,10 @@ void TestCatalog::secondAwardInOneDecreeIsNotADuplicate()
     QVERIFY(m_catalog->save(title, &error));
     QVERIFY(m_catalog->contains(title));
     title.awardId = 14;
-    QCOMPARE(m_catalog->count(title), 1); // the first award is still counted once
+    QCOMPARE(m_catalog->count(title), 1); // первая награда по-прежнему считается один раз
 }
 
-// two different people with the same name and award in one decree
+// двое разных людей с одним именем и наградой в одном указе
 void TestCatalog::namesakesAreCounted()
 {
     Person first = *byNameBy(*m_catalog, QStringLiteral("Шульга Валерый Ігаравіч"));
@@ -242,12 +242,12 @@ void TestCatalog::importKnownPerson()
     QCOMPARE(matches.at(0).namesakes, 1);
     QCOMPARE(personsToImport(persons, {}, *m_catalog), QVector<int>({1}));
 
-    // Latin "I" in the decree, Cyrillic in the catalog (and vice versa)
+    // латинская «I» в указе, кириллическая в каталоге (и наоборот)
     const std::vector<PersonInfo> latin = {parsed(QStringLiteral("Шульга Валерый Iгаравiч"))};
     QVERIFY(matchImported(latin, *m_catalog).at(0).known);
 }
 
-// two people "Шульга Валерый Ігаравіч" in one decree, the catalog has one of them
+// двое «Шульга Валерый Ігаравіч» в одном указе, в каталоге один из них
 void TestCatalog::importNamesakes()
 {
     const std::vector<PersonInfo> persons = {parsed(kShulha), parsed(QStringLiteral("Іншы Чалавек Іванавіч")),
@@ -261,30 +261,30 @@ void TestCatalog::importNamesakes()
     QCOMPARE(personsToImport(persons, {}, *m_catalog), QVector<int>({1, 2}));
 }
 
-// a folder with two copies of the same decree must not import it twice
+// папка с двумя копиями одного указа не должна импортировать его дважды
 void TestCatalog::importSameDecreeFromTwoFiles()
 {
     const QString newcomer = QStringLiteral("Новы Чалавек Іванавіч");
     const std::vector<PersonInfo> persons = {
-        parsed(newcomer), parsed(newcomer), // namesakes in a.docx
+        parsed(newcomer), parsed(newcomer), // тёзки в a.docx
         parsed(newcomer, 14, QStringLiteral("b.docx")), parsed(newcomer, 14, QStringLiteral("b.docx")),
     };
     QCOMPARE(personsToImport(persons, {}, *m_catalog), QVector<int>({0, 1}));
     QCOMPARE(matchImported(persons, *m_catalog).at(2).namesakes, 2);
 }
 
-// order and honorary title for one person in one decree
+// орден и почётное звание одному человеку в одном указе
 void TestCatalog::importSecondAward()
 {
     const std::vector<PersonInfo> persons = {parsed(kShulha, 14), parsed(kShulha, 34)};
     const QVector<ImportMatch> matches = matchImported(persons, *m_catalog);
     QVERIFY(matches.at(0).known);
     QVERIFY(!matches.at(1).known);
-    QCOMPARE(matches.at(1).namesakes, 1); // other award: not a namesake
+    QCOMPARE(matches.at(1).namesakes, 1); // другая награда: не тёзка
     QCOMPARE(personsToImport(persons, {}, *m_catalog), QVector<int>({1}));
 }
 
-// "import selected": a namesake outside the selection still counts
+// «импорт выбранных»: тёзка вне выделения всё равно считается
 void TestCatalog::importNamesakeHiddenByFilter()
 {
     const std::vector<PersonInfo> persons = {parsed(kShulha), parsed(kShulha)};
@@ -310,7 +310,7 @@ void TestCatalog::findLatinLetters()
     QCOMPARE(fixed.at(1).awardedFor, QStringLiteral("За асабісты ўклад"));
     QVERIFY(!found.samples.isEmpty());
 
-    // nothing is written by the search
+    // поиск ничего не записывает
     QCOMPARE(stored(m_path, fixed.at(0).id, QStringLiteral("Name_BY")), QStringLiteral("Вышыванюк Iгар Мiхайлавіч"));
 }
 
@@ -323,15 +323,15 @@ void TestCatalog::saveFixesBelarusianFieldsOnly()
     }
     QVERIFY(russian);
     Person ru = *russian;
-    ru.rank = QStringLiteral("кaпитaн"); // Latin "a" twice
+    ru.rank = QStringLiteral("кaпитaн"); // латинская «a» дважды
     QString error;
     QVERIFY(m_catalog->save(ru, &error));
     QCOMPARE(stored(m_path, ru.id, QStringLiteral("Rank")), QStringLiteral("капитан"));
-    // a Latin "i" is not a Russian letter: Russian text keeps it (fixed by hand)
+    // латинская «i» — не русская буква: русский текст её оставляет (правят вручную)
     QCOMPARE(stored(m_path, ru.id, QStringLiteral("Personal_Info")), QStringLiteral("водитель i механик"));
     QCOMPARE(stored(m_path, ru.id, QStringLiteral("Awarded_For")), QStringLiteral("За заслуги i труд"));
 
-    // Russian names are compared without look-alikes too
+    // русские имена тоже сравниваются без букв-двойников
     Person probe = ru;
     probe.id = 0;
     probe.name = QStringLiteral("Петрoв Петр Петрoвич");
@@ -341,7 +341,7 @@ void TestCatalog::saveFixesBelarusianFieldsOnly()
     by.rankBy = QStringLiteral("палкоўнiк");
     by.nameBy = QStringLiteral("Шульга Валерый Iгаравiч");
     QVERIFY(m_catalog->save(by, &error));
-    QCOMPARE(by.rankBy, QStringLiteral("палкоўнік")); // the saved copy is fixed too
+    QCOMPARE(by.rankBy, QStringLiteral("палкоўнік")); // сохранённая копия тоже исправлена
     QCOMPARE(stored(m_path, by.id, QStringLiteral("Rank_BY")), QStringLiteral("палкоўнік"));
     QCOMPARE(stored(m_path, by.id, QStringLiteral("Name_BY")), QStringLiteral("Шульга Валерый Ігаравіч"));
     QVERIFY(byNameBy(*m_catalog, QStringLiteral("Шульга Валерый Ігаравіч")));
@@ -353,7 +353,7 @@ void TestCatalog::fixWholeDatabaseWithBackup()
     QString error;
     QVERIFY2(m_catalog->backup(backupPath, &error), qPrintable(error));
     QVERIFY(QFile::exists(backupPath));
-    QVERIFY(!m_catalog->backup(backupPath, &error)); // never overwrites
+    QVERIFY(!m_catalog->backup(backupPath, &error)); // никогда не перезаписывает
 
     QVector<Person> fixed;
     m_catalog->findLatinLetters(&fixed);
@@ -361,10 +361,10 @@ void TestCatalog::fixWholeDatabaseWithBackup()
     QCOMPARE(m_catalog->findLatinLetters().records, 0);
     QCOMPARE(stored(m_path, fixed.at(0).id, QStringLiteral("Name_BY")), QStringLiteral("Вышыванюк Ігар Міхайлавіч"));
 
-    // the backup keeps the old text
+    // резервная копия хранит старый текст
     QCOMPARE(stored(backupPath, fixed.at(0).id, QStringLiteral("Name_BY")), QStringLiteral("Вышыванюк Iгар Мiхайлавіч"));
 
-    // and the catalog reopens with the same content
+    // и каталог открывается снова с тем же содержимым
     delete m_catalog;
     m_catalog = new Catalog;
     QVERIFY(m_catalog->open(m_path, &error));
@@ -384,7 +384,7 @@ void TestCatalog::identityFollowsEditsAndRemoval()
     QVERIFY(m_catalog->contains(renamed));
     QVERIFY(!m_catalog->contains(original));
 
-    // two records with the same key: changing one keeps the other found
+    // две записи с одним ключом: правка одной оставляет другую найденной
     Person twin = renamed;
     twin.id = 0;
     QVERIFY(m_catalog->save(twin, &error));
@@ -421,7 +421,7 @@ void TestCatalog::signalsOncePerChange()
     QVERIFY(m_catalog->save(person, &error));
     QCOMPARE(about, 1);
     QCOMPARE(changed, 1);
-    QCOMPARE(peopleAtAbout, 4); // views still see the old data at aboutToChange
+    QCOMPARE(peopleAtAbout, 4); // виды на aboutToChange ещё видят старые данные
 
     QVector<Person> batch = m_catalog->people();
     QVERIFY(m_catalog->saveMany(batch, &error));
@@ -433,7 +433,7 @@ void TestCatalog::signalsOncePerChange()
     QCOMPARE(changed, 2);
 }
 
-// statistics and the name dictionary are rebuilt lazily after a change
+// статистика и словарь имён после изменения пересобираются лениво
 void TestCatalog::derivedDataFollowsChanges()
 {
     int total = 0;
@@ -459,8 +459,8 @@ void TestCatalog::derivedDataFollowsChanges()
     QCOMPARE(total, 5);
 }
 
-// a stored full name wins over a surname that other people spell differently;
-// an unseen name is composed only when every part has one spelling
+// сохранённое полное имя побеждает фамилию, которую другие пишут иначе;
+// невиданное имя составляется, только когда у каждой части одно написание
 void TestCatalog::translateNamePrefersTheWholeName()
 {
     QString error;
@@ -508,7 +508,7 @@ void TestCatalog::translateNamePrefersTheWholeName()
              QStringList({QStringLiteral("Бобер Адам Григорьевич"), QStringLiteral("Бобров Адам Григорьевич")}));
 }
 
-// "Iгар" and "Ігар" are one name, including when the full name is composed from parts
+// «Iгар» и «Ігар» — одно имя, в том числе когда полное имя составлено из частей
 void TestCatalog::translateNameMatchesIdentityKey()
 {
     QCOMPARE(m_catalog->translateName(QStringLiteral("Вышыванюк Ігар Міхайлавіч")),
@@ -537,7 +537,7 @@ void TestCatalog::translateNameMatchesIdentityKey()
              QStringList({QStringLiteral("Лис Игорь Григорьевич")}));
 }
 
-// a later spelling that occurs more often wins; an equal count keeps the earliest decree
+// более позднее написание, которое встречается чаще, побеждает; при равном счёте остаётся самый ранний указ
 void TestCatalog::professionRuPrefersTheFrequentSpelling()
 {
     QString error;
@@ -592,7 +592,7 @@ void TestCatalog::professionRuPrefersTheFrequentSpelling()
     QCOMPARE(m_catalog->professionRu(QStringLiteral("цясляр")), QStringLiteral("столяр"));
 }
 
-// the spelling that occurs more often wins, even when another one sorts first by name
+// побеждает написание, которое встречается чаще, даже если другое по имени идёт первым
 void TestCatalog::rankRuPrefersTheFrequentSpelling()
 {
     QString error;
@@ -659,8 +659,8 @@ void TestCatalog::fixQuotesFollowsTheDecree()
     QVERIFY(!Catalog::fixQuotes(person));
 }
 
-// one Belarusian full name with two Russian spellings is reported; one spelling,
-// and a second record that differs only by spaces, is not
+// одно белорусское полное имя с двумя русскими написаниями попадает в отчёт; одно написание
+// и вторая запись, которая отличается только пробелами, — нет
 void TestCatalog::russianNameConflicts()
 {
     QCOMPARE(m_catalog->russianNameConflicts().size(), 0);
@@ -692,8 +692,8 @@ void TestCatalog::russianNameConflicts()
     QCOMPARE(conflicts.at(0).names.at(1).count, 1);
 }
 
-// a copy saved after its record was deleted (e.g. a slow translation) must not
-// bring the record back in memory; a rolled back batch keeps the new ids unset
+// копия, сохранённая после удаления своей записи (например, медленный перевод), не должна
+// вернуть запись в память; откатанная пачка оставляет новые номера незаданными
 void TestCatalog::savingDeletedRecordFails()
 {
     QString error;
@@ -745,18 +745,18 @@ void TestCatalog::failedOpenKeepsCurrentDatabase()
     QVERIFY(!QFile::exists(m_dir.filePath(QStringLiteral("missing.sqlite"))));
 }
 
-// the first occurrence in each matching field is replaced, saved and normalised
-// like an edit, and the duplicate search follows the new name
+// первое вхождение в каждом совпавшем поле заменяется, сохраняется и нормализуется
+// как правка, и поиск дублей идёт уже по новому имени
 void TestCatalog::replaceTextSavesLikeAnEdit()
 {
     QString error;
     QCOMPARE(m_catalog->countMatches(TextField::NameBy, false, QStringLiteral("Шульга")), 1);
     QCOMPARE(m_catalog->countMatches(TextField::NameBy, true, QStringLiteral("Шульга")), 0);
     const int count = m_catalog->replaceText(TextField::NameBy, false, QStringLiteral("Шульга"),
-                                             QStringLiteral("Шульгa"), &error); // Latin "a"
+                                             QStringLiteral("Шульгa"), &error); // латинская «a»
     QCOMPARE(count, 1);
     const Person* renamed = byNameBy(*m_catalog, QStringLiteral("Шульга Валерый Ігаравіч"));
-    QVERIFY(renamed); // the Latin "a" was normalised on save
+    QVERIFY(renamed); // латинская «a» при сохранении нормализована
     QCOMPARE(stored(m_path, renamed->id, QStringLiteral("Name_BY")), QStringLiteral("Шульга Валерый Ігаравіч"));
     QVERIFY(m_catalog->contains(*renamed));
 
