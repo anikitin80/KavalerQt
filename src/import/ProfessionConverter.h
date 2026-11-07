@@ -3,6 +3,7 @@
 #include "NameConverter.h"
 
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -50,8 +51,14 @@ protected:
 	const Dictionary& DictionaryFor(LangType lang, NounCase nounCase) const;
 	static Dictionary::const_iterator Lookup(const Dictionary& dictionary, std::wstring word, LangType lang);
 	static void ReplaceKeepingFirstLetter(std::wstring& text, size_t pos, size_t oldLength, const std::wstring& replacement);
+	void rebuildNominatives(LangType lang);
+	void rememberNominative(LangType lang, std::wstring nominative);
+	// the declined word is not in this case's dictionary, but RulesProfession
+	// turns it into a nominative already stored for the language
+	bool nominativeFromRules(std::wstring word, LangType lang, NounCase nounCase, std::wstring& nominative) const;
 	void ConvertNonMilitaryRank(std::wstring& strSource, NounCase nounCase);
 	size_t ConvertWordChain(std::wstring& strSource, size_t posStart, Dictionary::const_iterator iter, LangType lang, NounCase nounCase);
+	size_t ConvertWordChain(std::wstring& strSource, size_t posStart, size_t declinedLength, std::wstring nominative, LangType lang, NounCase nounCase);
 	size_t ConvertBracketed(std::wstring& strSource, size_t posStart, LangType lang, NounCase nounCase);
 	void ConvertAfterComma(std::wstring& strSource, size_t posStart, LangType lang, NounCase nounCase);
 	void ConvertLeadingAdjectives(std::wstring& strSource, size_t posMainWord, LangType lang, NounCase nounCase);
@@ -65,6 +72,9 @@ protected:
 	std::wstring m_FilePathBY;
 
 	std::vector<NewDictItem> m_NewWords;
+	// nominatives of both cases, lower-case, so a missing case can still be restored
+	std::set<std::wstring> m_NominativesRU;
+	std::set<std::wstring> m_NominativesBY;
 	static const RulesList RulesAdjectives;
 	static const RulesList RulesProfession;
 	static const std::vector<RankInfo> NonMilitatyRanksBY;

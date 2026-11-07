@@ -25,6 +25,7 @@ private slots:
     void newWordsWorkWithoutDictionaryFile();
     void emptyDictionaryValuesAreSkipped();
     void dictionaryRoundTrip();
+    void otherCaseSuppliesTheNominative();
 };
 
 void TestProfessionConverter::initTestCase()
@@ -207,6 +208,43 @@ void TestProfessionConverter::dictionaryRoundTrip()
     std::wstring again = L"сварщику участка";
     QVERIFY(reader.ConvertProfession(again, LangRU, Dative));
     QCOMPARE(QString::fromStdWString(again), QStringLiteral("сварщик участка"));
+}
+
+// a missing case is restored from the nominative already stored for the other case
+void TestProfessionConverter::otherCaseSuppliesTheNominative()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("PositionsBY.csv"));
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(QStringLiteral("абутнік;;абутніка\n").toUtf8());
+    file.close();
+
+    CProfessionConverter converter;
+    QVERIFY(converter.SetDictionaryPath(path.toStdWString(), LangBY));
+
+    std::wstring dative = L"абутніку цэха";
+    QVERIFY(converter.ConvertProfession(dative, LangBY, Dative));
+    QCOMPARE(QString::fromStdWString(dative), QStringLiteral("абутнік цэха"));
+    QVERIFY(converter.newWords().empty());
+
+    std::wstring capital = L"Абутніку цэха";
+    QVERIFY(converter.ConvertProfession(capital, LangBY, Dative));
+    QCOMPARE(QString::fromStdWString(capital), QStringLiteral("Абутнік цэха"));
+    QVERIFY(converter.newWords().empty());
+
+    std::wstring accusative = L"абутніка цэха";
+    QVERIFY(converter.ConvertProfession(accusative, LangBY, Accusative));
+    QCOMPARE(QString::fromStdWString(accusative), QStringLiteral("абутнік цэха"));
+    QVERIFY(converter.newWords().empty());
+
+    std::wstring unknown = L"зваршчыку цэха";
+    QVERIFY(!converter.ConvertProfession(unknown, LangBY, Dative));
+    QCOMPARE(QString::fromStdWString(unknown), QStringLiteral("зваршчыку цэха"));
+    QCOMPARE(int(converter.newWords().size()), 1);
+    QCOMPARE(QString::fromStdWString(converter.newWords().front().Original), QStringLiteral("зваршчыку"));
+    QCOMPARE(QString::fromStdWString(converter.newWords().front().Word), QStringLiteral("зваршчык"));
 }
 
 QTEST_GUILESS_MAIN(TestProfessionConverter)
