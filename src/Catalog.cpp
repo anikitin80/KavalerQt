@@ -63,6 +63,12 @@ QString joinAlt(const QStringList& values)
     return values.mid(1).join(QStringLiteral(", "));
 }
 
+// collapsed spaces and Latin look-alikes replaced, the same letters identity compares
+QString belarusianNameKey(const QString& name)
+{
+    return NormalizeCyrillicText(name.simplified(), true);
+}
+
 } // namespace
 
 bool Person::needTranslation() const
@@ -134,7 +140,6 @@ void Catalog::clear()
     m_middle.clear();
     m_nameRu.clear();
     m_profRu.clear();
-    m_profDate.clear();
     m_rankRu.clear();
     m_derivedDirty = true;
 }
@@ -357,13 +362,21 @@ void Catalog::rebuildDerived() const
     m_middle.clear();
     m_nameRu.clear();
     m_profRu.clear();
-    m_profDate.clear();
     m_rankRu.clear();
+
+    // one Belarusian job -> Russian spelling -> how often, and which decree would win a tie
+    struct ProfSpelling {
+        int count = 0;
+        QDate earliest;
+        int order = 0;
+    };
+    QHash<QString, QHash<QString, ProfSpelling>> professions;
 
     QHash<QString, QHash<QString, int>> fullNames;
     QHash<QPair<int, int>, int> statIndex;
-    for (const Person& person : m_people) {
-        const QString nameBy = person.nameBy.simplified();
+    for (int index = 0; index < m_people.size(); ++index) {
+        const Person& person = m_people.at(index);
+        const QString nameBy = belarusianNameKey(person.nameBy);
         const QString name = person.name.simplified();
         if (!nameBy.isEmpty() && !name.isEmpty())
             ++fullNames[nameBy][name];
@@ -385,12 +398,32 @@ void Catalog::rebuildDerived() const
             row.month[month - 1]++;
 
         if (!person.personalBy.isEmpty() && !person.personal.isEmpty()) {
-            const auto prof = m_profDate.constFind(person.personalBy);
-            if (prof == m_profDate.cend() || person.ukaseDate < prof.value()) {
-                m_profDate.insert(person.personalBy, person.ukaseDate);
-                m_profRu.insert(person.personalBy, person.personal);
+            ProfSpelling& slot = professions[person.personalBy][person.personal];
+            if (slot.count == 0 || person.ukaseDate < slot.earliest) {
+                slot.earliest = person.ukaseDate;
+                slot.order = index;
+            }
+            ++slot.count;
+        }
+    }
+    for (auto group = professions.cbegin(); group != professions.cend(); ++group) {
+        QString bestRu;
+        ProfSpelling best;
+        bool chosen = false;
+        for (auto spelling = group.value().cbegin(); spelling != group.value().cend(); ++spelling) {
+            const ProfSpelling& item = spelling.value();
+            const bool better = !chosen
+                || item.count > best.count
+                || (item.count == best.count && item.earliest < best.earliest)
+                || (item.count == best.count && item.earliest == best.earliest && item.order < best.order);
+            if (better) {
+                chosen = true;
+                bestRu = spelling.key();
+                best = item;
             }
         }
+        if (chosen)
+            m_profRu.insert(group.key(), bestRu);
     }
     for (auto group = fullNames.cbegin(); group != fullNames.cend(); ++group) {
         QVector<QPair<int, QString>> ranked;
@@ -419,10 +452,20 @@ void Catalog::rebuildDerived() const
         return cmp < 0;
     });
 
-    for (int index : byName) {
-        const Person& person = m_people.at(index);
-        if (!person.rankBy.isEmpty() && !person.rank.isEmpty() && !m_rankRu.contains(person.rankBy))
-            m_rankRu.insert(person.rankBy, person.rank);
+    // one Belarusian rank -> Russian spelling -> how often, and where that spelling first stands in byName
+    struct RankSpelling {
+        int count = 0;
+        int sortPos = 0;
+    };
+    QHash<QString, QHash<QString, RankSpelling>> ranks;
+    for (int order = 0; order < byName.size(); ++order) {
+        const Person& person = m_people.at(byName.at(order));
+        if (!person.rankBy.isEmpty() && !person.rank.isEmpty()) {
+            RankSpelling& slot = ranks[person.rankBy][person.rank];
+            if (slot.count == 0)
+                slot.sortPos = order;
+            ++slot.count;
+        }
 
         if (person.name.isEmpty() || person.nameBy.isEmpty())
             continue;
@@ -432,9 +475,27 @@ void Catalog::rebuildDerived() const
         const int by2 = person.nameBy.indexOf(QLatin1Char(' '), by1 + 1);
         const int ru1 = person.name.indexOf(QLatin1Char(' '));
         const int ru2 = person.name.indexOf(QLatin1Char(' '), ru1 + 1);
-        addDict(m_first, person.nameBy.mid(by1 + 1, by2 - by1 - 1), person.name.mid(ru1 + 1, ru2 - ru1 - 1));
-        addDict(m_last, person.nameBy.left(by1), person.name.left(ru1));
-        addDict(m_middle, person.nameBy.mid(by2 + 1), person.name.mid(ru2 + 1));
+        addDict(m_first, belarusianNameKey(person.nameBy.mid(by1 + 1, by2 - by1 - 1)), person.name.mid(ru1 + 1, ru2 - ru1 - 1));
+        addDict(m_last, belarusianNameKey(person.nameBy.left(by1)), person.name.left(ru1));
+        addDict(m_middle, belarusianNameKey(person.nameBy.mid(by2 + 1)), person.name.mid(ru2 + 1));
+    }
+    for (auto group = ranks.cbegin(); group != ranks.cend(); ++group) {
+        QString bestRu;
+        RankSpelling best;
+        bool chosen = false;
+        for (auto spelling = group.value().cbegin(); spelling != group.value().cend(); ++spelling) {
+            const RankSpelling& item = spelling.value();
+            const bool better = !chosen
+                || item.count > best.count
+                || (item.count == best.count && item.sortPos < best.sortPos);
+            if (better) {
+                chosen = true;
+                bestRu = spelling.key();
+                best = item;
+            }
+        }
+        if (chosen)
+            m_rankRu.insert(group.key(), bestRu);
     }
 
     auto appendDict = [this](const QHash<QString, QStringList>& dict, const QString& type) {
@@ -771,7 +832,7 @@ bool Catalog::remove(const QList<int>& ids, QString* error)
 QStringList Catalog::translateName(const QString& nameBy) const
 {
     ensureDerived();
-    const QString key = nameBy.simplified();
+    const QString key = belarusianNameKey(nameBy);
     const auto exact = m_nameRu.constFind(key);
     if (exact != m_nameRu.cend())
         return exact.value();

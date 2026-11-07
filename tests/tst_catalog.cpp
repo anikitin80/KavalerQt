@@ -131,6 +131,9 @@ private slots:
     void signalsOncePerChange();
     void derivedDataFollowsChanges();
     void translateNamePrefersTheWholeName();
+    void translateNameMatchesIdentityKey();
+    void professionRuPrefersTheFrequentSpelling();
+    void rankRuPrefersTheFrequentSpelling();
     void fixQuotesFollowsTheDecree();
     void russianNameConflicts();
     void savingDeletedRecordFails();
@@ -437,7 +440,8 @@ void TestCatalog::derivedDataFollowsChanges()
     for (const StatMonth& row : m_catalog->stats())
         total += row.total;
     QCOMPARE(total, 4);
-    QVERIFY(m_catalog->translateName(QStringLiteral("Вышыванюк Ігар Міхайлавіч")).isEmpty());
+    QCOMPARE(m_catalog->translateName(QStringLiteral("Вышыванюк Ігар Міхайлавіч")),
+             QStringList({QStringLiteral("Вышиванюк Игорь Михайлович")}));
 
     QString error;
     Person person = *byNameBy(*m_catalog, QStringLiteral("Шульга Валерый Ігаравіч"));
@@ -502,6 +506,138 @@ void TestCatalog::translateNamePrefersTheWholeName()
     QVERIFY(m_catalog->save(alt, &error));
     QCOMPARE(m_catalog->translateName(QStringLiteral("Бобр Адам Рыгоравіч")),
              QStringList({QStringLiteral("Бобер Адам Григорьевич"), QStringLiteral("Бобров Адам Григорьевич")}));
+}
+
+// "Iгар" and "Ігар" are one name, including when the full name is composed from parts
+void TestCatalog::translateNameMatchesIdentityKey()
+{
+    QCOMPARE(m_catalog->translateName(QStringLiteral("Вышыванюк Ігар Міхайлавіч")),
+             QStringList({QStringLiteral("Вышиванюк Игорь Михайлович")}));
+    QCOMPARE(m_catalog->translateName(QStringLiteral("Вышыванюк Iгар Мiхайлавіч")),
+             QStringList({QStringLiteral("Вышиванюк Игорь Михайлович")}));
+
+    QString error;
+    Person lis;
+    lis.awardId = 14;
+    lis.ukaseNo = 21;
+    lis.ukaseDate = QDate(2020, 1, 1);
+    lis.nameBy = QStringLiteral("Ліс Марк Рыгоравіч");
+    lis.name = QStringLiteral("Лис Марк Григорьевич");
+    QVERIFY(m_catalog->save(lis, &error));
+
+    Person bobr;
+    bobr.awardId = 14;
+    bobr.ukaseNo = 22;
+    bobr.ukaseDate = QDate(2020, 1, 2);
+    bobr.nameBy = QStringLiteral("Бобр Iгар Рыгоравіч");
+    bobr.name = QStringLiteral("Бобер Игорь Григорьевич");
+    QVERIFY(m_catalog->save(bobr, &error));
+
+    QCOMPARE(m_catalog->translateName(QStringLiteral("Ліс Ігар Рыгоравіч")),
+             QStringList({QStringLiteral("Лис Игорь Григорьевич")}));
+}
+
+// a later spelling that occurs more often wins; an equal count keeps the earliest decree
+void TestCatalog::professionRuPrefersTheFrequentSpelling()
+{
+    QString error;
+    Person early;
+    early.awardId = 14;
+    early.ukaseNo = 31;
+    early.ukaseDate = QDate(2010, 1, 1);
+    early.personalBy = QStringLiteral("слесар");
+    early.personal = QStringLiteral("слесарь");
+    QVERIFY(m_catalog->save(early, &error));
+
+    Person later = early;
+    later.id = 0;
+    later.ukaseNo = 32;
+    later.ukaseDate = QDate(2012, 1, 1);
+    later.personal = QStringLiteral("токарь");
+    QVERIFY(m_catalog->save(later, &error));
+
+    Person laterAgain = later;
+    laterAgain.id = 0;
+    laterAgain.ukaseNo = 33;
+    laterAgain.ukaseDate = QDate(2013, 1, 1);
+    QVERIFY(m_catalog->save(laterAgain, &error));
+    QCOMPARE(m_catalog->professionRu(QStringLiteral("слесар")), QStringLiteral("токарь"));
+
+    Person tieEarly = early;
+    tieEarly.id = 0;
+    tieEarly.ukaseNo = 34;
+    tieEarly.ukaseDate = QDate(2010, 6, 1);
+    tieEarly.personalBy = QStringLiteral("цясляр");
+    tieEarly.personal = QStringLiteral("столяр");
+    QVERIFY(m_catalog->save(tieEarly, &error));
+
+    Person tieOther = tieEarly;
+    tieOther.id = 0;
+    tieOther.ukaseNo = 35;
+    tieOther.ukaseDate = QDate(2011, 1, 1);
+    tieOther.personal = QStringLiteral("плотник");
+    QVERIFY(m_catalog->save(tieOther, &error));
+
+    Person tieEarlyAgain = tieEarly;
+    tieEarlyAgain.id = 0;
+    tieEarlyAgain.ukaseNo = 36;
+    tieEarlyAgain.ukaseDate = QDate(2012, 1, 1);
+    QVERIFY(m_catalog->save(tieEarlyAgain, &error));
+
+    Person tieOtherAgain = tieOther;
+    tieOtherAgain.id = 0;
+    tieOtherAgain.ukaseNo = 37;
+    tieOtherAgain.ukaseDate = QDate(2013, 1, 1);
+    QVERIFY(m_catalog->save(tieOtherAgain, &error));
+    QCOMPARE(m_catalog->professionRu(QStringLiteral("цясляр")), QStringLiteral("столяр"));
+}
+
+// the spelling that occurs more often wins, even when another one sorts first by name
+void TestCatalog::rankRuPrefersTheFrequentSpelling()
+{
+    QString error;
+    Person firstByName;
+    firstByName.awardId = 14;
+    firstByName.ukaseNo = 41;
+    firstByName.ukaseDate = QDate(2015, 1, 1);
+    firstByName.name = QStringLiteral("Абрамов Абрам");
+    firstByName.rankBy = QStringLiteral("палкоўнік");
+    firstByName.rank = QStringLiteral("полковник");
+    QVERIFY(m_catalog->save(firstByName, &error));
+
+    Person frequent = firstByName;
+    frequent.id = 0;
+    frequent.ukaseNo = 42;
+    frequent.ukaseDate = QDate(2016, 1, 1);
+    frequent.name = QStringLiteral("Борисов Борис");
+    frequent.rank = QStringLiteral("полкаўнік");
+    QVERIFY(m_catalog->save(frequent, &error));
+
+    Person frequentAgain = frequent;
+    frequentAgain.id = 0;
+    frequentAgain.ukaseNo = 43;
+    frequentAgain.ukaseDate = QDate(2017, 1, 1);
+    frequentAgain.name = QStringLiteral("Яковлев Яков");
+    QVERIFY(m_catalog->save(frequentAgain, &error));
+    QCOMPARE(m_catalog->rankRu(QStringLiteral("палкоўнік")), QStringLiteral("полкаўнік"));
+
+    Person laterName = firstByName;
+    laterName.id = 0;
+    laterName.ukaseNo = 44;
+    laterName.ukaseDate = QDate(2010, 1, 1);
+    laterName.name = QStringLiteral("Яковлев Яков");
+    laterName.rankBy = QStringLiteral("маёр");
+    laterName.rank = QStringLiteral("майор");
+    QVERIFY(m_catalog->save(laterName, &error));
+
+    Person earlierName = laterName;
+    earlierName.id = 0;
+    earlierName.ukaseNo = 45;
+    earlierName.ukaseDate = QDate(2018, 1, 1);
+    earlierName.name = QStringLiteral("Абрамов Абрам");
+    earlierName.rank = QStringLiteral("маёр");
+    QVERIFY(m_catalog->save(earlierName, &error));
+    QCOMPARE(m_catalog->rankRu(QStringLiteral("маёр")), QStringLiteral("маёр"));
 }
 
 void TestCatalog::fixQuotesFollowsTheDecree()

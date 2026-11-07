@@ -99,6 +99,8 @@ public:
     // One entry is that name. Several entries are the spellings of this exact
     // name, most frequent first: parts of other people are not mixed in.
     // An unknown three-part name is composed only when each part has one spelling.
+    // The key collapses spaces and replaces Latin look-alikes, as identity does
+    // ("Iгар" and "Ігар" are one name).
     QStringList translateName(const QString& nameBy) const;
     // the same Belarusian full name stored with more than one Russian spelling.
     // Whitespace is collapsed, so only the letters differ. Empty names are skipped.
@@ -114,7 +116,9 @@ public:
         QVector<NameVariant> names; // most frequent first
     };
     QVector<NameConflict> russianNameConflicts() const;
+    // the most common Russian spelling; a tie keeps the earliest decree
     QString professionRu(const QString& professionBy) const;
+    // the most common Russian spelling; a tie keeps the first by Russian name
     QString rankRu(const QString& rankBy) const;
     // Align dashes and quotation marks in the Russian job text with the Belarusian
     // one. An en dash gets spaces around it; « » lose the spaces a translator
@@ -208,6 +212,5 @@ private:
     mutable QHash<QString, QStringList> m_middle;
     mutable QHash<QString, QStringList> m_nameRu; // whole Belarusian name -> Russian spellings
     mutable QHash<QString, QString> m_profRu;
-    mutable QHash<QString, QDate> m_profDate;
     mutable QHash<QString, QString> m_rankRu;
 };
