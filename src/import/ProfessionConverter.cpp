@@ -49,6 +49,14 @@ bool IsAdjective(const std::wstring& word)
 	return EndsWithAny(word, { L"ы", L"і", L"ый", L"ий", L"ой", L"ая", L"яя" });
 }
 
+// the form Lookup searches for: lower case, and Belarusian "і" rather than Latin "i"
+std::wstring dictionaryKey(std::wstring word, LangType lang)
+{
+	if (lang == LangBY)
+		ToCyrillicI(word, true);
+	return ToLower(word);
+}
+
 } // namespace
 
 void CProfessionConverter::Initialize()
@@ -91,17 +99,17 @@ bool CProfessionConverter::LoadDictionary(const std::wstring& filePath, LangType
 	QTextStream input(&file);
 	input.setEncoding(QStringConverter::Utf8);
 	while (!input.atEnd()) {
-		QString line = input.readLine();
-		// Belarusian words were often typed with Latin "i" ("мацi"): keep one form
-		if (lang == LangBY)
-			line.replace(QLatin1Char('i'), QChar(0x0456)).replace(QLatin1Char('I'), QChar(0x0406));
+		const QString line = input.readLine();
 		const int pos1 = line.indexOf(QLatin1Char(';'));
 		const int pos2 = line.indexOf(QLatin1Char(';'), pos1 + 1);
 		// empty words are skipped: the converter keeps the first letter of the
-		// replacement and an empty one would crash it
-		const auto add = [](Dictionary* dictionary, const QString& form, const QString& nominative) {
-			if (!form.isEmpty() && !nominative.isEmpty())
-				(*dictionary)[form.toStdWString()] = nominative.toStdWString();
+		// replacement and an empty one would crash it. The key and the nominative
+		// are stored the way Lookup searches, so "Мацi" and "маці" are one word
+		const auto add = [lang](Dictionary* dictionary, const QString& form, const QString& nominative) {
+			const std::wstring key = dictionaryKey(form.toStdWString(), lang);
+			const std::wstring value = dictionaryKey(nominative.toStdWString(), lang);
+			if (!key.empty() && !value.empty())
+				(*dictionary)[key] = value;
 		};
 		if (pos2 != -1) {
 			add(dictionaryDat, line.mid(pos1 + 1, pos2 - pos1 - 1), line.left(pos1));
@@ -116,9 +124,7 @@ bool CProfessionConverter::LoadDictionary(const std::wstring& filePath, LangType
 
 void CProfessionConverter::rememberNominative(LangType lang, std::wstring nominative)
 {
-	if (lang == LangBY)
-		ToCyrillicI(nominative, true);
-	nominative = ToLower(nominative);
+	nominative = dictionaryKey(std::move(nominative), lang);
 	if (!nominative.empty())
 		(lang == LangRU ? m_NominativesRU : m_NominativesBY).insert(std::move(nominative));
 }
@@ -241,12 +247,10 @@ const Dictionary& CProfessionConverter::DictionaryFor(LangType lang, NounCase no
 	                      : (nounCase == Dative ? m_DictionaryDatBY : m_DictionaryAccBY);
 }
 
-// the dictionary has Cyrillic "і" only (LoadDictionary), the decree may have Latin "i"
+// the decree may still have a capital or Latin "i"; the dictionary key does not
 Dictionary::const_iterator CProfessionConverter::Lookup(const Dictionary& dictionary, std::wstring word, LangType lang)
 {
-	if (lang == LangBY)
-		ToCyrillicI(word, true);
-	return dictionary.find(word);
+	return dictionary.find(dictionaryKey(std::move(word), lang));
 }
 
 // replaces the word of oldLength at pos, keeping its first letter (it may be capital)

@@ -26,6 +26,7 @@ private slots:
     void emptyDictionaryValuesAreSkipped();
     void dictionaryRoundTrip();
     void otherCaseSuppliesTheNominative();
+    void dictionaryKeysMatchLookup();
 };
 
 void TestProfessionConverter::initTestCase()
@@ -245,6 +246,52 @@ void TestProfessionConverter::otherCaseSuppliesTheNominative()
     QCOMPARE(int(converter.newWords().size()), 1);
     QCOMPARE(QString::fromStdWString(converter.newWords().front().Original), QStringLiteral("зваршчыку"));
     QCOMPARE(QString::fromStdWString(converter.newWords().front().Word), QStringLiteral("зваршчык"));
+}
+
+// "Вадзiцель" and "вадзіцель" are one dictionary word: lower case, Cyrillic "і"
+void TestProfessionConverter::dictionaryKeysMatchLookup()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("PositionsBY.csv"));
+    const QString canonical = QStringLiteral("вадзіцель;вадзіцелю;вадзіцеля");
+    QString legacy = canonical.toUpper();
+    legacy.replace(QChar(0x0406), QLatin1Char('I'));
+
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(legacy.toUtf8());
+    file.write("\n", 1);
+    file.write(canonical.toUtf8());
+    file.write("\n", 1);
+    file.close();
+
+    CProfessionConverter converter;
+    QVERIFY(converter.SetDictionaryPath(path.toStdWString(), LangBY));
+    std::wstring text = QStringLiteral("вадзіцелю цэха").toStdWString();
+    QVERIFY(converter.ConvertProfession(text, LangBY, Dative));
+    QCOMPARE(QString::fromStdWString(text), QStringLiteral("вадзіцель цэха"));
+
+    QVERIFY(converter.SaveDictionary(path.toStdWString(), LangBY));
+    QFile saved(path);
+    QVERIFY(saved.open(QIODevice::ReadOnly));
+    QString body = QString::fromUtf8(saved.readAll());
+    saved.close();
+    if (body.startsWith(QChar(0xFEFF)))
+        body.remove(0, 1);
+    QStringList lines;
+    for (const QString& line : body.split(QLatin1Char('\n'), Qt::SkipEmptyParts)) {
+        const QString trimmed = line.trimmed();
+        if (!trimmed.isEmpty())
+            lines << trimmed;
+    }
+    QCOMPARE(lines, QStringList{ canonical });
+
+    CProfessionConverter again;
+    QVERIFY(again.SetDictionaryPath(path.toStdWString(), LangBY));
+    std::wstring onceMore = QStringLiteral("вадзіцелю цэха").toStdWString();
+    QVERIFY(again.ConvertProfession(onceMore, LangBY, Dative));
+    QCOMPARE(QString::fromStdWString(onceMore), QStringLiteral("вадзіцель цэха"));
 }
 
 QTEST_GUILESS_MAIN(TestProfessionConverter)
