@@ -7,16 +7,24 @@
 
 Нужны:
 
-- Visual Studio 2022 (MSVC, x64);
+- Visual Studio 2022 или 2019 16.7+ (MSVC, x64); VS 2017 не подходит для Qt 6;
 - Qt 6.8 (`msvc2022_64`) с модулями Widgets, Sql, Network, PrintSupport;
 - CMake 3.16+.
 
 ```bash
-cmake -S . -B build -DQt6_DIR=C:/Qt/6.8.3/msvc2022_64/lib/cmake/Qt6
+cmake -S . -B build -DCMAKE_PREFIX_PATH=C:/Qt/6.8.3/msvc2022_64
 cmake --build build --config Release
 ```
 
-Для запуска на другой машине Qt-библиотеки разворачиваются через `windeployqt`.
+Папка для запуска на машине без Qt и Visual Studio:
+
+```bash
+cmake --install build --config Release --prefix D:/Kavaler
+```
+
+В неё попадают `Kavaler.exe`, библиотеки Qt, среда выполнения MSVC и плагины в `plugins`:
+драйвер SQLite, TLS для перевода через Яндекс, печать. Папку можно просто скопировать.
+База и словари должностей лежат отдельно, путь к базе программа запоминает.
 
 ## Тесты
 
