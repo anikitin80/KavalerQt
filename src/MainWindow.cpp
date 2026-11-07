@@ -747,26 +747,28 @@ void MainWindow::showContextMenu(const QPoint& pos)
 
 void MainWindow::translateSelectedCloud(CloudScope scope)
 {
-    QVector<Person> changed;
     QString failure;
     const QVector<Person> selected = selectedPeople();
+    QVector<Person> translated = selected;
     // the requests run a nested event loop: a modal progress keeps the user from
     // editing or deleting these records meanwhile (their copies are saved below)
     QProgressDialog progress(QStringLiteral("Перевод через Яндекс..."), QStringLiteral("Отмена"), 0,
                              int(selected.size()), this);
     progress.setWindowModality(Qt::WindowModal);
     progress.setMinimumDuration(0);
-    for (int i = 0; i < selected.size(); ++i) {
-        progress.setValue(i);
-        if (progress.wasCanceled())
-            break;
-        Person person = selected.at(i);
-        const Person original = person;
-        if (!translateWithCloud(person, scope, false, &failure))
-            break;
-        if (person.name == original.name && person.personal == original.personal && person.rank == original.rank)
-            continue;
-        changed.push_back(person);
+    progress.setValue(0);
+    const int done = translateWithCloud(translated, scope, false, &failure, [&progress](int count) {
+        progress.setValue(count);
+        return !progress.wasCanceled();
+    });
+    progress.reset();
+
+    QVector<Person> changed;
+    for (int i = 0; i < done; ++i) {
+        const Person& person = translated.at(i);
+        const Person& original = selected.at(i);
+        if (person.name != original.name || person.personal != original.personal || person.rank != original.rank)
+            changed.push_back(person);
     }
     // keep what was translated before a network error
     const bool saved = saveChanged(changed);

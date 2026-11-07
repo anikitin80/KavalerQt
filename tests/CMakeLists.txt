@@ -26,3 +26,13 @@ target_sources(tst_catalog PRIVATE "${PROJECT_SOURCE_DIR}/src/Catalog.h" "${PROJ
     "${PROJECT_SOURCE_DIR}/src/import/ImportMatch.h" "${PROJECT_SOURCE_DIR}/src/import/ImportMatch.cpp")
 target_include_directories(tst_catalog PRIVATE "${PROJECT_SOURCE_DIR}/src")
 target_link_libraries(tst_catalog PRIVATE Qt6::Sql)
+
+# Yandex translation against a local stand-in server
+find_package(Qt6 REQUIRED COMPONENTS Network)
+kavaler_add_test(tst_translator)
+target_sources(tst_translator PRIVATE "${PROJECT_SOURCE_DIR}/src/import/Translator.h"
+    "${PROJECT_SOURCE_DIR}/src/import/Translator.cpp"
+    "${PROJECT_SOURCE_DIR}/src/Catalog.h" "${PROJECT_SOURCE_DIR}/src/Catalog.cpp"
+    "${PROJECT_SOURCE_DIR}/src/import/ImportMatch.h" "${PROJECT_SOURCE_DIR}/src/import/ImportMatch.cpp")
+target_include_directories(tst_translator PRIVATE "${PROJECT_SOURCE_DIR}/src")
+target_link_libraries(tst_translator PRIVATE Qt6::Sql Qt6::Network)
