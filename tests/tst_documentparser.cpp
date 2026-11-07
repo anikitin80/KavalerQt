@@ -279,8 +279,12 @@ void TestDocumentParser::housewifeGetsTheCityOfTheSection()
            QStringLiteral("па Брэсцкай вобласці"),
            QStringLiteral("Алейнікаву\vІрыну Мікалаеўну"), QStringLiteral("–"),
            QStringLiteral("хатнюю гаспадыню"),
+           QStringLiteral("па гораду Мінску"), // decree of 30 May 2022 No. 185
+           QStringLiteral("Ганчарэнка\vЯўгенію Іванаўну"), QStringLiteral("–"),
+           QStringLiteral("хатнюю гаспадыню"),
            QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
-    QCOMPARE(int(m_parser->m_Persons.size()), 3);
+    QCOMPARE(int(m_parser->m_Persons.size()), 4);
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[3], false)), QStringLiteral("хатняя гаспадыня, г. Мінск"));
     QCOMPARE(m_parser->m_Persons[0].AwardId, 13);
     QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[0], false)), QStringLiteral("хатняя гаспадыня, г. Мінск"));
     QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[1], false)), QStringLiteral("хатняя гаспадыня, г. Мінск"));

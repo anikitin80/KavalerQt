@@ -227,9 +227,18 @@ void CDocumentParser::ParseSection(const std::wstring& strLine)
 		|| (line.compare(0, 3, L"па ") != 0 && line.compare(0, 3, L"по ") != 0))
 		return;
 	const std::wstring rest = line.substr(3);
-	if (rest.compare(0, 3, L"г. ") == 0 && rest.length() > 4 && rest.find(L' ', 3) == std::wstring::npos)
+	// "па г. Мінску", "па гораду Мінску", "по городу Минску", "по гор. Минску"
+	std::size_t cityStart = std::wstring::npos;
+	for (const wchar_t* word : { L"г. ", L"гор. ", L"гораду ", L"городу " })
 	{
-		std::wstring city = rest.substr(3); // dative: "Мінску", "Минску"
+		const std::size_t length = std::wcslen(word);
+		if (rest.compare(0, length, word) == 0)
+			cityStart = length;
+	}
+	if (cityStart != std::wstring::npos && rest.length() > cityStart + 1
+		&& rest.find(L' ', cityStart) == std::wstring::npos)
+	{
+		std::wstring city = rest.substr(cityStart); // dative: "Мінску", "Минску"
 		if (city.back() == L'у')
 			city.pop_back();
 		m_SectionCity = L"г. " + city;
