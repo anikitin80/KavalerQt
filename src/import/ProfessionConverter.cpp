@@ -9,12 +9,14 @@
 
 // positions are converted with SexAny: a SexFemale or SexMale rule here would never match
 const RulesList CProfessionConverter::RulesAdjectives = CNameConverter::ExpandRules({
+	// before the shared "-ому" → "-ый": "былому" is "былы", not "былый".
+	// "каму"/"кому" stays above "ому" ("такому" → "такі")
+	{ SexAny, LangBY, L"каму,кому", L"кага,кога", L"---і"},
+	{ SexAny, LangBY, L"аму,ому", L"ага,ога", L"---ы"},	// былога, былому
 	{ SexAny, LangAny, L"ему", L"его", L"---ий"},
 	{ SexAny, LangAny, L"ому", L"ого", L"---ый"},
 	{ SexAny, LangAny, L"ой", L"ую", L"--ая"},
-	{ SexAny, LangAny, L"ей", L"юю", L"--яя"},
-	{ SexAny, LangBY, L"каму,кому", L"кага,кога", L"---і"},
-	{ SexAny, LangBY, L"аму,ому", L"ага,ога", L"---ы"},	// былога
+	{ SexAny, LangAny, L"ей", L"юю", L"--яя"},	// хатнюю → хатняя, before the Belarusian "-юю"
 	// feminine (masculine dative is "-аму", "-ай"/"-яй" is always feminine)
 	{ SexAny, LangBY, L"ай,яй", L"ую,юю", L"--ая"},
 });
@@ -486,15 +488,21 @@ void CProfessionConverter::ConvertAfterComma(std::wstring& strSource, size_t pos
 		const size_t posQuote = strSource.find_first_of(L"«»", posComma);
 		if (posQuote != std::wstring::npos && strSource[posQuote] == L'»')
 			continue;
-		// the profession may follow one or two adjectives: ", галоўнага навуковага супрацоўніка"
+		// the profession may follow one or two adjectives: ", галоўнага навуковага супрацоўніка",
+		// or an unknown word and "і": ", каскадзёра і пастаноўшчыка"
 		bool profession = false;
 		size_t posWord = posComma + 1;
+		const auto isConjunction = [](const std::wstring& word) {
+			return word == L"і" || word == L"и" || word == L"i";
+		};
 		for (int w = 0; w < 3 && !profession; ++w)
 		{
 			std::wstring next = ToLower(GetNextWord(strSource, posWord));
 			if (next.empty())
 				break;
 			posWord += next.length();
+			if (isConjunction(next))
+				continue;
 			// not "механічнай, хіміка-тэрмічнай апрацоўкі": a compound adjective
 			bool compoundAdjective = false;
 			if (posWord < strSource.length() && strSource[posWord] == L'-')
@@ -515,14 +523,19 @@ void CProfessionConverter::ConvertAfterComma(std::wstring& strSource, size_t pos
 			{
 				size_t posAfter = posWord;
 				const std::wstring after = ToLower(GetNextWord(strSource, posAfter));
-				beforeConjunction = after == L"і" || after == L"и" || after == L"i";
+				beforeConjunction = isConjunction(after);
 			}
 			if (beforeConjunction)
 				break;
 			if ((found != dictionary.end() || knownByRules) && !compoundAdjective)
 				profession = true;
 			else if (!CNameConverter::ApplyRules(next, RulesAdjectives, SexAny, lang, nounCase, false))
-				break;
+			{
+				size_t posAfter = posWord;
+				const std::wstring after = ToLower(GetNextWord(strSource, posAfter));
+				if (!isConjunction(after))
+					break;
+			}
 		}
 		if (!profession)
 			continue;

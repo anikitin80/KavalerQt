@@ -97,6 +97,14 @@ void TestProfessionConverter::convert_data()
                                                    << QStringLiteral("артыст-вакаліст (саліст) філармоніі");
     QTest::newRow("by dat non-military rank") << QStringLiteral("загадчыку кафедры, прафесару") << LangBY << Dative
                                               << QStringLiteral("загадчык кафедры, прафесар");
+    QTest::newRow("by acc profession after і") << QStringLiteral("акцёра кіно, каскадзёра і пастаноўшчыка трукаў") << LangBY << Accusative
+                                               << QStringLiteral("акцёр кіно, каскадзёра і пастаноўшчык трукаў");
+    QTest::newRow("by dat былому") << QStringLiteral("былому галоўнаму юрысконсульту ўстановы") << LangBY << Dative
+                                   << QStringLiteral("былы галоўны юрысконсульт ўстановы");
+    QTest::newRow("by acc хатнюю") << QStringLiteral("хатнюю гаспадыню вёскі") << LangBY << Accusative
+                                   << QStringLiteral("хатняя гаспадыня вёскі");
+    QTest::newRow("ru dat старому") << QStringLiteral("старому слесарю цеха") << LangRU << Dative
+                                    << QStringLiteral("старый слесарь цеха");
 }
 
 void TestProfessionConverter::convert()
