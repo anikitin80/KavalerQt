@@ -95,6 +95,10 @@ public:
     bool contains(const Person& probe) const { return count(probe) > 0; }
     bool remove(const QList<int>& ids, QString* error);
 
+    // Russian spelling of a Belarusian full name already stored in the catalog.
+    // One entry is that name. Several entries are the spellings of this exact
+    // name, most frequent first: parts of other people are not mixed in.
+    // An unknown three-part name is composed only when each part has one spelling.
     QStringList translateName(const QString& nameBy) const;
     // the same Belarusian full name stored with more than one Russian spelling.
     // Whitespace is collapsed, so only the letters differ. Empty names are skipped.
@@ -112,7 +116,10 @@ public:
     QVector<NameConflict> russianNameConflicts() const;
     QString professionRu(const QString& professionBy) const;
     QString rankRu(const QString& rankBy) const;
-    bool fixQuotes(Person& person);
+    // Align dashes and quotation marks in the Russian job text with the Belarusian
+    // one. An en dash gets spaces around it; « » lose the spaces a translator
+    // puts inside. Straight and curly quotes count as the same marks.
+    static bool fixQuotes(Person& person);
 
     // Latin letters typed inside Cyrillic words ("Міxaйлаўна", "прядильщицa",
     // "Iгар"; see NormalizeCyrillicText). save()/saveMany() always store the
@@ -199,6 +206,7 @@ private:
     mutable QHash<QString, QStringList> m_first;
     mutable QHash<QString, QStringList> m_last;
     mutable QHash<QString, QStringList> m_middle;
+    mutable QHash<QString, QStringList> m_nameRu; // whole Belarusian name -> Russian spellings
     mutable QHash<QString, QString> m_profRu;
     mutable QHash<QString, QDate> m_profDate;
     mutable QHash<QString, QString> m_rankRu;

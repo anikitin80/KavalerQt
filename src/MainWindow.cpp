@@ -764,7 +764,6 @@ void MainWindow::translateSelectedCloud(CloudScope scope)
         const Person original = person;
         if (!translateWithCloud(person, scope, false, &failure))
             break;
-        m_catalog.fixQuotes(person);
         if (person.name == original.name && person.personal == original.personal && person.rank == original.rank)
             continue;
         changed.push_back(person);

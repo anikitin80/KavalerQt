@@ -218,7 +218,9 @@ PersonModel::Mark PersonModel::translationMark(const Person& person) const
         return mark;
 
     const auto isDash = [](char16_t c) { return c == u'-' || c == u'\u2013'; };
-    const auto isQuote = [](char16_t c) { return c == u'\u00AB' || c == u'\u00BB' || c == u'"'; };
+    const auto isQuote = [](char16_t c) {
+        return c == u'\u00AB' || c == u'\u00BB' || c == u'"' || c == u'\u201C' || c == u'\u201D' || c == u'\u201E';
+    };
     if (!sameChars(person.personal, person.personalBy, isDash)
         && !person.personal.contains(QStringLiteral("молочно-товар"))) {
         mark.quotes = true;

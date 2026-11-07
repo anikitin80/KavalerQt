@@ -130,6 +130,8 @@ private slots:
     void identityFollowsEditsAndRemoval();
     void signalsOncePerChange();
     void derivedDataFollowsChanges();
+    void translateNamePrefersTheWholeName();
+    void fixQuotesFollowsTheDecree();
     void russianNameConflicts();
     void savingDeletedRecordFails();
     void failedOpenKeepsCurrentDatabase();
@@ -451,6 +453,74 @@ void TestCatalog::derivedDataFollowsChanges()
     for (const StatMonth& row : m_catalog->stats())
         total += row.total;
     QCOMPARE(total, 5);
+}
+
+// a stored full name wins over a surname that other people spell differently;
+// an unseen name is composed only when every part has one spelling
+void TestCatalog::translateNamePrefersTheWholeName()
+{
+    QString error;
+    Person bobr;
+    bobr.awardId = 14;
+    bobr.ukaseDate = QDate(2020, 1, 1);
+    bobr.ukaseNo = 1;
+    bobr.nameBy = QStringLiteral("Бобр Адам Рыгоравіч");
+    bobr.name = QStringLiteral("Бобер Адам Григорьевич");
+    QVERIFY(m_catalog->save(bobr, &error));
+
+    Person fox = bobr;
+    fox.id = 0;
+    fox.ukaseNo = 2;
+    fox.ukaseDate = QDate(2020, 1, 2);
+    fox.nameBy = QStringLiteral("Ліс Марк Рыгоравіч");
+    fox.name = QStringLiteral("Лис Марк Григорьевич");
+    QVERIFY(m_catalog->save(fox, &error));
+    QCOMPARE(m_catalog->translateName(QStringLiteral("Бобр Марк Рыгоравіч")),
+             QStringList({QStringLiteral("Бобер Марк Григорьевич")}));
+
+    Person other = bobr;
+    other.id = 0;
+    other.ukaseNo = 3;
+    other.ukaseDate = QDate(2020, 1, 3);
+    other.nameBy = QStringLiteral("Бобр Янка Рыгоравіч");
+    other.name = QStringLiteral("Бобров Ян Григорьевич");
+    QVERIFY(m_catalog->save(other, &error));
+    QCOMPARE(m_catalog->translateName(QStringLiteral("Бобр Адам Рыгоравіч")),
+             QStringList({QStringLiteral("Бобер Адам Григорьевич")}));
+    QVERIFY(m_catalog->translateName(QStringLiteral("Бобр Марк Рыгоравіч")).isEmpty());
+
+    Person repeat = bobr;
+    repeat.id = 0;
+    repeat.ukaseNo = 4;
+    repeat.ukaseDate = QDate(2020, 2, 1);
+    QVERIFY(m_catalog->save(repeat, &error));
+    Person alt = bobr;
+    alt.id = 0;
+    alt.ukaseNo = 5;
+    alt.ukaseDate = QDate(2020, 2, 2);
+    alt.name = QStringLiteral("Бобров Адам Григорьевич");
+    QVERIFY(m_catalog->save(alt, &error));
+    QCOMPARE(m_catalog->translateName(QStringLiteral("Бобр Адам Рыгоравіч")),
+             QStringList({QStringLiteral("Бобер Адам Григорьевич"), QStringLiteral("Бобров Адам Григорьевич")}));
+}
+
+void TestCatalog::fixQuotesFollowsTheDecree()
+{
+    Person person;
+    person.personalBy = QStringLiteral("установа «Цэнтр» – філіял");
+    person.personal = QStringLiteral("учреждение \"Цэнтр\" - филиал");
+    QVERIFY(Catalog::fixQuotes(person));
+    QCOMPARE(person.personal, QStringLiteral("учреждение «Цэнтр» – филиал"));
+
+    person.personalBy = QStringLiteral("установа «Цэнтр»");
+    person.personal = QStringLiteral("учреждение « Цэнтр »");
+    QVERIFY(Catalog::fixQuotes(person));
+    QCOMPARE(person.personal, QStringLiteral("учреждение «Цэнтр»"));
+
+    person.personal = QString(u"учреждение \u201CЦэнтр\u201D");
+    QVERIFY(Catalog::fixQuotes(person));
+    QCOMPARE(person.personal, QStringLiteral("учреждение «Цэнтр»"));
+    QVERIFY(!Catalog::fixQuotes(person));
 }
 
 // one Belarusian full name with two Russian spellings is reported; one spelling,

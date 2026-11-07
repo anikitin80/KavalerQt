@@ -122,6 +122,7 @@ bool translateWithCloud(Person& person, CloudScope scope, bool force, QString* e
         text.replace(QStringLiteral("пас. "), QStringLiteral("пос. "));
         text.replace(QStringLiteral("\\\""), QStringLiteral("\""));
         person.personal = text;
+        Catalog::fixQuotes(person);
     } else if (translatePersonal) {
         ++index;
     }

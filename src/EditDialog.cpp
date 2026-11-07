@@ -187,7 +187,6 @@ EditDialog::EditDialog(Catalog* catalog, const Person& person, QWidget* parent)
             QMessageBox::critical(this, windowTitle(), error);
             return;
         }
-        m_catalog->fixQuotes(person);
         m_name->setText(person.name);
         m_personal->setPlainText(person.personal);
         m_rank->setText(person.rank);

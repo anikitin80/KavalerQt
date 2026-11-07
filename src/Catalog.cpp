@@ -132,6 +132,7 @@ void Catalog::clear()
     m_first.clear();
     m_last.clear();
     m_middle.clear();
+    m_nameRu.clear();
     m_profRu.clear();
     m_profDate.clear();
     m_rankRu.clear();
@@ -354,12 +355,18 @@ void Catalog::rebuildDerived() const
     m_first.clear();
     m_last.clear();
     m_middle.clear();
+    m_nameRu.clear();
     m_profRu.clear();
     m_profDate.clear();
     m_rankRu.clear();
 
+    QHash<QString, QHash<QString, int>> fullNames;
     QHash<QPair<int, int>, int> statIndex;
     for (const Person& person : m_people) {
+        const QString nameBy = person.nameBy.simplified();
+        const QString name = person.name.simplified();
+        if (!nameBy.isEmpty() && !name.isEmpty())
+            ++fullNames[nameBy][name];
         if (!person.ukaseDate.isValid())
             continue;
         const QPair<int, int> key(person.awardId, person.ukaseDate.year());
@@ -384,6 +391,22 @@ void Catalog::rebuildDerived() const
                 m_profRu.insert(person.personalBy, person.personal);
             }
         }
+    }
+    for (auto group = fullNames.cbegin(); group != fullNames.cend(); ++group) {
+        QVector<QPair<int, QString>> ranked;
+        ranked.reserve(group.value().size());
+        for (auto spelling = group.value().cbegin(); spelling != group.value().cend(); ++spelling)
+            ranked.push_back({spelling.value(), spelling.key()});
+        std::sort(ranked.begin(), ranked.end(), [](const QPair<int, QString>& a, const QPair<int, QString>& b) {
+            if (a.first != b.first)
+                return a.first > b.first;
+            return a.second < b.second;
+        });
+        QStringList names;
+        names.reserve(ranked.size());
+        for (const QPair<int, QString>& item : ranked)
+            names.push_back(item.second);
+        m_nameRu.insert(group.key(), names);
     }
 
     QVector<int> byName(m_people.size());
@@ -748,25 +771,21 @@ bool Catalog::remove(const QList<int>& ids, QString* error)
 QStringList Catalog::translateName(const QString& nameBy) const
 {
     ensureDerived();
-    const QStringList parts = nameBy.split(QLatin1Char(' '), Qt::SkipEmptyParts);
-    if (parts.size() < 3)
-        return {};
+    const QString key = nameBy.simplified();
+    const auto exact = m_nameRu.constFind(key);
+    if (exact != m_nameRu.cend())
+        return exact.value();
 
+    // a new full name: compose it only when every part is unambiguous
+    const QStringList parts = key.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    if (parts.size() != 3)
+        return {};
     const QStringList first = m_first.value(parts.at(1));
     const QStringList last = m_last.value(parts.at(0));
     const QStringList middle = m_middle.value(parts.at(2));
-    if (first.isEmpty() || last.isEmpty() || middle.isEmpty())
+    if (first.size() != 1 || last.size() != 1 || middle.size() != 1)
         return {};
-
-    QStringList result;
-    for (const QString& firstName : first) {
-        for (const QString& lastName : last) {
-            const QString stem = lastName + QLatin1Char(' ') + firstName;
-            for (const QString& middleName : middle)
-                result.push_back(stem + QLatin1Char(' ') + middleName);
-        }
-    }
-    return result;
+    return {last.at(0) + QLatin1Char(' ') + first.at(0) + QLatin1Char(' ') + middle.at(0)};
 }
 
 QVector<Catalog::NameConflict> Catalog::russianNameConflicts() const
@@ -825,11 +844,13 @@ bool Catalog::fixQuotes(Person& person)
     QString& text = person.personal;
     bool changed = false;
     const QString dashes = QStringLiteral("-–");
-    const QString quotes = QStringLiteral("«»\"");
+    // a translator writes ", “ ” or „ where the decree has « »
+    const QString quotesBySet = QStringLiteral("«»\"");
+    const QString quotesRuSet = QStringLiteral("«»\"“”„");
     const QVector<QChar> dashBy = collectChars(person.personalBy, dashes);
     const QVector<QChar> dashRu = collectChars(text, dashes);
 
-    if (!dashBy.isEmpty() && dashBy.size() == dashRu.size() && dashBy != dashRu) {
+    if (!dashBy.isEmpty() && dashBy.size() == dashRu.size()) {
         int pos = -1;
         for (int i = 0; i < dashBy.size(); ++i) {
             pos = findAny(text, pos + 1, dashes);
@@ -854,12 +875,12 @@ bool Catalog::fixQuotes(Person& person)
         }
     }
 
-    const QVector<QChar> quotesBy = collectChars(person.personalBy, quotes);
-    const QVector<QChar> quotesRu = collectChars(text, quotes);
-    if (!quotesBy.isEmpty() && quotesBy.size() == quotesRu.size() && quotesBy != quotesRu) {
+    const QVector<QChar> quotesBy = collectChars(person.personalBy, quotesBySet);
+    const QVector<QChar> quotesRu = collectChars(text, quotesRuSet);
+    if (!quotesBy.isEmpty() && quotesBy.size() == quotesRu.size()) {
         int pos = -1;
         for (int i = 0; i < quotesBy.size(); ++i) {
-            pos = findAny(text, pos + 1, quotes);
+            pos = findAny(text, pos + 1, quotesRuSet);
             if (pos < 0)
                 break;
             if (text.at(pos) != quotesBy.at(i)) {
