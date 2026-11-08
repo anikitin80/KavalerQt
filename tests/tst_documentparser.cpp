@@ -54,6 +54,7 @@ private slots:
     void singleAwardPosthumousAfterAward();
     void comradeTitleBeforeName();
     void splitUsesTheSameNameCut();
+    void twoPeopleInOneSentenceAreSplit();
     void listWithLineBreaks();
     void housewifeGetsTheCityOfTheSection();
     void listEndingWithDashDoesNotCrash();
@@ -398,6 +399,40 @@ void TestDocumentParser::splitUsesTheSameNameCut()
     const PersonInfo& full = m_parser->m_Persons.front();
     QCOMPARE(text(full.Name), QStringLiteral("Иванов Иван Иванович"));
     QCOMPARE(text(full.Description), QStringLiteral("слесарь цеха"));
+}
+
+// второй человек после «и» отделяется при разборе файла.
+// «Минского и Слуцкого» остаётся местом работы: перед «и» нет имени
+void TestDocumentParser::twoPeopleInOneSentenceAreSplit()
+{
+    parse({kUkazRu, QStringLiteral("22 октября 1996 г. № 435"),
+           QStringLiteral("За мужество наградить Матусевича Валентина Антоновича и директора совхоза "
+                          "Петрова Петра Петровича медалью «За отвагу»."),
+           kPresident});
+    QCOMPARE(int(m_parser->m_Persons.size()), 2);
+    QCOMPARE(text(m_parser->m_Persons[0].Name), QStringLiteral("Петров Петр Петрович"));
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[0], false)), QStringLiteral("директор совхоза"));
+    QCOMPARE(text(m_parser->m_Persons[1].Name), QStringLiteral("Матусевич Валентин Антонович"));
+    QCOMPARE(text(m_parser->m_Persons[1].Description), QString());
+
+    m_parser->ResetData();
+    parse({kUkazRu, QStringLiteral("22 октября 1996 г. № 436"),
+           QStringLiteral("За мужество наградить слесаря Минского и Слуцкого районов "
+                          "Иванова Ивана Ивановича медалью «За отвагу»."),
+           kPresident});
+    QCOMPARE(int(m_parser->m_Persons.size()), 1);
+    QCOMPARE(text(m_parser->m_Persons[0].Name), QStringLiteral("Иванов Иван Иванович"));
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[0], false)),
+             QStringLiteral("слесарь Минского и Слуцкого районов"));
+
+    m_parser->ResetData();
+    parse({kUkazRu, QStringLiteral("22 октября 1996 г. № 437"),
+           QStringLiteral("За мужество наградить артиста хора имени Г.И.Цитовича "
+                          "Иванова Ивана Ивановича медалью «За отвагу»."),
+           kPresident});
+    QCOMPARE(int(m_parser->m_Persons.size()), 1);
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[0], false)),
+             QStringLiteral("артист хора имени Г.И.Цитовича"));
 }
 
 void TestDocumentParser::singleAwardPosthumous()

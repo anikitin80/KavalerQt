@@ -793,6 +793,14 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 
 	UpdateAwardStat(awardId, curAward, nAwardedCount);
 
+	// «Матусевичу ... и директору совхоза»: второй человек в той же строке.
+	// «Минского и Слуцкого» не режется: перед «и» нет имени.
+	for (size_t i = 0; i < m_Persons.size(); ++i)
+	{
+		while (SpltPersonInfo(m_Persons[i], true))
+			;
+	}
+
 	return bResult;
 }
 
@@ -883,7 +891,7 @@ void CDocumentParser::ExtractPersonInfo(std::wstring& curAward, std::wstring& st
 	m_Persons.push_back(info);
 }
 
-bool CDocumentParser::SpltPersonInfo(PersonInfo& person)
+bool CDocumentParser::SpltPersonInfo(PersonInfo& person, bool requirePatronymic)
 {
 	PersonInfo person2;
 
@@ -894,13 +902,17 @@ bool CDocumentParser::SpltPersonInfo(PersonInfo& person)
 	bool bSameProfession = false;
 	NounCase nounCase = GetNounCaseByAwardId(person.AwardId);
 
-	size_t posNextPerson = person.Description.rfind(person.Ukaz.RussianLang? L" и " : L" і ");
+	const wchar_t* spaced = person.Ukaz.RussianLang ? L" и " : L" і ";
+	const wchar_t* closed = person.Ukaz.RussianLang ? L" и" : L" і";
+	size_t posNextPerson = person.Description.rfind(spaced);
 	if (posNextPerson == std::wstring::npos)
 	{
-		posNextPerson = person.Description.rfind(person.Ukaz.RussianLang ? L" и" : L" і");
-		if (posNextPerson == std::wstring::npos)
+		// « и» только в конце: иначе «имени» и «імя» режутся как союз
+		const size_t length = std::wcslen(closed);
+		if (person.Description.size() < length
+			|| person.Description.compare(person.Description.size() - length, length, closed) != 0)
 			return false;
-
+		posNextPerson = person.Description.size() - length;
 		bSameProfession = true;
 	}
 
@@ -908,6 +920,13 @@ bool CDocumentParser::SpltPersonInfo(PersonInfo& person)
 	const LangType lang = person.Ukaz.RussianLang ? LangRU : LangBY;
 	if (!takePersonName(m_NameConverter, strAwardedInfo, lang, nounCase, person2.Name))
 		return false;
+	if (requirePatronymic)
+	{
+		const size_t space = person2.Name.rfind(L' ');
+		const std::wstring last = space == std::wstring::npos ? person2.Name : person2.Name.substr(space + 1);
+		if (!m_NameConverter.IsMiddleName(last, lang, nounCase))
+			return false;
+	}
 	person2.Description = std::move(strAwardedInfo);
 
 	if (bSameProfession)

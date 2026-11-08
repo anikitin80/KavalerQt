@@ -24,7 +24,9 @@ public:
 
 	bool ProcessFile(const std::wstring& fileName, const std::vector<std::wstring>& arrLines);
 	int  GetFileMonth(const std::wstring& fileName) { return m_mapFileMonth[fileName];  }
-	bool SpltPersonInfo(PersonInfo& person);
+	// requirePatronymic: при разборе файла режем только полное имя с отчеством.
+	// Кнопка в импорте оставляет и пару без отчества.
+	bool SpltPersonInfo(PersonInfo& person, bool requirePatronymic = false);
 	NounCase GetNounCaseByAwardId(int awardId);
 
 	std::wstring GetPersonDescription(size_t nIndex);
