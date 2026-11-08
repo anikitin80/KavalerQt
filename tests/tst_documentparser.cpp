@@ -55,6 +55,7 @@ private slots:
     void comradeTitleBeforeName();
     void splitUsesTheSameNameCut();
     void twoPeopleInOneSentenceAreSplit();
+    void countryIsNotASurname();
     void listWithLineBreaks();
     void housewifeGetsTheCityOfTheSection();
     void listEndingWithDashDoesNotCrash();
@@ -433,6 +434,26 @@ void TestDocumentParser::twoPeopleInOneSentenceAreSplit()
     QCOMPARE(int(m_parser->m_Persons.size()), 1);
     QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[0], false)),
              QStringLiteral("артист хора имени Г.И.Цитовича"));
+}
+
+// «Беларуси» и «Республики» не фамилия: имя митрополита и министра стоит рядом
+void TestDocumentParser::countryIsNotASurname()
+{
+    parse({kUkazRu, QStringLiteral("14 марта 1995 г. № 104"),
+           QStringLiteral("За мужество наградить Митрополита Минского и Слуцкого, Патриаршего Экзарха всея "
+                          "Беларуси Филарета (Вахромеева Кирилла Варфоломеевича) медалью «За отвагу»."),
+           kPresident});
+    QCOMPARE(int(m_parser->m_Persons.size()), 1);
+    QCOMPARE(text(m_parser->m_Persons[0].Name), QStringLiteral("Филарет (Вахромеев Кирилл Варфоломеевич)"));
+    QVERIFY(text(m_parser->m_Persons[0].Description).contains(QStringLiteral("Беларуси")));
+
+    m_parser->ResetData();
+    parse({kUkazRu, QStringLiteral("26 июня 2002 г. № 335"),
+           QStringLiteral("За мужество наградить генерал-полковника Мальцева Леонида Семеновича, Министра обороны "
+                          "Республики Беларусь медалью «За отвагу»."),
+           kPresident});
+    QCOMPARE(int(m_parser->m_Persons.size()), 1);
+    QCOMPARE(text(m_parser->m_Persons[0].Name), QStringLiteral("Мальцев Леонид Семенович"));
 }
 
 void TestDocumentParser::singleAwardPosthumous()

@@ -128,6 +128,29 @@ void TestNameConverter::normalizeName_data()
                                 << QStringLiteral("Лагодзіч Юрый Іванавіч");
     QTest::newRow("by latin capital I") << QStringLiteral("Лагодзiча Юрыя Iванавiча") << LangBY << Accusative
                                         << QStringLiteral("Лагодзіч Юрый Іванавіч");
+
+    QTest::newRow("ru dat Окружная") << QStringLiteral("Окружной Светлане Артемовне") << LangRU << Dative
+                                     << QStringLiteral("Окружная Светлана Артемовна");
+    QTest::newRow("ru dat Лесечко") << QStringLiteral("Лесечку Ивану Васильевичу") << LangRU << Dative
+                                    << QStringLiteral("Лесечко Иван Васильевич");
+    QTest::newRow("ru dat Ханок") << QStringLiteral("Ханку Эдуарду Семеновичу") << LangRU << Dative
+                                  << QStringLiteral("Ханок Эдуард Семенович");
+    QTest::newRow("ru dat Гребень") << QStringLiteral("Гребню Александру Владимировичу") << LangRU << Dative
+                                    << QStringLiteral("Гребень Александр Владимирович");
+    QTest::newRow("ru dat Волчок") << QStringLiteral("Волчку Александру Титовичу") << LangRU << Dative
+                                   << QStringLiteral("Волчок Александр Титович");
+    QTest::newRow("ru acc Волчк") << QStringLiteral("Волчка Владимира Владимировича") << LangRU << Accusative
+                                  << QStringLiteral("Волчк Владимир Владимирович");
+    QTest::newRow("ru dat Брауде") << QStringLiteral("Брауде Дине Марковне") << LangRU << Dative
+                                   << QStringLiteral("Брауде Дина Марковна");
+    QTest::newRow("ru dat Заец") << QStringLiteral("Зайцу Павлу Исаковичу") << LangRU << Dative
+                                 << QStringLiteral("Заец Павел Исакович");
+    QTest::newRow("ru dat Заец any name") << QStringLiteral("Зайцу Николаю Емельяновичу") << LangRU << Dative
+                                          << QStringLiteral("Заец Николай Емельянович");
+    QTest::newRow("ru dat Ермоленко") << QStringLiteral("Ермоленко Анатолию Ивановичу") << LangRU << Dative
+                                      << QStringLiteral("Ермоленко Анатолий Иванович");
+    QTest::newRow("ru acc Филарет") << QStringLiteral("Филарета (Вахромеева Кирилла Варфоломеевича)") << LangRU << Accusative
+                                    << QStringLiteral("Филарет (Вахромеев Кирилл Варфоломеевич)");
 }
 
 void TestNameConverter::normalizeName()

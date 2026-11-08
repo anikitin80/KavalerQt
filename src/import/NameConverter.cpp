@@ -6,6 +6,16 @@
 // приводит имена к именительному падежу
 
 const RulesList CNameConverter::ExceptionsLastName = ExpandRules({
+	// общее «-ой» даёт «Окружна», в каталоге «Окружная»
+	{ SexFemale, LangRU, L"окружной", L"окружную", L"--ая" },
+	// «-у» общего правила съедает гласную: Лесечк, Ханк, Гребнь
+	{ SexMale, LangRU, L"лесечку", L"лесечка", L"-о" },
+	{ SexMale, LangRU, L"ханку", L"ханка", L"--ок" },
+	{ SexMale, LangRU, L"гребню", L"гребня", L"--ень" },
+	// дательный «Волчку» — Волчок; винительный «Волчка» в каталоге остаётся Волчк
+	{ SexMale, LangRU, L"волчку", L"", L"--ок" },
+	// несклоняемое: общее «-е» превращает в «Брауда»
+	{ SexAny, LangRU, L"брауде", L"брауде", L"" },
 	{ SexMale, LangRU, L"вию,сою,цою,хою", L"вия,соя,цоя,хоя", L"-й" },
 	{ SexMale, LangBY, L"дразду", L"дразда", L"----озд" },
 	{ SexMale, LangBY, L"каралю", L"караля", L"---оль" },
@@ -14,7 +24,9 @@ const RulesList CNameConverter::ExceptionsLastName = ExpandRules({
 	{ SexMale, LangBY, L"дзятлу", L"дзятла", L"---цел" },
 	{ SexMale, LangBY, L"рогу", L"рога", L"-" },
 	// беглые гласные, которые общие правила не восстанавливают
-	{ SexMale, LangAny, L"зайцу", L"зайца", L"---яц" },
+	// дательный «зайцу» — Заец; винительный «зайца» остаётся Заяц
+	{ SexMale, LangAny, L"зайцу", L"", L"---ец" },
+	{ SexMale, LangAny, L"", L"зайца", L"---яц" },
 	{ SexMale, LangAny, L"буслу", L"бусла", L"--ел" },
 	{ SexMale, LangBY, L"бугру", L"бугра", L"--ор" },
 	{ SexMale, LangBY, L"арлу", L"арла", L"--ол" },
@@ -237,9 +249,16 @@ bool CNameConverter::NormalizeName(std::wstring& fullName, LangType lang, NounCa
 
 	std::wstring firstName, lastName, middleName;
 	size_t pos1 = fullName.find(' ');
-	size_t pos2 = fullName.find(' ', pos1 + 1);
+	// одно имя без фамилии: «Филарета», когда «Беларуси» не взяли за фамилию
 	if (pos1 == std::wstring::npos)
-		return false;
+	{
+		const bool ok = ApplyRules(fullName, ExceptionsFirstName, SexMale, lang, nounCase, true)
+			|| ApplyRules(fullName, RulesFirstName, SexMale, lang, nounCase, false);
+		if (!strAlias.empty())
+			fullName += L" (" + strAlias + L")";
+		return ok;
+	}
+	size_t pos2 = fullName.find(' ', pos1 + 1);
 	lastName = fullName.substr(0, pos1);
 	StrTrim(lastName);
 

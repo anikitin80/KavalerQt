@@ -328,6 +328,75 @@ void stripComradeTitle(std::wstring& text)
 	}
 }
 
+// «Беларуси», «Республики» — страна в должности, не фамилия.
+static bool countryNameWord(const std::wstring& word)
+{
+	const std::wstring lower = ToLower(word);
+	return lower == L"беларуси" || lower == L"беларусі"
+		|| lower == L"республики" || lower == L"рэспублікі"
+		|| lower == L"беларусь" || lower == L"беларусь";
+}
+
+static std::wstring firstWordOf(const std::wstring& text)
+{
+	const size_t start = text.find_first_not_of(L' ');
+	if (start == std::wstring::npos)
+		return std::wstring();
+	const size_t end = text.find_first_of(L" (", start);
+	return text.substr(start, end == std::wstring::npos ? std::wstring::npos : end - start);
+}
+
+// страна стояла в конце, настоящее имя с отчеством — левее
+static bool takeEarlierPerson(CNameConverter& names, std::wstring& text, LangType lang, NounCase nounCase, std::wstring& name)
+{
+	size_t patronymic = std::wstring::npos;
+	size_t wordBegin = 0;
+	for (size_t i = 0; i <= text.size(); ++i)
+	{
+		const bool boundary = i == text.size() || text[i] == L' ' || text[i] == L',' || text[i] == L'(';
+		if (!boundary)
+			continue;
+		if (i > wordBegin && names.IsMiddleName(text.substr(wordBegin, i - wordBegin), lang, nounCase))
+			patronymic = wordBegin;
+		wordBegin = i + 1;
+	}
+	if (patronymic == std::wstring::npos || patronymic == 0)
+		return false;
+
+	size_t end = text.find_first_of(L" ,(", patronymic);
+	if (end == std::wstring::npos)
+		end = text.size();
+
+	size_t start = patronymic;
+	int taken = 0;
+	while (taken < 2 && start > 0)
+	{
+		size_t prevEnd = start;
+		while (prevEnd > 0 && (text[prevEnd - 1] == L' ' || text[prevEnd - 1] == L','))
+			--prevEnd;
+		if (prevEnd == 0)
+			break;
+		size_t prevBegin = prevEnd;
+		while (prevBegin > 0 && text[prevBegin - 1] != L' ' && text[prevBegin - 1] != L',')
+			--prevBegin;
+		if (!IsCapital(text[prevBegin]))
+			break;
+		start = prevBegin;
+		++taken;
+	}
+	if (taken < 2)
+		return false;
+
+	name = text.substr(start, end - start);
+	text.erase(start, end - start);
+	while (start < text.size() && text[start] == L' ')
+		text.erase(start, 1);
+	if (start > 0 && start < text.size() && text[start - 1] == L' ' && text[start] == L',')
+		text.erase(start - 1, 1);
+	StrTrim(text);
+	return true;
+}
+
 // Имя — два последних слова с заглавной. Отчество забирает фамилию
 // перед ними («слесаря цеха Иванова Ивана Ивановича»). Без отчества
 // заглавное слово должности остаётся в должности («слесаря Цех Иванова Ивана»).
@@ -364,10 +433,30 @@ bool takePersonName(CNameConverter& names, std::wstring& text, LangType lang, No
 	if (nameOnly) {
 		name = text;
 		text.clear();
-	} else {
-		name = text.substr(sep + 1);
-		text.erase(sep);
+		return true;
 	}
+
+	name = text.substr(sep + 1);
+	// «всея Беларуси Филарета»: страна остаётся в должности.
+	// «Республики Беларусь» целиком — не человек, имя с отчеством стоит раньше.
+	if (countryNameWord(firstWordOf(name)))
+	{
+		const size_t space = name.find(L' ');
+		const std::wstring rest = space == std::wstring::npos ? std::wstring() : name.substr(space + 1);
+		if (!rest.empty() && IsCapital(rest[0]) && !countryNameWord(firstWordOf(rest)))
+		{
+			name = rest;
+			const size_t person = text.find(rest, sep);
+			text.erase(person == std::wstring::npos ? sep : person);
+			StrTrim(text);
+			return true;
+		}
+		text.erase(sep);
+		StrTrim(text);
+		return takeEarlierPerson(names, text, lang, nounCase, name);
+	}
+
+	text.erase(sep);
 	return true;
 }
 
