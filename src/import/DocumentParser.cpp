@@ -496,6 +496,64 @@ void CDocumentParser::ParseSection(const std::wstring& strLine)
 		m_SectionCity.clear();
 }
 
+namespace {
+
+bool isGroupLetter(wchar_t c)
+{
+	return (c >= L'A' && c <= L'Z') || (c >= L'a' && c <= L'z')
+		|| (c >= L'А' && c <= L'я') || c == L'Ё' || c == L'ё'
+		|| c == L'І' || c == L'і' || c == L'Ў' || c == L'ў';
+}
+
+// точка кончает предложение, но не «В.И.Ленина» и не «г. Минска»
+size_t groupSentenceEnd(const std::wstring& text)
+{
+	for (size_t i = 0; i < text.length(); ++i)
+	{
+		const wchar_t c = text[i];
+		if (c == L':' || c == L'\t' || c == L'\n' || c == L'\r')
+			return i;
+		if (c != L'.')
+			continue;
+		const bool before = i > 0 && isGroupLetter(text[i - 1]);
+		const bool after = i + 1 < text.length() && isGroupLetter(text[i + 1]);
+		if (before && after)
+			continue;
+		const bool singleLetter = before && (i == 1 || !isGroupLetter(text[i - 2]));
+		if (singleLetter)
+			continue;
+		return i;
+	}
+	return std::wstring::npos;
+}
+
+// запятая, после которой учёная степень, а не продолжение должности
+size_t academicTitleComma(const std::wstring& text)
+{
+	static const wchar_t* titles[] = {
+		L"профессор", L"доктор", L"кандидат", L"академик", L"доцент", L"лауреат",
+		L"прафесар", L"доктар", L"кандыдат", L"акадэмік", L"дацэнт",
+	};
+	for (size_t comma = text.find(L','); comma != std::wstring::npos; comma = text.find(L',', comma + 1))
+	{
+		if (InsideQuotes(text, comma))
+			continue;
+		size_t pos = comma + 1;
+		while (pos < text.length() && text[pos] == L' ')
+			++pos;
+		const std::wstring rest = ToLower(text.substr(pos));
+		for (const wchar_t* title : titles)
+		{
+			const size_t length = std::wcslen(title);
+			if (rest.compare(0, length, title) == 0)
+				return comma;
+		}
+	}
+	return std::wstring::npos;
+}
+
+} // namespace
+
 // сведения о группе: текст после слова группы до конца предложения
 // или до вида награды («орденом», «медалью», ...)
 void CDocumentParser::ParseGroupInfo(const std::wstring& strLine)
@@ -504,7 +562,7 @@ void CDocumentParser::ParseGroupInfo(const std::wstring& strLine)
 	if (!FindTokens(strLine, searchGroup, posStart, posEnd))
 		return;
 	std::wstring groupInfo = posEnd < strLine.length() ? strLine.substr(posEnd + 1) : std::wstring();
-	posEnd = groupInfo.find_first_of(L":\t\n\r.");
+	posEnd = groupSentenceEnd(groupInfo);
 	if (posEnd != std::wstring::npos)
 		groupInfo.erase(posEnd);
 	if (FindTokens(groupInfo, searchGroupEnd, posStart, posEnd) && posStart > 0)
@@ -1066,9 +1124,16 @@ std::wstring CDocumentParser::GetPersonDescription(PersonInfo& person, bool bGet
 		// второй раз не добавляем: «дырэктар ААТ «Белкард»» уже называет организацию
 		if (!strGroupInfo.empty() && strDesc.find(strGroupInfo) == std::wstring::npos)
 		{
-			if(!strDesc.empty())
-				strDesc += L' ';
-			strDesc += strGroupInfo;
+			// «заведующий кафедрой, профессор» — институт стоит перед степенью
+			const size_t comma = academicTitleComma(strDesc);
+			if (comma != std::wstring::npos)
+				strDesc.insert(comma, L" " + strGroupInfo);
+			else
+			{
+				if (!strDesc.empty())
+					strDesc += L' ';
+				strDesc += strGroupInfo;
+			}
 		}
 	}
 

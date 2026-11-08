@@ -63,6 +63,7 @@ private slots:
     void twoDecreesInOneFile();
     void groupInfoBelongsToItsDecree();
     void groupInfoIsTheOrganisationOnly();
+    void groupKeepsInitialsAndPrecedesTheDegree();
     void organizationIsAwardedItself();
     void organizationInAwardList();
     void workplaceIsNotAnOrganization();
@@ -609,6 +610,28 @@ void TestDocumentParser::groupInfoIsTheOrganisationOnly()
     m_parser->CheckGroupInfo(L"351.docx", true);
     QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons.back(), false)),
              QStringLiteral("старшы інспектар аддзела Службы бяспекі Прэзідэнта Рэспублікі Беларусь"));
+}
+
+// «В.И.Ленина» не обрывает организацию, институт встаёт перед учёной степенью
+void TestDocumentParser::groupKeepsInitialsAndPrecedesTheDegree()
+{
+    parse({kUkazRu, QStringLiteral("12 мая 1996 г. № 170"),
+           QStringLiteral("наградить работников Минского тракторного завода имени В.И.Ленина медалью «За отвагу»:"),
+           QStringLiteral("Астапенко\vВиктора Андреевича"), QStringLiteral("–"),
+           QStringLiteral("начальника сталелитейного цеха"),
+           kPresident}, QStringLiteral("170.docx"));
+    m_parser->CheckGroupInfo(L"170.docx", true);
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons.front(), false)),
+             QStringLiteral("начальник сталелитейного цеха Минского тракторного завода имени В.И.Ленина"));
+
+    parse({kUkazRu, QStringLiteral("12 мая 1996 г. № 171"),
+           QStringLiteral("наградить работников Минского государственного медицинского института медалью «За отвагу»:"),
+           QStringLiteral("Мельниченко\vЭдуарда Михайловича"), QStringLiteral("–"),
+           QStringLiteral("заведующего кафедрой стоматологии детского возраста, профессора, доктора медицинских наук"),
+           kPresident}, QStringLiteral("171.docx"));
+    m_parser->CheckGroupInfo(L"171.docx", true);
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons.back(), false)),
+             QStringLiteral("заведующий кафедрой стоматологии детского возраста Минского государственного медицинского института, профессор, доктор медицинских наук"));
 }
 
 // указы 245/2026, 33/2023 и 361/2021: награждена сама организация.
