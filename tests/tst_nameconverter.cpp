@@ -93,6 +93,10 @@ void TestNameConverter::normalizeName_data()
                                                  << QStringLiteral("Сидоров Серёжа Иванович");
     QTest::newRow("by acc Заяц") << QStringLiteral("Зайца Юрыя Іванавіча") << LangBY << Accusative
                                  << QStringLiteral("Заяц Юрый Іванавіч");
+    QTest::newRow("by acc Корж") << QStringLiteral("Каржа Івана Аляксеевіча") << LangBY << Accusative
+                                 << QStringLiteral("Корж Іван Аляксеевіч");
+    QTest::newRow("by dat Корж") << QStringLiteral("Каржу Івану Аляксеевічу") << LangBY << Dative
+                                 << QStringLiteral("Корж Іван Аляксеевіч");
     QTest::newRow("by acc -гага") << QStringLiteral("Доўгага Пятра Васільевіча") << LangBY << Accusative
                                   << QStringLiteral("Доўгі Пётр Васільевіч");
     QTest::newRow("by acc -няга") << QStringLiteral("Загародняга Анатолія Мікалаевіча") << LangBY << Accusative

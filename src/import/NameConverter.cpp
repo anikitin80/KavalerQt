@@ -27,6 +27,8 @@ const RulesList CNameConverter::ExceptionsLastName = ExpandRules({
 	{ SexMale, LangBY, L"турку,запатылку", L"турка,запатылка", L"--ак" },
 	{ SexMale, LangBY, L"кляшчу", L"кляшча", L"----ешч" },
 	{ SexMale, LangBY, L"хвашчу", L"хвашча", L"----ошч" },
+	// Корж: в косвенных падежах безударное «а» («Каржа», «Каржу»)
+	{ SexMale, LangBY, L"каржу", L"каржа", L"----орж" },
 	{ SexMale, LangBY, L"лукашэню", L"лукашэню", L"-я" }
 });
 
