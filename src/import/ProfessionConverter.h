@@ -38,7 +38,9 @@ public:
 	bool SaveDictionary(const std::wstring& filePath, LangType lang);
 	bool UpdateDictionary(std::vector<NewDictItem>& newItems);
 
-	bool ConvertProfession(std::wstring& strSource, LangType lang, NounCase nounCase);
+	// allowUnknownHead: именительный слова, которого ещё нет в словаре.
+	// Для части после « – » выключен: там родительный места работы.
+	bool ConvertProfession(std::wstring& strSource, LangType lang, NounCase nounCase, bool allowUnknownHead = true);
 	// posStart возвращается на первую букву. posEnd, если задан, — разделитель после слова.
 	static std::wstring GetNextWord(const std::wstring& strSource, size_t& posStart, size_t* posEnd = nullptr);
 	void FindNewWords(std::wstring& strSource, LangType lang, NounCase nounCase);
@@ -57,6 +59,11 @@ protected:
 	// склонённого слова нет в словаре этого падежа, но RulesProfession
 	// даёт именительный, уже известный для языка
 	bool nominativeFromRules(std::wstring word, LangType lang, NounCase nounCase, std::wstring& nominative) const;
+	// правила должности без проверки словаря: уже именительное не укорачивается,
+	// родительный на «-ння» не становится «-ннь»
+	bool ruleNominative(std::wstring word, LangType lang, NounCase nounCase, std::wstring& nominative) const;
+	// первое слово должности, которого нет в словаре: «историка» → «историк»
+	bool restoreUnknownHead(std::wstring& strSource, size_t& posMainWord, LangType lang, NounCase nounCase);
 	// склонённое слово из словаря или из RulesProfession, если такой именительный уже есть
 	struct WordForm
 	{

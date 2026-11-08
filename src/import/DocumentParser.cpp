@@ -932,7 +932,7 @@ void CDocumentParser::NormalizePersonInfo(PersonInfo& person)
 
 	for (size_t i = 0; i < professions.size(); i++)
 	{
-		if (m_ProfessionConverter.ConvertProfession(professions[i], lang, nounCase) && i == 0)
+		if (m_ProfessionConverter.ConvertProfession(professions[i], lang, nounCase, i == 0) && i == 0)
 			person.Flags |= PersonInfo::NF_PROFESSION;
 	}
 	person.Description = professions[0];

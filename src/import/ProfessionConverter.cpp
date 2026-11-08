@@ -534,7 +534,10 @@ void CProfessionConverter::ConvertLeadingAdjectives(std::wstring& strSource, siz
 			break;
 
 		const size_t wordLength = word.length();
-		if (CNameConverter::ApplyRules(word, RulesAdjectives, SexAny, lang, nounCase, false))
+		if (!CNameConverter::ApplyRules(word, RulesAdjectives, SexAny, lang, nounCase, false)
+			    && ToLower(word) == L"научном")
+			word = word[0] == L'Н' ? L"Научный" : L"научный";
+		if (ToLower(word) != ToLower(strSource.substr(posStart, wordLength)))
 		{
 			strSource.replace(posStart, wordLength, word);
 			// более короткое прилагательное не должно затянуть следующее слово под posMainWord
@@ -552,7 +555,122 @@ void CProfessionConverter::ConvertLeadingAdjectives(std::wstring& strSource, siz
 	}
 }
 
-bool CProfessionConverter::ConvertProfession(std::wstring& strSource, LangType lang, NounCase nounCase)
+namespace {
+
+bool endsWith(const std::wstring& word, const wchar_t* suffix)
+{
+	const size_t length = std::wcslen(suffix);
+	return word.length() >= length && word.compare(word.length() - length, length, suffix) == 0;
+}
+
+// Формы, которые общее правило портит, а словарь не лечит.
+// Косвенный падеж здесь тот же, что в указе и в каталоге. Именительный
+// в словаре («лозапляцельшчык») переписал бы совпавшую строку, а косвенный
+// на месте именительного словарь запомнил бы и начал подставлять,
+// как раньше «падраздзяленнь».
+// «оптыка» уже именительный, но в словаре её нет: окончание «-а» дало бы «оптык».
+bool keepCatalogForm(const std::wstring& word)
+{
+	static const wchar_t* keep[] = {
+		L"оптыка",
+		L"лозапляцельшчыка",
+		L"апрацоўшчыцу",
+		L"трубаправодчыка",
+		L"фрэзероўшчыцу",
+		L"транспарціроўшчыка",
+		L"ад’юнкта",
+		L"ад'юнкта",
+		L"праглядчыка",
+		L"экскурсавода",
+		L"нумара",
+	};
+	for (const wchar_t* item : keep)
+		if (word == item)
+			return true;
+	return false;
+}
+
+} // namespace
+
+bool CProfessionConverter::ruleNominative(std::wstring word, LangType lang, NounCase nounCase, std::wstring& nominative) const
+{
+	const std::wstring original = ToLower(word);
+	if (original.length() < 4 || keepCatalogForm(original))
+		return false;
+	// «оптика» уже именительный в словаре: окончание «-а» не отрезаем
+	if (languageData(lang).nominatives.find(original) != languageData(lang).nominatives.end())
+		return false;
+	// «падраздзялення» — родительный среднего рода, не «падраздзяленнь».
+	// «іканапісца» уже именительный. «-я» → «-ь» для незнакомого слова
+	// даёт «кіруючаь» и «музеь».
+	if (endsWith(original, L"ння") || endsWith(original, L"нния") || endsWith(original, L"ения")
+		|| endsWith(original, L"енья") || endsWith(original, L"ца")
+		|| endsWith(original, L"ая") || endsWith(original, L"яя") || endsWith(original, L"яе"))
+		return false;
+	if (!CNameConverter::ApplyRules(word, RulesProfession, SexAny, lang, nounCase, false) || word.empty())
+		return false;
+	if (ToLower(word) == original || endsWith(ToLower(word), L"ь"))
+		return false;
+	nominative = std::move(word);
+	return true;
+}
+
+bool CProfessionConverter::restoreUnknownHead(std::wstring& strSource, size_t& posMainWord, LangType lang, NounCase nounCase)
+{
+	const std::vector<std::wstring> endings = nounCase == Dative
+		? std::vector<std::wstring>{ L"му", L"ай", L"яй", L"ом" }
+		: std::vector<std::wstring>{ L"га", L"го", L"ую", L"юю", L"ом" };
+	const auto adjectiveEnding = [&endings](const std::wstring& candidate) {
+		const std::wstring lower = ToLower(candidate);
+		if (lower == L"научном")
+			return true;
+		if (lower.length() < 4)
+			return false;
+		const std::wstring ending = lower.substr(lower.length() - 2);
+		return std::find(endings.begin(), endings.end(), ending) != endings.end();
+	};
+
+	size_t cursor = 0;
+	for (int i = 0; i < 5 && cursor < strSource.length(); ++i)
+	{
+		size_t wordPos = cursor;
+		size_t wordEnd = 0;
+		const std::wstring word = GetNextWord(strSource, wordPos, &wordEnd);
+		if (word.empty())
+			return false;
+		cursor = wordEnd;
+		if (adjectiveEnding(word))
+			continue;
+
+		std::wstring nominative;
+		if (!ruleNominative(word, lang, nounCase, nominative))
+			return false;
+
+		ReplaceKeepingFirstLetter(strSource, wordPos, word.length(), nominative);
+		size_t after = wordPos + nominative.length();
+		while (after < strSource.length() && (strSource[after] == L'-' || strSource[after] == L'\u2013'))
+		{
+			size_t partPos = after;
+			size_t partEnd = 0;
+			const std::wstring part = GetNextWord(strSource, partPos, &partEnd);
+			if (part.empty() || partPos != after + 1)
+				break;
+			std::wstring partNominative;
+			if (!ruleNominative(part, lang, nounCase, partNominative))
+				break;
+			ReplaceKeepingFirstLetter(strSource, partPos, part.length(), partNominative);
+			after = partPos + partNominative.length();
+		}
+
+		std::wstring offered = word;
+		AddNewWord(offered, lang, nounCase);
+		posMainWord = wordPos;
+		return true;
+	}
+	return false;
+}
+
+bool CProfessionConverter::ConvertProfession(std::wstring& strSource, LangType lang, NounCase nounCase, bool allowUnknownHead)
 {
 	bool bResult = false;
 
@@ -591,6 +709,8 @@ bool CProfessionConverter::ConvertProfession(std::wstring& strSource, LangType l
 		posStart = posEnd;
 	}
 
+	if (!bResult && allowUnknownHead)
+		bResult = restoreUnknownHead(strSource, posMainWord, lang, nounCase);
 	if (!bResult)
 		FindNewWords(strSource, lang, nounCase);
 
@@ -638,6 +758,9 @@ void CProfessionConverter::FindNewWords(std::wstring& strSource, LangType lang, 
 			return;
 	}
 
+	const std::wstring lower = ToLower(word);
+	if (endsWith(lower, L"ння") || endsWith(lower, L"нния") || endsWith(lower, L"ения") || endsWith(lower, L"енья"))
+		return;
 	AddNewWord(word, lang, nounCase);
 }
 

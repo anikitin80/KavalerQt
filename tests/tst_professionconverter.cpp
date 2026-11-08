@@ -28,6 +28,7 @@ private slots:
     void otherCaseSuppliesTheNominative();
     void dictionaryKeysMatchLookup();
     void adjectiveChainIsNotANewWord();
+    void neuterGenitiveIsNotAProfession();
 };
 
 void TestProfessionConverter::initTestCase()
@@ -114,6 +115,17 @@ void TestProfessionConverter::convert_data()
                                                  << QStringLiteral("вялікі-новы інспектар цэха");
     QTest::newRow("by dat en dash") << QStringLiteral("вялікаму\u2013інспектару цэха") << LangBY << Dative
                                     << QStringLiteral("вялікі\u2013інспектар цэха");
+    // должности нет в словаре: именительный всё равно восстанавливается
+    QTest::newRow("ru acc unknown historian") << QStringLiteral("историка, член союза") << LangRU << Accusative
+                                              << QStringLiteral("историк, член союза");
+    QTest::newRow("ru dat unknown musicologist") << QStringLiteral("музыковеду театра") << LangRU << Dative
+                                                 << QStringLiteral("музыковед театра");
+    QTest::newRow("ru dat scientific locative") << QStringLiteral("старший научном сотруднику института") << LangRU << Dative
+                                                << QStringLiteral("старший научный сотрудник института");
+    QTest::newRow("ru acc unknown hyphenated") << QStringLiteral("советника-консультант отдела") << LangRU << Accusative
+                                               << QStringLiteral("советник-консультант отдела");
+    QTest::newRow("by acc unknown head and adjective") << QStringLiteral("старшага дэпартамента ўстановы") << LangBY << Accusative
+                                                       << QStringLiteral("старшы дэпартамент ўстановы");
 }
 
 void TestProfessionConverter::convert()
@@ -134,9 +146,10 @@ void TestProfessionConverter::onlyFirstFiveWordsAreSearched()
 {
     CProfessionConverter converter;
     TestData::useTestDictionaries(converter);
-    std::wstring text = L"жительнице г. Минска по месту жительства водителю";
+    // первое слово не должность: «водителю» дальше пяти слов не ищется
+    std::wstring text = L"проживает в г. Минске по месту жительства водителю";
     QVERIFY(!converter.ConvertProfession(text, LangRU, Dative));
-    QCOMPARE(QString::fromStdWString(text), QStringLiteral("жительнице г. Минска по месту жительства водителю"));
+    QCOMPARE(QString::fromStdWString(text), QStringLiteral("проживает в г. Минске по месту жительства водителю"));
 }
 
 // незнакомая должность остаётся как есть и предлагается в словарь
@@ -145,8 +158,8 @@ void TestProfessionConverter::unknownProfessionBecomesNewWord()
     CProfessionConverter converter;
     TestData::useTestDictionaries(converter);
     std::wstring text = L"сварщику цеха";
-    QVERIFY(!converter.ConvertProfession(text, LangRU, Dative));
-    QCOMPARE(QString::fromStdWString(text), QStringLiteral("сварщику цеха"));
+    QVERIFY(converter.ConvertProfession(text, LangRU, Dative));
+    QCOMPARE(QString::fromStdWString(text), QStringLiteral("сварщик цеха"));
 
     const auto& words = converter.newWords();
     QCOMPARE(int(words.size()), 1);
@@ -258,8 +271,8 @@ void TestProfessionConverter::otherCaseSuppliesTheNominative()
     QVERIFY(converter.newWords().empty());
 
     std::wstring unknown = L"зваршчыку цэха";
-    QVERIFY(!converter.ConvertProfession(unknown, LangBY, Dative));
-    QCOMPARE(QString::fromStdWString(unknown), QStringLiteral("зваршчыку цэха"));
+    QVERIFY(converter.ConvertProfession(unknown, LangBY, Dative));
+    QCOMPARE(QString::fromStdWString(unknown), QStringLiteral("зваршчык цэха"));
     QCOMPARE(int(converter.newWords().size()), 1);
     QCOMPARE(QString::fromStdWString(converter.newWords().front().Original), QStringLiteral("зваршчыку"));
     QCOMPARE(QString::fromStdWString(converter.newWords().front().Word), QStringLiteral("зваршчык"));
@@ -317,11 +330,22 @@ void TestProfessionConverter::adjectiveChainIsNotANewWord()
     CProfessionConverter converter;
     TestData::useTestDictionaries(converter);
     std::wstring text = L"вялікаму сіняму новаму брынзалу";
-    QVERIFY(!converter.ConvertProfession(text, LangBY, Dative));
-    QCOMPARE(QString::fromStdWString(text), QStringLiteral("вялікаму сіняму новаму брынзалу"));
+    QVERIFY(converter.ConvertProfession(text, LangBY, Dative));
+    QCOMPARE(QString::fromStdWString(text), QStringLiteral("вялікі сіняму новы брынзал"));
     QCOMPARE(int(converter.newWords().size()), 1);
     QCOMPARE(QString::fromStdWString(converter.newWords().front().Original), QStringLiteral("брынзалу"));
     QCOMPARE(QString::fromStdWString(converter.newWords().front().Word), QStringLiteral("брынзал"));
+}
+
+// «падраздзялення» — не должность: родительный среднего рода остаётся
+void TestProfessionConverter::neuterGenitiveIsNotAProfession()
+{
+    CProfessionConverter converter;
+    TestData::useTestDictionaries(converter);
+    std::wstring text = L"адасобленага падраздзялення";
+    QVERIFY(!converter.ConvertProfession(text, LangBY, Accusative));
+    QCOMPARE(QString::fromStdWString(text), QStringLiteral("адасобленага падраздзялення"));
+    QCOMPARE(int(converter.newWords().size()), 0);
 }
 
 QTEST_GUILESS_MAIN(TestProfessionConverter)
