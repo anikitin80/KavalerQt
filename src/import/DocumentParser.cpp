@@ -371,6 +371,82 @@ bool takePersonName(CNameConverter& names, std::wstring& text, LangType lang, No
 	return true;
 }
 
+// Организация в именительном или винительном: «узнагародзіць адкрытае
+// акцыянернае таварыства «...» ордэнам». Родительный («слесара адкрытага
+// таварыства») сюда не попадает: это место работы, его забирает takePersonName.
+// Первое слово — с заглавной, как в указе 2023 года.
+bool takeOrganisation(std::wstring& text, std::wstring& name)
+{
+	for (wchar_t& character : text) {
+		if (character == L'\u00A0')
+			character = L' ';
+	}
+	StrTrim(text);
+	while (!text.empty() && (text.back() == L';' || text.back() == L'.')) {
+		text.pop_back();
+		StrTrim(text);
+	}
+	if (text.empty())
+		return false;
+
+	static const wchar_t* heads[] = {
+		L"адкрытае ", L"закрытае ", L"рэспубліканскае ", L"камунальнае ",
+		L"дзяржаўнае ", L"дзяржаўную ўстанову", L"унітарнае ", L"вытворчае ",
+		L"навукова-вытворчае ", L"таварыства з ", L"калектыў ",
+		L"открытое ", L"закрытое ", L"республиканское ", L"коммунальное ",
+		L"государственное ", L"унитарное ", L"общество с ", L"коллектив ",
+	};
+	const std::wstring lower = ToLower(text);
+	bool organisation = false;
+	for (const wchar_t* head : heads) {
+		const size_t length = std::wcslen(head);
+		if (lower.size() >= length && lower.compare(0, length, head) == 0) {
+			organisation = true;
+			break;
+		}
+	}
+	if (!organisation)
+		return false;
+
+	// «..., Пінскі раён» в списке — место, не часть названия
+	std::wstring place;
+	const size_t comma = text.rfind(L',');
+	if (comma != std::wstring::npos && !InsideQuotes(text, comma)) {
+		std::wstring tail = text.substr(comma + 1);
+		StrTrim(tail);
+		const std::wstring lowerTail = ToLower(tail);
+		const bool isPlace = lowerTail.find(L"раён") != std::wstring::npos
+			|| lowerTail.find(L"район") != std::wstring::npos
+			|| lowerTail.find(L"абласц") != std::wstring::npos
+			|| lowerTail.find(L"област") != std::wstring::npos
+			|| lowerTail.rfind(L"г.", 0) == 0
+			|| lowerTail.rfind(L"г ", 0) == 0;
+		if (isPlace) {
+			place = std::move(tail);
+			text.erase(comma);
+			StrTrim(text);
+		}
+	}
+
+	QString title = QString::fromStdWString(text);
+	title[0] = title.at(0).toUpper();
+	name = title.toStdWString();
+	text = std::move(place);
+	return true;
+}
+
+// имя не заполняем: в личных данных название и, если есть, район через запятую
+void assignOrganisation(PersonInfo& info, std::wstring title, const std::wstring& place)
+{
+	info.Organization = true;
+	info.Name.clear();
+	if (!place.empty()) {
+		title += L", ";
+		title += place;
+	}
+	info.Description = std::move(title);
+}
+
 } // namespace
 
 // «15 мая 1997 г.№ 282»: номер после «№», дата до «г»
@@ -599,6 +675,23 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 				bResult = true;
 				if (awardId > 0)
 				{
+					// организация отдельной строкой списка, в том числе с тире в названии
+					// («ІНТЭГРАЛ» – кіруючая кампанія ...): это не человек и должность
+					std::wstring orgLine = strLine;
+					std::wstring orgName;
+					if (takeOrganisation(orgLine, orgName))
+					{
+						PersonInfo info;
+						info.FileName = m_FileName;
+						info.Ukaz = m_UkazInfo;
+						info.AwardId = awardId;
+						assignOrganisation(info, std::move(orgName), orgLine);
+						nAwardedCount++;
+						NormalizePersonInfo(info);
+						m_Persons.push_back(info);
+						continue;
+					}
+
 					// список награждённых
 					size_t pos = strLine.find_first_of(L"–-", 0);
 					if (pos == std::wstring::npos)
@@ -709,16 +802,24 @@ void CDocumentParser::ExtractPersonInfo(std::wstring& curAward, std::wstring& st
 
 	const LangType lang = m_UkazInfo.RussianLang ? LangRU : LangBY;
 	std::wstring name;
-	if (!takePersonName(m_NameConverter, strAwardedInfo, lang, nounCase, name))
-		return;
+	bool organisation = false;
+	if (!takePersonName(m_NameConverter, strAwardedInfo, lang, nounCase, name)) {
+		if (!takeOrganisation(strAwardedInfo, name))
+			return;
+		organisation = true;
+	}
 
 	PersonInfo info;
 	info.Ukaz = m_UkazInfo;
 	info.FileName = m_FileName;
 	info.AwardId = awardId;
-	info.Name = std::move(name);
-	info.Description = std::move(strAwardedInfo);
 	info.Posthumous = bPosthumous;
+	if (organisation)
+		assignOrganisation(info, std::move(name), strAwardedInfo);
+	else {
+		info.Name = std::move(name);
+		info.Description = std::move(strAwardedInfo);
+	}
 
 	NormalizePersonInfo(info);
 	m_Persons.push_back(info);
@@ -793,6 +894,16 @@ void CDocumentParser::NormalizePersonInfo(PersonInfo& person)
 	LangType lang = person.Ukaz.RussianLang ? LangRU : LangBY;
 	person.SourceName = person.Name;
 	person.SourceCase = nounCase;
+	// название организации не склоняется как фамилия и не ищется среди должностей
+	if (person.Organization) {
+		person.Name.clear();
+		if (person.SourceName.empty())
+			person.SourceName = person.Description;
+		person.Flags |= PersonInfo::NF_NAME;
+		if (!person.Description.empty())
+			person.Flags |= PersonInfo::NF_PROFESSION;
+		return;
+	}
 	if (m_NameConverter.NormalizeName(person.Name, lang, nounCase))
 		person.Flags |= PersonInfo::NF_NAME;
 

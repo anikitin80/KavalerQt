@@ -516,16 +516,20 @@ void ImportDialog::showPersons()
             continue;
         const int row = m_persons->rowCount();
         m_persons->insertRow(row);
-        auto* name = new QTableWidgetItem(fromWide(person.Name));
+        const QString nameText = person.Name.empty() ? QStringLiteral("Организация") : fromWide(person.Name);
+        auto* name = new QTableWidgetItem(nameText);
         name->setData(Qt::UserRole, index);
         if ((person.Flags & PersonInfo::NF_NAME) == 0)
             name->setForeground(QColor(200, 0, 0));
         m_persons->setItem(row, 0, name);
 
-        auto* job = new QTableWidgetItem(fromWide(m_parser.GetPersonDescription(size_t(index))));
+        const QString jobText = person.Organization
+            ? fromWide(person.Description)
+            : fromWide(m_parser.GetPersonDescription(size_t(index)));
+        auto* job = new QTableWidgetItem(jobText);
         job->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
         const bool rankMissing = person.MilitaryRank.empty() && CDocumentParser::IsMilitaryAward(person.AwardId);
-        if ((person.Flags & PersonInfo::NF_PROFESSION) == 0 || rankMissing)
+        if (!person.Organization && ((person.Flags & PersonInfo::NF_PROFESSION) == 0 || rankMissing))
             job->setForeground(QColor(200, 0, 0));
         m_persons->setItem(row, 1, job);
         ++shown;
@@ -571,13 +575,18 @@ Person ImportDialog::personFromInfo(const PersonInfo& info)
     Person person;
     person.awardId = info.AwardId;
     person.language = info.Ukaz.RussianLang ? kLangRussian : kLangBelarusian;
+    const QString description = info.Organization
+        ? fromWide(info.Description)
+        : fromWide(m_parser.GetPersonDescription(const_cast<PersonInfo&>(info), false));
     if (info.Ukaz.RussianLang) {
-        person.name = fromWide(info.Name);
-        person.personal = fromWide(m_parser.GetPersonDescription(const_cast<PersonInfo&>(info), false));
+        if (!info.Organization)
+            person.name = fromWide(info.Name);
+        person.personal = description;
         person.rank = fromWide(info.MilitaryRank);
     } else {
-        person.nameBy = fromWide(info.Name);
-        person.personalBy = fromWide(m_parser.GetPersonDescription(const_cast<PersonInfo&>(info), false));
+        if (!info.Organization)
+            person.nameBy = fromWide(info.Name);
+        person.personalBy = description;
         person.rankBy = fromWide(info.MilitaryRank);
     }
     person.ukaseDate = info.Ukaz.Date;

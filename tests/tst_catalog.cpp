@@ -139,6 +139,7 @@ private slots:
     void savingDeletedRecordFails();
     void failedOpenKeepsCurrentDatabase();
     void replaceTextSavesLikeAnEdit();
+    void organizationFlagIsStored();
 
 private:
     QTemporaryDir m_dir;
@@ -764,6 +765,42 @@ void TestCatalog::replaceTextSavesLikeAnEdit()
                                     QStringLiteral("Шульга Валерый Пятровіч"), &error), 1);
     QVERIFY(byNameBy(*m_catalog, QStringLiteral("Шульга Валерый Пятровіч")));
     QCOMPARE(m_catalog->replaceText(TextField::NameBy, false, QStringLiteral("няма такога"), QString(), &error), 0);
+}
+
+// название организации пишется в личные данные, имя остаётся пустым
+void TestCatalog::organizationFlagIsStored()
+{
+    const QString titleBy = QStringLiteral("Адкрытае акцыянернае таварыства «Савушкін прадукт»");
+    Person org;
+    org.awardId = 14;
+    org.personalBy = titleBy;
+    org.ukaseNo = 245;
+    org.ukaseDate = QDate(2026, 7, 22);
+    org.language = kLangBelarusian;
+    QString error;
+    QVERIFY2(m_catalog->save(org, &error), qPrintable(error));
+    QCOMPARE(stored(m_path, org.id, QStringLiteral("Name")), QString());
+    QCOMPARE(stored(m_path, org.id, QStringLiteral("Name_BY")), QString());
+    QCOMPARE(stored(m_path, org.id, QStringLiteral("Personal_Info_BY")), titleBy);
+
+    Person other = org;
+    other.id = 0;
+    other.ukaseNo = 306;
+    other.personalBy = QStringLiteral("Адкрытае акцыянернае таварыства «Планар»");
+    QVERIFY2(m_catalog->save(other, &error), qPrintable(error));
+    Person sameDecree = other;
+    sameDecree.id = 0;
+    sameDecree.personalBy = QStringLiteral("Адкрытае акцыянернае таварыства «ІНТЭГРАЛ»");
+    QVERIFY2(m_catalog->save(sameDecree, &error), qPrintable(error));
+    QCOMPARE(m_catalog->count(other), 1);
+    QCOMPARE(m_catalog->count(sameDecree), 1);
+
+    QVERIFY2(m_catalog->open(m_path, &error), qPrintable(error));
+    const Person* saved = m_catalog->person(org.id);
+    QVERIFY(saved);
+    QVERIFY(saved->name.isEmpty());
+    QVERIFY(saved->nameBy.isEmpty());
+    QCOMPARE(saved->personalBy, titleBy);
 }
 
 QTEST_GUILESS_MAIN(TestCatalog)

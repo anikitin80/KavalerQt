@@ -49,6 +49,8 @@ struct PersonInfo
     UkazInfo Ukaz;
     unsigned Flags = 0;
     bool Posthumous = false;
+    // награждена сама организация: Name пустое, название и район лежат в Description
+    bool Organization = false;
 };
 
 struct DecreeAward

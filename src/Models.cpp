@@ -168,7 +168,13 @@ QString PersonModel::displayAward(const Person& person) const
 
 QString PersonModel::displayName(const Person& person) const
 {
-    return person.name.isEmpty() ? person.nameBy : person.name;
+    if (!person.name.isEmpty())
+        return person.name;
+    if (!person.nameBy.isEmpty())
+        return person.nameBy;
+    if (!person.personal.isEmpty() || !person.personalBy.isEmpty())
+        return QStringLiteral("Организация");
+    return {};
 }
 
 QString PersonModel::displayPersonal(const Person& person) const

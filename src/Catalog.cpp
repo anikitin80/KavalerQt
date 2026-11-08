@@ -545,16 +545,23 @@ QString keyName(const QString& name, bool belarusian)
     return NormalizeCyrillicText(name, belarusian);
 }
 
+QString identityText(const QString& name, const QString& personal)
+{
+    return name.isEmpty() ? personal : name;
+}
+
 } // namespace
 
 // счётчики, не множество: у двух записей может быть один ключ, правка одной должна оставить другую
 void Catalog::addIdentity(const Person& person)
 {
     const qint64 day = person.ukaseDate.toJulianDay();
-    if (!person.name.isEmpty())
-        ++m_identityName[IdentityKey{person.ukaseNo, day, person.awardId, keyName(person.name, false)}];
-    if (!person.nameBy.isEmpty())
-        ++m_identityNameBy[IdentityKey{person.ukaseNo, day, person.awardId, keyName(person.nameBy, true)}];
+    const QString russian = identityText(person.name, person.personal);
+    const QString belarusian = identityText(person.nameBy, person.personalBy);
+    if (!russian.isEmpty())
+        ++m_identityName[IdentityKey{person.ukaseNo, day, person.awardId, keyName(russian, false)}];
+    if (!belarusian.isEmpty())
+        ++m_identityNameBy[IdentityKey{person.ukaseNo, day, person.awardId, keyName(belarusian, true)}];
 }
 
 void Catalog::removeIdentity(const Person& person)
@@ -565,21 +572,25 @@ void Catalog::removeIdentity(const Person& person)
         if (it != counts.end() && --it.value() <= 0)
             counts.erase(it);
     };
-    if (!person.name.isEmpty())
-        drop(m_identityName, IdentityKey{person.ukaseNo, day, person.awardId, keyName(person.name, false)});
-    if (!person.nameBy.isEmpty())
-        drop(m_identityNameBy, IdentityKey{person.ukaseNo, day, person.awardId, keyName(person.nameBy, true)});
+    const QString russian = identityText(person.name, person.personal);
+    const QString belarusian = identityText(person.nameBy, person.personalBy);
+    if (!russian.isEmpty())
+        drop(m_identityName, IdentityKey{person.ukaseNo, day, person.awardId, keyName(russian, false)});
+    if (!belarusian.isEmpty())
+        drop(m_identityNameBy, IdentityKey{person.ukaseNo, day, person.awardId, keyName(belarusian, true)});
 }
 
 int Catalog::count(const Person& probe) const
 {
     const qint64 day = probe.ukaseDate.toJulianDay();
     int result = 0;
-    if (!probe.name.isEmpty())
-        result = m_identityName.value(IdentityKey{probe.ukaseNo, day, probe.awardId, keyName(probe.name, false)});
-    if (!probe.nameBy.isEmpty()) {
+    const QString russian = identityText(probe.name, probe.personal);
+    const QString belarusian = identityText(probe.nameBy, probe.personalBy);
+    if (!russian.isEmpty())
+        result = m_identityName.value(IdentityKey{probe.ukaseNo, day, probe.awardId, keyName(russian, false)});
+    if (!belarusian.isEmpty()) {
         result = std::max(result, m_identityNameBy.value(
-            IdentityKey{probe.ukaseNo, day, probe.awardId, keyName(probe.nameBy, true)}));
+            IdentityKey{probe.ukaseNo, day, probe.awardId, keyName(belarusian, true)}));
     }
     return result;
 }

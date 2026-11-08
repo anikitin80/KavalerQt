@@ -63,6 +63,9 @@ private slots:
     void twoDecreesInOneFile();
     void groupInfoBelongsToItsDecree();
     void groupInfoIsTheOrganisationOnly();
+    void organizationIsAwardedItself();
+    void organizationInAwardList();
+    void workplaceIsNotAnOrganization();
     void resetClearsEverything();
 
 private:
@@ -606,6 +609,136 @@ void TestDocumentParser::groupInfoIsTheOrganisationOnly()
     m_parser->CheckGroupInfo(L"351.docx", true);
     QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons.back(), false)),
              QStringLiteral("старшы інспектар аддзела Службы бяспекі Прэзідэнта Рэспублікі Беларусь"));
+}
+
+// указы 245/2026, 33/2023 и 361/2021: награждена сама организация.
+// имя пустое, название целиком лежит в личных данных
+void TestDocumentParser::organizationIsAwardedItself()
+{
+    parse({kUkazBy, QStringLiteral("22 ліпеня 2026 г. № 245"),
+           QStringLiteral("За значны ўклад у развіццё перапрацоўчай прамысловасці, эфектыўную дзейнасць "
+                          "і выраб прадукцыі высокай якасці ўзнагародзіць адкрытае\u00A0акцыянернае таварыства "
+                          "«Савушкін прадукт» ордэнам Працоўнай Славы."),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QCOMPARE(int(m_parser->m_Persons.size()), 1);
+    PersonInfo& savushkin = m_parser->m_Persons.front();
+    QCOMPARE(savushkin.AwardId, 24);
+    QCOMPARE(savushkin.Ukaz.Number, 245);
+    QCOMPARE(savushkin.Ukaz.Date, QDate(2026, 7, 22));
+    QVERIFY(savushkin.Organization);
+    QVERIFY(savushkin.Name.empty());
+    QVERIFY(savushkin.Flags & PersonInfo::NF_NAME);
+    QCOMPARE(text(m_parser->GetPersonDescription(savushkin, false)),
+             QStringLiteral("Адкрытае акцыянернае таварыства «Савушкін прадукт»"));
+
+    m_parser->ResetData();
+    parse({kUkazBy, QStringLiteral("10 лютага 2023 г. № 33"),
+           QStringLiteral("За ўклад у развіццё перапрацоўчай прамысловасці ўзнагародзіць адкрытае акцыянернае "
+                          "таварыства «Малочны Мір» ордэнам Працоўнай Славы."),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QCOMPARE(int(m_parser->m_Persons.size()), 1);
+    PersonInfo& milk = m_parser->m_Persons.front();
+    QCOMPARE(milk.AwardId, 24);
+    QVERIFY(milk.Organization);
+    QVERIFY(milk.Name.empty());
+    QCOMPARE(text(m_parser->GetPersonDescription(milk, false)),
+             QStringLiteral("Адкрытае акцыянернае таварыства «Малочны Мір»"));
+
+    m_parser->ResetData();
+    parse({kUkazBy, QStringLiteral("22 верасня 2021 г. № 361"),
+           QStringLiteral("За значны ўклад у захаванне гісторыка-культурнай спадчыны ўзнагародзіць дзяржаўную ўстанову "
+                          "«Мемарыяльны комплекс «Брэсцкая крэпасць-герой» ордэнам Францыска Скарыны."),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QCOMPARE(int(m_parser->m_Persons.size()), 1);
+    PersonInfo& fortress = m_parser->m_Persons.front();
+    QCOMPARE(fortress.AwardId, 11);
+    QVERIFY(fortress.Organization);
+    QVERIFY(fortress.Name.empty());
+    QCOMPARE(text(m_parser->GetPersonDescription(fortress, false)),
+             QStringLiteral("Дзяржаўную ўстанову «Мемарыяльны комплекс «Брэсцкая крэпасць-герой»"));
+
+    m_parser->ResetData();
+    parse({kUkazRu, QStringLiteral("10 февраля 2023 г. № 33"),
+           QStringLiteral("За вклад в развитие промышленности наградить открытое акционерное общество "
+                          "«Молочный мир» орденом Трудовой Славы."),
+           kPresident});
+    QCOMPARE(int(m_parser->m_Persons.size()), 1);
+    PersonInfo& russian = m_parser->m_Persons.front();
+    QCOMPARE(russian.AwardId, 24);
+    QVERIFY(russian.Organization);
+    QVERIFY(russian.Name.empty());
+    QCOMPARE(text(m_parser->GetPersonDescription(russian, false)),
+             QStringLiteral("Открытое акционерное общество «Молочный мир»"));
+}
+
+// указы 386/2024, 298/2026 и 306/2026: организация — строка списка под наградой,
+// название и район вместе в личных данных, тире внутри названия не режет строку
+void TestDocumentParser::organizationInAwardList()
+{
+    parse({kUkazBy, QStringLiteral("1 кастрычніка 2024 г. № 386"),
+           QStringLiteral("За значны ўклад у развіццё аграпрамысловага комплексу:"),
+           QStringLiteral("1. Узнагародзіць:"),
+           QStringLiteral("ордэнам Працоўнай Славы"),
+           QStringLiteral("адкрытае акцыянернае таварыства «Парахонскае», Пінскі раён"),
+           QStringLiteral("ордэнам Пашаны"),
+           QStringLiteral("Іванова\vІвана Іванавіча"), QStringLiteral("–"),
+           QStringLiteral("вадзіцеля аўтамабіля адкрытага акцыянернага таварыства «Калінінскі», Добрушскі раён"),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QCOMPARE(int(m_parser->m_Persons.size()), 2);
+    PersonInfo& parokhonskoe = m_parser->m_Persons[0];
+    QVERIFY(parokhonskoe.Organization);
+    QVERIFY(parokhonskoe.Name.empty());
+    QCOMPARE(parokhonskoe.AwardId, 24);
+    QCOMPARE(text(m_parser->GetPersonDescription(parokhonskoe, false)),
+             QStringLiteral("Адкрытае акцыянернае таварыства «Парахонскае», Пінскі раён"));
+    QVERIFY(!m_parser->m_Persons[1].Organization);
+    QCOMPARE(m_parser->m_Persons[1].AwardId, 10);
+    QCOMPARE(text(m_parser->m_Persons[1].Name), QStringLiteral("Іваноў Іван Іванавіч"));
+
+    m_parser->ResetData();
+    parse({kUkazBy, QStringLiteral("9 верасня 2026 г. № 306"),
+           QStringLiteral("За працу:"),
+           QStringLiteral("1. Узнагародзіць:"),
+           QStringLiteral("ордэнам Працоўнай Славы"),
+           QStringLiteral("адкрытае акцыянернае таварыства «Планар»;"),
+           QStringLiteral("адкрытае акцыянернае таварыства «ІНТЭГРАЛ» – кіруючая кампанія холдынга «ІНТЭГРАЛ»"),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QCOMPARE(int(m_parser->m_Persons.size()), 2);
+    QVERIFY(m_parser->m_Persons[0].Organization);
+    QVERIFY(m_parser->m_Persons[1].Organization);
+    QVERIFY(m_parser->m_Persons[0].Name.empty());
+    QVERIFY(m_parser->m_Persons[1].Name.empty());
+    QCOMPARE(m_parser->m_Persons[0].AwardId, 24);
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[0], false)),
+             QStringLiteral("Адкрытае акцыянернае таварыства «Планар»"));
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[1], false)),
+             QStringLiteral("Адкрытае акцыянернае таварыства «ІНТЭГРАЛ» – кіруючая кампанія холдынга «ІНТЭГРАЛ»"));
+}
+
+// родительный падеж — место работы человека; список после двоеточия тоже люди
+void TestDocumentParser::workplaceIsNotAnOrganization()
+{
+    parse({kUkazBy, QStringLiteral("10 лютага 2023 г. № 33"),
+           QStringLiteral("За працу ўзнагародзіць слесара адкрытага акцыянернага таварыства «Малочны Мір» "
+                          "Іванова Івана Іванавіча медалём «За адвагу»."),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QCOMPARE(int(m_parser->m_Persons.size()), 1);
+    PersonInfo& worker = m_parser->m_Persons.front();
+    QVERIFY(!worker.Organization);
+    QCOMPARE(worker.AwardId, 14);
+    QCOMPARE(text(worker.Name), QStringLiteral("Іваноў Іван Іванавіч"));
+    QCOMPARE(text(m_parser->GetPersonDescription(worker, false)),
+             QStringLiteral("слесар адкрытага акцыянернага таварыства «Малочны Мір»"));
+
+    m_parser->ResetData();
+    parse({kUkazBy, QStringLiteral("1 студзеня 2020 г. № 1"),
+           QStringLiteral("За працу ўзнагародзіць калектыў адкрытага акцыянернага таварыства «Малочны Мір» "
+                          "ордэнам Працоўнай Славы:"),
+           QStringLiteral("Іванова\vІвана Іванавіча"), QStringLiteral("–"), QStringLiteral("слесара"),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QCOMPARE(int(m_parser->m_Persons.size()), 1);
+    QVERIFY(!m_parser->m_Persons.front().Organization);
+    QCOMPARE(text(m_parser->m_Persons.front().Name), QStringLiteral("Іваноў Іван Іванавіч"));
 }
 
 void TestDocumentParser::resetClearsEverything()

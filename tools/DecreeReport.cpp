@@ -290,10 +290,12 @@ int main(int argc, char** argv)
         std::sort(people.begin(), people.end(), [](const Person* a, const Person* b) { return a->id < b->id; });
         for (const Person* person : people) {
             for (bool belarusian : {true, false}) {
-                const QString& name = belarusian ? person->nameBy : person->name;
-                if (name.isEmpty())
+                const QString name = belarusian ? person->nameBy : person->name;
+                const QString personal = belarusian ? person->personalBy : person->personal;
+                const QString keyName = name.isEmpty() ? personal : name;
+                if (keyName.isEmpty())
                     continue;
-                const QString decree = decreeKey(person->ukaseNo, person->ukaseDate, name, belarusian);
+                const QString decree = decreeKey(person->ukaseNo, person->ukaseDate, keyName, belarusian);
                 byName[decree].push_back(person);
                 byAward[awardKey(person->awardId, decree)].push_back(person);
             }
@@ -381,8 +383,11 @@ int main(int argc, char** argv)
                 QHash<QString, int> seen;
                 for (PersonInfo& info : parser.m_Persons) {
                     const bool belarusian = !info.Ukaz.RussianLang;
+                    const QString parsedName = QString::fromStdWString(info.Name);
+                    const QString description = QString::fromStdWString(parser.GetPersonDescription(info, false));
                     const QString key = awardKey(info.AwardId, decreeKey(info.Ukaz.Number, info.Ukaz.Date,
-                                                                          QString::fromStdWString(info.Name), belarusian));
+                                                                          parsedName.isEmpty() ? description : parsedName,
+                                                                          belarusian));
                     const int n = seen[key]++;
                     if (n >= byAward.value(key).size())
                         continue;
@@ -418,7 +423,8 @@ int main(int argc, char** argv)
             row.rank = QString::fromStdWString(info.MilitaryRank);
             row.posthumous = info.Posthumous;
 
-            const QString decree = decreeKey(info.Ukaz.Number, info.Ukaz.Date, row.name, belarusian);
+            const QString matchName = row.name.isEmpty() ? row.description : row.name;
+            const QString decree = decreeKey(info.Ukaz.Number, info.Ukaz.Date, matchName, belarusian);
             const QString key = awardKey(info.AwardId, decree);
             const int n = ordinal[key]++;
             if (info.Ukaz.Number == 0 || !info.Ukaz.Date.isValid()) {

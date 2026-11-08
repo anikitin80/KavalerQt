@@ -139,6 +139,11 @@ EditDialog::EditDialog(Catalog* catalog, const Person& person, QWidget* parent)
 
     m_name = new QLineEdit(person.name);
     m_nameBy = new QLineEdit(person.nameBy);
+    if (person.name.isEmpty() && person.nameBy.isEmpty()
+        && (!person.personal.isEmpty() || !person.personalBy.isEmpty())) {
+        m_name->setPlaceholderText(QStringLiteral("Организация"));
+        m_nameBy->setPlaceholderText(QStringLiteral("Организация"));
+    }
     m_personal = textBox(person.personal, 3);
     m_personalBy = textBox(person.personalBy, 3);
     m_rank = new QLineEdit(person.rank);
@@ -230,7 +235,10 @@ void EditDialog::accept()
         QMessageBox::warning(this, windowTitle(), QStringLiteral("Не выбрана награда."));
         return;
     }
-    if (m_name->text().trimmed().isEmpty() && m_nameBy->text().trimmed().isEmpty()) {
+    const bool hasName = !m_name->text().trimmed().isEmpty() || !m_nameBy->text().trimmed().isEmpty();
+    const bool hasPersonal = !m_personal->toPlainText().trimmed().isEmpty()
+        || !m_personalBy->toPlainText().trimmed().isEmpty();
+    if (!hasName && !hasPersonal) {
         QMessageBox::warning(this, windowTitle(), QStringLiteral("Не заполнено поле 'ФИО'."));
         return;
     }

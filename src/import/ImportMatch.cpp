@@ -9,9 +9,16 @@
 namespace {
 
 // указ, награда и имя; белорусские имена сравниваются так же, как в каталоге
+QString awardedName(const PersonInfo& info)
+{
+    if (!info.Name.empty())
+        return QString::fromStdWString(info.Name);
+    return QString::fromStdWString(info.Description);
+}
+
 QString identityKey(const PersonInfo& info)
 {
-    const QString name = QString::fromStdWString(info.Name);
+    const QString name = awardedName(info);
     return QString::number(info.Ukaz.Number) + QChar(0x1F) + QString::number(info.Ukaz.Date.toJulianDay())
         + QChar(0x1F) + QString::number(info.AwardId) + QChar(0x1F)
         + (info.Ukaz.RussianLang ? QStringLiteral("ru:") : QStringLiteral("by:"))
@@ -29,7 +36,11 @@ Person probe(const PersonInfo& info)
     person.ukaseNo = info.Ukaz.Number;
     person.ukaseDate = info.Ukaz.Date;
     person.awardId = info.AwardId;
-    (info.Ukaz.RussianLang ? person.name : person.nameBy) = QString::fromStdWString(info.Name);
+    const QString name = awardedName(info);
+    if (!info.Name.empty())
+        (info.Ukaz.RussianLang ? person.name : person.nameBy) = name;
+    else
+        (info.Ukaz.RussianLang ? person.personal : person.personalBy) = name;
     return person;
 }
 
