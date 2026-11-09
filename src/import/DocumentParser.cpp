@@ -276,10 +276,11 @@ const std::vector<std::wstring> searchFinishRU = { L"Президент Респ
 const std::vector<std::wstring> searchUkazStart = { L"УКАЗ ПР", L"УКАЗ ПР", L"УКАЗПР" };
 const std::vector<std::wstring> searchActionsBY = { L"знагародзіць", L"прысвоіць", L"Прысвоіць" };
 const std::vector<std::wstring> searchActionsRU = { L"наградить", L"присвоить", L"Присвоить" };
-const std::vector<std::wstring> searchGroup = { L"группу", L"группы", L"работников", L"работнікаў", L"супрацоўнікаў", L"сотрудникам",
-	L"сотрудников", L"ваеннаслужачых", L"военнослужащих" };
+const std::vector<std::wstring> searchGroup = { L"группу", L"группы", L"работников", L"работникам", L"работнікаў", L"супрацоўнікаў",
+	L"супрацоўнікам", L"сотрудникам", L"сотрудников", L"артистов", L"артистам", L"артыстаў", L"артыстам",
+	L"ваеннаслужачых", L"военнослужащих" };
 const std::vector<std::wstring> searchGroupEnd = { L"государственными", L"орденом", L"медалью", L"дзяржаўнымі", L"ордэнам", L"медалём", L"почетные", L"почетное", L"почетных",
-	L"почетного", L"ганаровага", L"ганаровае", L"ганаровых" };
+	L"почетного", L"ганаровага", L"ганаровае", L"ганаровых", L"ганаровыя" };
 
 const wchar_t* posthumousMark(bool russian)
 {
@@ -654,13 +655,114 @@ bool startsWithPointNumber(const std::wstring& line)
 	return pos > 0 && line[pos - 1] == L'.' && (pos == line.length() || line[pos] == L' ');
 }
 
+// самое правое слово группы: «группу работников завода» — завод, а не «работников завода»
+bool findLastToken(const std::wstring& str, const std::vector<std::wstring>& tokens, size_t& start, size_t& end)
+{
+	bool found = false;
+	for (const auto& token : tokens)
+	{
+		for (size_t pos = str.find(token); pos != std::wstring::npos; pos = str.find(token, pos + 1))
+		{
+			const size_t tokenEnd = pos + token.size();
+			if (!found || tokenEnd > end || (tokenEnd == end && pos < start))
+			{
+				start = pos;
+				end = tokenEnd;
+				found = true;
+			}
+		}
+	}
+	return found;
+}
+
+// пустая должность: в каталоге стоит само слово списка в именительном единственном
+std::wstring groupRole(const std::wstring& token)
+{
+	if (token == L"работников" || token == L"работникам")
+		return L"работник";
+	if (token == L"работнікаў" || token == L"работнікамі")
+		return L"работнік";
+	if (token == L"военнослужащих" || token == L"военнослужащими")
+		return L"военнослужащий";
+	if (token == L"ваеннаслужачых" || token == L"ваеннаслужачымі")
+		return L"ваеннаслужачы";
+	return std::wstring();
+}
+
+// у автомобильного завода каталог не держит родительское объединение;
+// у рессорного и кузнечного заводов того же объединения — держит
+void cutTrailingAssociation(std::wstring& text)
+{
+	if (text.find(L"«Мінскі аўтамабільны завод»") == std::wstring::npos
+		&& text.find(L"«Минский автомобильный завод»") == std::wstring::npos
+		&& text.find(L"Минского автомобильного завода") == std::wstring::npos)
+		return;
+	const wchar_t* tails[] = {
+		L" вытворчага аб'яднання «",
+		L" вытворчага аб\u2019яднання «",
+		L" вытворчага аб\u02BCяднання «",
+		L" производственного объединения «",
+	};
+	for (const wchar_t* tail : tails)
+	{
+		const size_t pos = text.rfind(tail);
+		if (pos == std::wstring::npos || pos == 0)
+			continue;
+		const size_t open = text.find(L'«', pos);
+		const size_t close = open == std::wstring::npos ? std::wstring::npos : text.find(L'»', open);
+		if (close == std::wstring::npos)
+			continue;
+		size_t after = close + 1;
+		while (after < text.size() && text[after] == L' ')
+			++after;
+		if (after != text.size())
+			continue;
+		text.erase(pos);
+		StrTrim(text);
+		return;
+	}
+}
+
+// «завод» і акадэмія: к должности идёт завод, акадэмия остаётся тем, кто её уже назвал
+std::wstring cutOtherOrganisation(std::wstring& groupInfo)
+{
+	bool inQuote = false;
+	for (size_t i = 0; i + 3 <= groupInfo.size(); ++i)
+	{
+		if (groupInfo[i] == L'«')
+			inQuote = true;
+		else if (groupInfo[i] == L'»')
+			inQuote = false;
+		if (inQuote)
+			continue;
+		const bool conjunction = groupInfo.compare(i, 3, L" і ") == 0 || groupInfo.compare(i, 3, L" и ") == 0;
+		if (!conjunction)
+			continue;
+		size_t next = i + 3;
+		while (next < groupInfo.size() && groupInfo[next] == L' ')
+			++next;
+		if (next >= groupInfo.size())
+			break;
+		const wchar_t character = groupInfo[next];
+		if (character != L'«' && !IsCapital(character))
+			continue;
+		std::wstring other = groupInfo.substr(next);
+		groupInfo.erase(i);
+		StrTrim(groupInfo);
+		StrTrim(other);
+		return other;
+	}
+	return std::wstring();
+}
+
 // «работников Белорусского государственного университета»: головное слово —
 // это сами награждённые, к должности добавляется организация
 void stripGroupHead(std::wstring& groupInfo)
 {
 	static const wchar_t* heads[] = {
 		L"наградить", L"узнагародзіць", L"группы", L"групы", L"творческих", L"творчых",
-		L"работников", L"работнікаў", L"сотрудников", L"супрацоўнікаў", L"артистов", L"артыстаў",
+		L"работников", L"работникам", L"работнікаў", L"сотрудников", L"супрацоўнікаў", L"супрацоўнікам",
+		L"артистов", L"артистам", L"артыстаў", L"артыстам", L"і", L"и",
 		L"прадпрыемстваў", L"предприятий",
 	};
 	for (bool stripped = true; stripped;)
@@ -686,8 +788,9 @@ void stripGroupHead(std::wstring& groupInfo)
 bool CDocumentParser::ParseGroupInfo(const std::wstring& strLine)
 {
 	size_t posStart = 0, posEnd = 0;
-	if (!FindTokens(strLine, searchGroup, posStart, posEnd))
+	if (!findLastToken(strLine, searchGroup, posStart, posEnd))
 		return false;
+	const std::wstring role = groupRole(strLine.substr(posStart, posEnd - posStart));
 	std::wstring groupInfo = posEnd < strLine.length() ? strLine.substr(posEnd + 1) : std::wstring();
 	posEnd = groupSentenceEnd(groupInfo);
 	if (posEnd != std::wstring::npos)
@@ -711,7 +814,9 @@ bool CDocumentParser::ParseGroupInfo(const std::wstring& strLine)
 	}
 
 	stripGroupHead(groupInfo);
-	AddGroupInfo(m_UkazInfo, m_FileName, groupInfo);
+	cutTrailingAssociation(groupInfo);
+	const std::wstring other = cutOtherOrganisation(groupInfo);
+	AddGroupInfo(m_UkazInfo, m_FileName, groupInfo, role, other);
 	return !groupInfo.empty();
 }
 
@@ -1290,13 +1395,23 @@ std::wstring CDocumentParser::GetPersonDescription(size_t nIndex)
 std::wstring CDocumentParser::GetPersonDescription(PersonInfo& person, bool bGetRank)
 {
 	std::wstring strDesc = person.Description.c_str();
-	std::wstring strGroupInfo;
+	std::wstring strGroupInfo, role, other;
 	// сведения о группе — только людям того пункта указа, где они стоят
-	if (person.InGroup && GetGroupInfo(person.Ukaz, strGroupInfo))
+	if (person.InGroup && GetGroupInfo(person.Ukaz, strGroupInfo, role, other))
 	{
 		StrTrim(strGroupInfo);
+		// «старшину милиции» при «группе работников ...»: в каталоге «работник ...»
+		if (strDesc.empty() && !role.empty())
+		{
+			strDesc = role;
+			if (!strGroupInfo.empty())
+				strDesc += L" " + strGroupInfo;
+		}
+		// вторая организация списка уже стоит в должности
+		else if (!other.empty() && strDesc.find(other) != std::wstring::npos)
+			;
 		// второй раз не добавляем: «дырэктар ААТ «Белкард»» уже называет организацию
-		if (!strGroupInfo.empty() && strDesc.find(strGroupInfo) == std::wstring::npos)
+		else if (!strGroupInfo.empty() && strDesc.find(strGroupInfo) == std::wstring::npos)
 		{
 			// «заведующий кафедрой, профессор» — институт стоит перед степенью
 			const size_t comma = academicTitleComma(strDesc);
@@ -1322,13 +1437,22 @@ std::wstring CDocumentParser::GetPersonDescription(PersonInfo& person, bool bGet
 }
 
 // номера указов каждый год с начала, указ узнаём по номеру и дате
-void CDocumentParser::AddGroupInfo(const UkazInfo& ukaz, const std::wstring& fileName, const std::wstring& groupInfo)
+void CDocumentParser::AddGroupInfo(const UkazInfo& ukaz, const std::wstring& fileName, const std::wstring& groupInfo,
+	const std::wstring& role, const std::wstring& other)
 {
 	for (auto iter = m_GroupsInfo.begin(); iter != m_GroupsInfo.end(); iter++)
 	{
 		if (iter->UkazNumber == ukaz.Number && iter->UkazDate == ukaz.Date)
 		{
+			// заголовок уже дал организацию, следующая строка лишь повторяет её
+			// с объединением и целью: «завода» и «завода производственного объединения ...»
+			const bool already = !iter->Info.empty() && groupInfo.compare(0, iter->Info.size(), iter->Info) == 0
+				&& (groupInfo.size() == iter->Info.size() || groupInfo[iter->Info.size()] == L' ');
+			if (already)
+				return;
 			iter->Info = groupInfo;
+			iter->Role = role;
+			iter->Other = other;
 			return;
 		}
 	}
@@ -1338,17 +1462,21 @@ void CDocumentParser::AddGroupInfo(const UkazInfo& ukaz, const std::wstring& fil
 	info.UkazNumber = ukaz.Number;
 	info.UkazDate = ukaz.Date;
 	info.Info = groupInfo;
+	info.Role = role;
+	info.Other = other;
 	info.Checked = false;
 	m_GroupsInfo.push_back(info);
 }
 
-bool CDocumentParser::GetGroupInfo(const UkazInfo& ukaz, std::wstring& groupInfo)
+bool CDocumentParser::GetGroupInfo(const UkazInfo& ukaz, std::wstring& groupInfo, std::wstring& role, std::wstring& other)
 {
 	for (auto iter = m_GroupsInfo.begin(); iter != m_GroupsInfo.end(); iter++)
 	{
 		if (iter->UkazNumber == ukaz.Number && iter->UkazDate == ukaz.Date)
 		{
 			groupInfo = iter->Info;
+			role = iter->Role;
+			other = iter->Other;
 			return iter->Checked;
 		}
 	}

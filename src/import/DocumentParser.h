@@ -11,6 +11,11 @@ struct GroupInfo
 {
 	std::wstring FileName;
 	std::wstring Info;
+	// именительный единственного числа, когда своей должности нет:
+	// «работников ...» → «работник ...», «военнослужащих ...» → «военнослужащий ...»
+	std::wstring Role;
+	// вторая организация после «і» или «и»: тому, кто уже её назвал, первую не дописываем
+	std::wstring Other;
 	int UkazNumber = 0;
 	QDate UkazDate;
 	bool Checked = false;
@@ -67,8 +72,9 @@ protected:
 	void ExtractPersonInfo(std::wstring& curAward, std::wstring& strAwardedInfo);
 	void NormalizePersonInfo(PersonInfo& person);
 	bool ExtractMilitaryRank(PersonInfo& person, LangType lang, NounCase nounCase);
-	void AddGroupInfo(const UkazInfo& ukaz, const std::wstring& fileName, const std::wstring& groupInfo);
-	bool GetGroupInfo(const UkazInfo& ukaz, std::wstring& info);
+	void AddGroupInfo(const UkazInfo& ukaz, const std::wstring& fileName, const std::wstring& groupInfo,
+		const std::wstring& role, const std::wstring& other);
+	bool GetGroupInfo(const UkazInfo& ukaz, std::wstring& info, std::wstring& role, std::wstring& other);
 
 	// phraseLength, если задан, получает, сколько начальных символов award —
 	// сама фраза награды (с кавычками и суффиксом страны), дальше идёт человек.

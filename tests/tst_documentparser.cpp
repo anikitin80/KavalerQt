@@ -66,6 +66,7 @@ private slots:
     void groupInfoBelongsToItsDecree();
     void groupInfoCoversItsPointOnly();
     void groupInfoIsTheOrganisationOnly();
+    void listOrganisationIsAttached();
     void groupKeepsInitialsAndPrecedesTheDegree();
     void organizationIsAwardedItself();
     void organizationInAwardList();
@@ -701,6 +702,111 @@ void TestDocumentParser::groupInfoIsTheOrganisationOnly()
     m_parser->CheckGroupInfo(L"351.docx", true);
     QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons.back(), false)),
              QStringLiteral("старшы інспектар аддзела Службы бяспекі Прэзідэнта Рэспублікі Беларусь"));
+}
+
+// общая организация списка: дательный «работникам», объединение после завода отрезается,
+// из «завод і акадэмія» акадэмия не дописывается тому, кто её уже назвал,
+// «артыстаў» начинает группу, пустая должность становится «работник» или «военнослужащий»
+void TestDocumentParser::listOrganisationIsAttached()
+{
+    parse({kUkazRu, QStringLiteral("4 августа 1994 г. № 20"),
+           QStringLiteral("За многолетний труд присвоить почетное звание «Заслуженный работник промышленности "
+                          "Республики Беларусь» следующим работникам Минского автомобильного завода:"),
+           QStringLiteral("Ачеповскому\vВладимиру Викторовичу"), QStringLiteral("–"),
+           QStringLiteral("начальнику управления внешней кооперации"),
+           kPresident}, QStringLiteral("20.docx"));
+    m_parser->CheckGroupInfo(L"20.docx", true);
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons.back(), false)),
+             QStringLiteral("начальник управления внешней кооперации Минского автомобильного завода"));
+
+    parse({kUkazBy, QStringLiteral("16 мая 2005 г. № 235"),
+           QStringLiteral("Аб узнагароджанні групы работнікаў вытворчага рэспубліканскага унітарнага прадпрыемства "
+                          "«Мінскі аўтамабільны завод» вытворчага аб\u2019яднання «БелаўтаМАЗ» дзяржаўнымі ўзнагародамі"),
+           QStringLiteral("За ўклад узнагародзіць:"),
+           QStringLiteral("ордэнам Пашаны"),
+           QStringLiteral("Вавілава\vЯўгенія Аляксандравіча"), QStringLiteral("–"), QStringLiteral("начальніка цэха"),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")}, QStringLiteral("235.docx"));
+    m_parser->CheckGroupInfo(L"235.docx", true);
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons.back(), false)),
+             QStringLiteral("начальнік цэха вытворчага рэспубліканскага унітарнага прадпрыемства «Мінскі аўтамабільны завод»"));
+
+    parse({kUkazBy, QStringLiteral("31 ліпеня 2001 г. № 412"),
+           QStringLiteral("За плённую працу, уклад работнікаў рэспубліканскага унітарнага прадпрыемства "
+                          "«Беларускі металургічны завод» і Беларускай дзяржаўнай політэхнічнай акадэміі "
+                          "ў забеспячэнне ўзнагародзіць:"),
+           QStringLiteral("ордэнам Пашаны"),
+           QStringLiteral("Зотава\vВалерыя Уладзіміравіча"), QStringLiteral("–"), QStringLiteral("вальцоўшчыка стана"),
+           QStringLiteral("Трусаву\vІрыну Аляксандраўну"), QStringLiteral("–"),
+           QStringLiteral("дацэнта кафедры экалогіі Беларускай дзяржаўнай політэхнічнай акадэміі"),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")}, QStringLiteral("412b.docx"));
+    m_parser->CheckGroupInfo(L"412b.docx", true);
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[m_parser->m_Persons.size() - 2], false)),
+             QStringLiteral("вальцоўшчык стана рэспубліканскага унітарнага прадпрыемства «Беларускі металургічны завод»"));
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons.back(), false)),
+             QStringLiteral("дацэнт кафедры экалогіі Беларускай дзяржаўнай політэхнічнай акадэміі"));
+
+    parse({kUkazBy, QStringLiteral("6 снежня 1999 г. № 710"),
+           QStringLiteral("Аб узнагароджанні артыстаў Нацыянальнага акадэмічнага тэатра балета Рэспублікі Беларусь "
+                          "дзяржаўнымі ўзнагародамі"),
+           QStringLiteral("За ўклад прысвоіць артыстам і супрацоўнікам Нацыянальнага акадэмічнага тэатра балета "
+                          "Рэспублікі Беларусь ганаровыя званні:"),
+           QStringLiteral("«Народны артыст Беларусі»"),
+           QStringLiteral("Фадзеевай\vКацярыне Юр’еўне"), QStringLiteral("–"), QStringLiteral("артыстцы балета"),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")}, QStringLiteral("710.docx"));
+    m_parser->CheckGroupInfo(L"710.docx", true);
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons.back(), false)),
+             QStringLiteral("артыстка балета Нацыянальнага акадэмічнага тэатра балета Рэспублікі Беларусь"));
+
+    parse({kUkazRu, QStringLiteral("22 октября 1996 г. № 433"),
+           QStringLiteral("За мужество наградить группу работников патрульно-постовой службы милиции "
+                          "Оршанского отдела внутренних дел на транспорте медалью «За отвагу»:"),
+           QStringLiteral("Кармазинова\vГеннадия Александровича"), QStringLiteral("–"),
+           QStringLiteral("старшину милиции"),
+           kPresident}, QStringLiteral("433.docx"));
+    m_parser->CheckGroupInfo(L"433.docx", true);
+    PersonInfo& patrol = m_parser->m_Persons.back();
+    QCOMPARE(text(patrol.MilitaryRank), QStringLiteral("старшина милиции"));
+    QCOMPARE(text(m_parser->GetPersonDescription(patrol, false)),
+             QStringLiteral("работник патрульно-постовой службы милиции Оршанского отдела внутренних дел на транспорте"));
+
+    parse({kUkazRu, QStringLiteral("24 декабря 1997 г. № 654"),
+           QStringLiteral("О награждении военнослужащих воинской части 7404 внутренних войск "
+                          "Министерства внутренних дел государственными наградами"),
+           QStringLiteral("За отвагу наградить:"),
+           QStringLiteral("медалью «За отвагу»"),
+           QStringLiteral("Булыго\vМихаила Григорьевича"), QStringLiteral("–"),
+           QStringLiteral("младшего сержанта"),
+           kPresident}, QStringLiteral("654.docx"));
+    m_parser->CheckGroupInfo(L"654.docx", true);
+    PersonInfo& soldier = m_parser->m_Persons.back();
+    QCOMPARE(text(soldier.MilitaryRank), QStringLiteral("младший сержант"));
+    QCOMPARE(text(m_parser->GetPersonDescription(soldier, false)),
+             QStringLiteral("военнослужащий воинской части 7404 внутренних войск Министерства внутренних дел"));
+
+    // заголовок уже назвал завод; строка с объединением его не подменяет
+    parse({kUkazRu, QStringLiteral("21 сентября 1998 г. № 458"),
+           QStringLiteral("О награждении группы работников Белорусского автомобильного завода государственными наградами"),
+           QStringLiteral("За достижение работниками Белорусского автомобильного завода производственного объединения "
+                          "«БелАЗ» высоких показателей:"),
+           QStringLiteral("2. Присвоить почетное звание «Заслуженный работник промышленности Республики Беларусь»:"),
+           QStringLiteral("Кроху\vВладимиру Максимовичу"), QStringLiteral("–"),
+           QStringLiteral("начальнику экспериментального цеха"),
+           kPresident}, QStringLiteral("458.docx"));
+    m_parser->CheckGroupInfo(L"458.docx", true);
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons.back(), false)),
+             QStringLiteral("начальник экспериментального цеха Белорусского автомобильного завода"));
+
+    // у другого завода того же объединения каталог оставляет «вытворчага аб’яднання»
+    parse({kUkazBy, QStringLiteral("31 сакавіка 1999 г. № 192"),
+           QStringLiteral("Аб узнагароджанні групы работнікаў дзяржаўнага прадпрыемства «Мінскі рысорны завод» "
+                          "вытворчага аб\u2019яднання «БелаўтаМАЗ» дзяржаўнымі ўзнагародамі"),
+           QStringLiteral("узнагародзіць:"),
+           QStringLiteral("ордэнам Пашаны"),
+           QStringLiteral("Лосіка\vМікалая Міхайлавіча"), QStringLiteral("–"), QStringLiteral("токара"),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")}, QStringLiteral("192.docx"));
+    m_parser->CheckGroupInfo(L"192.docx", true);
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons.back(), false)),
+             QStringLiteral("токар дзяржаўнага прадпрыемства «Мінскі рысорны завод» вытворчага аб\u2019яднання «БелаўтаМАЗ»"));
 }
 
 // «В.И.Ленина» не обрывает организацию, институт встаёт перед учёной степенью
