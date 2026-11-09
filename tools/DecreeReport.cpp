@@ -24,6 +24,18 @@
 //   NEW          нет записи с этим указом и именем (неверная форма имени
 //                или действительно не импортирован)
 //   BAD_HEADER   номер или дата указа не распознаны
+//
+// Для NEW persons.tsv называет самую похожую запись каталога из того же указа и
+// языка, которую не занял другой человек этого файла (near_id, near_name), и чем
+// имена различаются (near_kind):
+//   surname:fleeting  в каталоге лишняя беглая гласная («Лобанок» — «Лобанк»)
+//   surname:vowel     у парсера лишняя гласная перед последней согласной
+//   surname:ending    фамилии различаются в последних двух буквах
+//   surname:stem      фамилии различаются раньше
+//   first_name, patronymic  различается только имя или только отчество
+//   several           различаются несколько слов
+//   words             разное число слов
+//   none              похожей записи нет (сходство меньше 0,6) или в указе нет записей
 
 #include "Catalog.h"
 #include "DocumentParser.h"
@@ -43,6 +55,7 @@
 #include <QSettings>
 #include <QTextStream>
 
+#include <algorithm>
 #include <cstdio>
 
 namespace {
@@ -83,6 +96,75 @@ QString awardKey(int awardId, const QString& decree)
     return QString::number(awardId) + QChar(0x1E) + decree;
 }
 
+QString decreeOnlyKey(int number, const QDate& date)
+{
+    return QString::number(number) + QChar(0x1F) + QString::number(date.toJulianDay());
+}
+
+int editDistance(const QString& a, const QString& b)
+{
+    QVector<int> previous(b.size() + 1);
+    for (int j = 0; j <= b.size(); ++j)
+        previous[j] = j;
+    for (int i = 1; i <= a.size(); ++i) {
+        QVector<int> row(b.size() + 1);
+        row[0] = i;
+        for (int j = 1; j <= b.size(); ++j)
+            row[j] = std::min({previous[j] + 1, row[j - 1] + 1, previous[j - 1] + (a.at(i - 1) == b.at(j - 1) ? 0 : 1)});
+        previous = row;
+    }
+    return previous[b.size()];
+}
+
+// 1 — одинаковые, 0 — ничего общего
+double similarity(const QString& a, const QString& b)
+{
+    const int longest = int(std::max(a.size(), b.size()));
+    return longest ? 1.0 - double(editDistance(a, b)) / longest : 1.0;
+}
+
+bool isVowel(QChar c)
+{
+    return QStringLiteral("аеёиоуыэюяі").contains(c.toLower());
+}
+
+// чем разобранное имя отличается от записи каталога (см. near_kind в начале файла)
+QString nearKind(const QString& parsed, const QString& catalog)
+{
+    const QStringList p = parsed.toLower().split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    const QStringList c = catalog.toLower().split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    if (p.size() != c.size() || p.isEmpty())
+        return QStringLiteral("words");
+    QVector<int> differs;
+    for (int i = 0; i < p.size(); ++i) {
+        if (p.at(i) != c.at(i))
+            differs.push_back(i);
+    }
+    if (differs.size() != 1)
+        return differs.isEmpty() ? QStringLiteral("same") : QStringLiteral("several");
+    if (differs.front() == 1)
+        return QStringLiteral("first_name");
+    if (differs.front() == 2)
+        return QStringLiteral("patronymic");
+    const QString& a = p.front();
+    const QString& b = c.front();
+    // «Лобанк» и «Лобанок»: вся разница — гласная перед последней буквой
+    const auto extraVowel = [](const QString& shorter, const QString& longer) {
+        return longer.size() == shorter.size() + 1 && longer.size() >= 3 && isVowel(longer.at(longer.size() - 2))
+            && longer.left(longer.size() - 2) == shorter.left(shorter.size() - 1) && longer.back() == shorter.back();
+    };
+    if (extraVowel(a, b))
+        return QStringLiteral("surname:fleeting");
+    if (extraVowel(b, a))
+        return QStringLiteral("surname:vowel");
+    int common = 0;
+    while (common < a.size() && common < b.size() && a.at(common) == b.at(common))
+        ++common;
+    if (common >= std::max(a.size(), b.size()) - 2)
+        return QStringLiteral("surname:ending");
+    return QStringLiteral("surname:stem");
+}
+
 struct Row
 {
     QString file;
@@ -99,6 +181,21 @@ struct Row
     QString dbRank;
     bool dbPosthumous = false;
     QString diffFields;
+};
+
+// строка persons.tsv, отложенная до конца файла: ближайшую запись для NEW
+// ищем, когда известно, какие записи заняли остальные люди файла
+struct PendingRow
+{
+    Row row;
+    int decreeNo = 0;
+    QDate decreeDate;
+    bool belarusian = false;
+    QString sourceName;
+    int sourceCase = Nominative;
+    int nearId = 0;
+    QString nearName;
+    QString nearKind;
 };
 
 const QStringList kStatuses = {QStringLiteral("EXACT"), QStringLiteral("DIFF"), QStringLiteral("OTHER_AWARD"),
@@ -283,12 +380,14 @@ int main(int argc, char** argv)
     // указатель каталога: указ+имя → записи (по номеру) и отдельно по награде
     QHash<QString, QVector<const Person*>> byAward;
     QHash<QString, QVector<const Person*>> byName;
+    QHash<QString, QVector<const Person*>> byDecree; // для ближайшей записи NEW
     {
         QVector<const Person*> people;
         for (const Person& person : catalog.people())
             people.push_back(&person);
         std::sort(people.begin(), people.end(), [](const Person* a, const Person* b) { return a->id < b->id; });
         for (const Person* person : people) {
+            byDecree[decreeOnlyKey(person->ukaseNo, person->ukaseDate)].push_back(person);
             for (bool belarusian : {true, false}) {
                 const QString name = belarusian ? person->nameBy : person->name;
                 const QString personal = belarusian ? person->personalBy : person->personal;
@@ -344,13 +443,15 @@ int main(int argc, char** argv)
     QTextStream filesOut(&filesFile);
     filesOut.setEncoding(QStringConverter::Utf8);
     persons << "file\tyear\tindex\tstatus\taward\tdb_id\tname\tdescription\trank\tposthumous"
-               "\tdb_description\tdb_rank\tdb_posthumous\tdiff_fields\tdecree_no\tdecree_date\tlanguage\tsource_name\tsource_case\n";
+               "\tdb_description\tdb_rank\tdb_posthumous\tdiff_fields\tdecree_no\tdecree_date\tlanguage\tsource_name\tsource_case"
+               "\tnear_id\tnear_name\tnear_kind\n";
     filesOut << "file\tyear\tpersons\texact\tdiff\tother_award\tnew\tbad_header\terror\texact_index\tgroup_used\tgroup_info\n";
     const bool allPersons = cli.isSet(allOption);
 
     QMap<QString, int> totals;
     QMap<int, QMap<QString, int>> perYear;
     QMap<QString, int> diffFields;
+    QMap<QString, int> nearKinds;
     QHash<QString, Row> current;
     int emptyFiles = 0;
     int groupFiles = 0; // файлы, где сведения о группе добавлены к должности
@@ -410,6 +511,7 @@ int main(int argc, char** argv)
         QMap<QString, int> fileCounts;
         QHash<QString, int> ordinal;
         QVector<int> exactIndexes;
+        QVector<PendingRow> pending;
         for (size_t i = 0; i < parser.m_Persons.size(); ++i) {
             PersonInfo& info = parser.m_Persons[i];
             const bool belarusian = !info.Ukaz.RussianLang;
@@ -457,18 +559,57 @@ int main(int argc, char** argv)
             ++perYear[row.year][row.status];
             ++fileCounts[row.status];
             current.insert(rowKey(row.file, row.index), row);
-            if (row.status == QLatin1String("EXACT")) {
+            if (row.status == QLatin1String("EXACT"))
                 exactIndexes.push_back(row.index);
-                if (!allPersons)
+            PendingRow out;
+            out.row = row;
+            out.decreeNo = info.Ukaz.Number;
+            out.decreeDate = info.Ukaz.Date;
+            out.belarusian = belarusian;
+            out.sourceName = QString::fromStdWString(info.SourceName);
+            out.sourceCase = info.SourceCase;
+            pending.push_back(out);
+        }
+
+        // ближайшая запись каталога для NEW: из того же указа и языка, не занятая этим файлом
+        QSet<int> taken;
+        for (const PendingRow& out : pending) {
+            if (out.row.dbId && out.row.status != QLatin1String("OTHER_AWARD"))
+                taken.insert(out.row.dbId);
+        }
+        for (PendingRow& out : pending) {
+            if (out.row.status != QLatin1String("NEW"))
+                continue;
+            const QString parsed = NormalizeCyrillicText(out.row.name.isEmpty() ? out.row.description : out.row.name, out.belarusian);
+            double best = 0;
+            for (const Person* person : byDecree.value(decreeOnlyKey(out.decreeNo, out.decreeDate))) {
+                const QString name = out.belarusian ? person->nameBy : person->name;
+                if (name.isEmpty() || taken.contains(person->id))
                     continue;
+                const double score = similarity(parsed.toLower(), NormalizeCyrillicText(name, out.belarusian).toLower());
+                if (score > best) {
+                    best = score;
+                    out.nearId = person->id;
+                    out.nearName = name;
+                }
             }
+            out.nearKind = best >= 0.6 ? nearKind(parsed, NormalizeCyrillicText(out.nearName, out.belarusian)) : QStringLiteral("none");
+            ++nearKinds[out.nearKind];
+        }
+
+        for (const PendingRow& out : pending) {
+            const Row& row = out.row;
+            if (row.status == QLatin1String("EXACT") && !allPersons)
+                continue;
             persons << cell(row.file) << '\t' << row.year << '\t' << row.index << '\t' << row.status << '\t'
                     << row.awardId << '\t' << row.dbId << '\t' << cell(row.name) << '\t' << cell(row.description)
                     << '\t' << cell(row.rank) << '\t' << (row.posthumous ? 1 : 0) << '\t' << cell(row.dbDescription)
                     << '\t' << cell(row.dbRank) << '\t' << (row.dbPosthumous ? 1 : 0) << '\t' << row.diffFields
-                    << '\t' << info.Ukaz.Number << '\t' << info.Ukaz.Date.toString(Qt::ISODate) << '\t'
-                    << (belarusian ? "by" : "ru") << '\t' << cell(QString::fromStdWString(info.SourceName)) << '\t'
-                    << (info.SourceCase == Dative ? "dat" : info.SourceCase == Accusative ? "acc" : "nom") << '\n';
+                    << '\t' << out.decreeNo << '\t' << out.decreeDate.toString(Qt::ISODate) << '\t'
+                    << (out.belarusian ? "by" : "ru") << '\t' << cell(out.sourceName) << '\t'
+                    << (out.sourceCase == Dative ? "dat" : out.sourceCase == Accusative ? "acc" : "nom") << '\t'
+                    << (out.nearId ? QString::number(out.nearId) : QString()) << '\t' << cell(out.nearName) << '\t'
+                    << out.nearKind << '\n';
         }
         if (parser.m_Persons.empty())
             ++emptyFiles;
@@ -501,6 +642,11 @@ int main(int argc, char** argv)
     s << "\nРасхождения в найденных записях (DIFF), по полям:\n";
     for (auto it = diffFields.cbegin(); it != diffFields.cend(); ++it)
         s << "  " << it.key().leftJustified(12) << QString::number(it.value()).rightJustified(7) << "\n";
+    if (!nearKinds.isEmpty()) {
+        s << "\nНе найденные (NEW) по ближайшей записи указа (near_kind в persons.tsv):\n";
+        for (auto it = nearKinds.cbegin(); it != nearKinds.cend(); ++it)
+            s << "  " << it.key().leftJustified(17) << QString::number(it.value()).rightJustified(7) << "\n";
+    }
     s << "\nПо годам (год: людей, EXACT, DIFF, OTHER_AWARD, NEW, BAD_HEADER):\n";
     for (auto it = perYear.cbegin(); it != perYear.cend(); ++it) {
         int yearTotal = 0;
