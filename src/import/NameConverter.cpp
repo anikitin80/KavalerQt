@@ -103,7 +103,12 @@ const RulesList CNameConverter::ExceptionsFirstName = ExpandRules({
 	{ SexMale, LangBY, L"пятру", L"пятра", L"----ётр" },
 	{ SexMale, LangRU, L"шота", L"шота", L"" },
 	{ SexMale, LangAny, L"роберту,альберту,норберту,герберту", L"", L"-" },
-	{ SexMale, LangBY, L"францішку", L"францішка", L"--ак" }
+	{ SexMale, LangBY, L"францішку", L"францішка", L"--ак" },
+	// без отчества китайская фамилия и японское имя стоят на месте имени: «У Хунбіня», «Мінору Камату»
+	{ SexMale, LangAny, L"", L"у,лу,ху,жу,чжу,мінору,минору", L"" },
+	// дагестанское Хизри: указ пишет винительный «Хізру», общее правило дало бы «Хізра»
+	{ SexMale, LangBY, L"хізру", L"хізру", L"-ы" },
+	{ SexMale, LangRU, L"хизру", L"хизру", L"-и" }
 });
 
 const RulesList CNameConverter::RulesFirstName = ExpandRules({
@@ -125,7 +130,9 @@ const RulesList CNameConverter::RulesFirstName = ExpandRules({
 	{ SexMale,  LangBY, L"дзію",		L"дзія",	L"--ь" },
 	{ SexMale,  LangAny,L"аю,ею,ию,ою,ію,ыю,эю,iю", L"ая,ея,ия,оя,ія,ыя,эя,iя", L"-й" },
 	{ SexMale,  LangAny,L"ю",			L"я",		L"-ь" },	// Рамиль
-	{ SexMale,  LangAny,L"е,ё,и,і,о,ы,э", L"е,ё,и,і,о,у,ы,э,ю", L"" },
+	{ SexMale,  LangAny,L"е,ё,и,і,о,ы,э", L"е,ё,и,і,о,ы,э,ю", L"" },
+	// винительный «Кузьму», «Данілу», «Саву», «Славу» — мужские имена на «-а»
+	{ SexMale,  LangAny,L"",			L"у",		L"-а" },
 	{ SexMale,  LangRU,	L"ге,ке,хе,че,ще,же",L"гу,ку,ху,чу,щу,жу", L"-а" },
 	{ SexFemale,LangAny,L"б,в,г,д,ж,з,й,к,л,м,н,п,р,с,т,ў,ф,х,ц,ч,ш,щ,ъ,ь", L"б,в,г,д,ж,з,й,к,л,м,н,п,р,с,т,ў,ф,х,ц,ч,ш,щ,ъ,ь", L"" },
 	{ SexMale,  LangAny,L"бу,ву,гу,ду,жу,зу,ку,лу,му,ну,пу,ру,су,ту,фу,ху,цу,чу,шу", L"ба,ва,га,да,жа,за,ка,ла,ма,на,па,ра,са,та,фа,ха,ца,ча,ша", L"-" },

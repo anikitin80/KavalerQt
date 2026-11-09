@@ -53,7 +53,22 @@ void TestNameConverter::normalizeName_data()
     QTest::newRow("ru dat exception Лев") << QStringLiteral("Сидорову Льву Ивановичу") << LangRU << Dative
                                           << QStringLiteral("Сидоров Лев Иванович");
 
-    QTest::newRow("by acc female -ава") << QStringLiteral("Багданаву Таццяну Аляксандраўну") << LangBY << Accusative
+    // мужские имена на «-а»: «-у» винительного не остаётся
+    QTest::newRow("by acc male Кузьма") << QStringLiteral("Лесняка Кузьму Мікалаевіча") << LangBY << Accusative
+                                        << QStringLiteral("Лесняк Кузьма Мікалаевіч");
+    QTest::newRow("by acc male Даніла") << QStringLiteral("Апарына Данілу Генадзьевіча") << LangBY << Accusative
+                                        << QStringLiteral("Апарын Даніла Генадзьевіч");
+    QTest::newRow("by acc male Сава") << QStringLiteral("Скулаўца Саву Васільевіча") << LangBY << Accusative
+                                      << QStringLiteral("Скулавец Сава Васільевіч");
+    QTest::newRow("by acc chinese У") << QStringLiteral("У Хунбіня") << LangBY << Accusative
+                                      << QStringLiteral("У Хунбінь");
+    QTest::newRow("by acc japanese Мінору") << QStringLiteral("Мінору Камату") << LangBY << Accusative
+                                            << QStringLiteral("Мінору Камата");
+    QTest::newRow("by acc Хізры") << QStringLiteral("Асадулаева Хізру Газіевіча") << LangBY << Accusative
+                                  << QStringLiteral("Асадулаеў Хізры Газіевіч");
+    QTest::newRow("ru acc male Никита") << QStringLiteral("Петрова Никиту Ивановича") << LangRU << Accusative
+                                        << QStringLiteral("Петров Никита Иванович");
+    QTest::newRow("by acc female -ава")<< QStringLiteral("Багданаву Таццяну Аляксандраўну") << LangBY << Accusative
                                         << QStringLiteral("Багданава Таццяна Аляксандраўна");
     QTest::newRow("by acc female consonant") << QStringLiteral("Міхалевіч Ірыну Іванаўну") << LangBY << Accusative
                                              << QStringLiteral("Міхалевіч Ірына Іванаўна");
