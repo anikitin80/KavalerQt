@@ -55,6 +55,7 @@ private slots:
     void comradeTitleBeforeName();
     void splitUsesTheSameNameCut();
     void twoPeopleInOneSentenceAreSplit();
+    void listedPeopleAreNotLeftInTheJob();
     void countryIsNotASurname();
     void listWithLineBreaks();
     void housewifeGetsTheCityOfTheSection();
@@ -436,6 +437,37 @@ void TestDocumentParser::twoPeopleInOneSentenceAreSplit()
     QCOMPARE(int(m_parser->m_Persons.size()), 1);
     QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[0], false)),
              QStringLiteral("артист хора имени Г.И.Цитовича"));
+}
+
+// «Аракчееву, Порожняку и Шутову»: двое уже режутся по «и», первый оставался в должности
+void TestDocumentParser::listedPeopleAreNotLeftInTheJob()
+{
+    parse({kUkazRu, QStringLiteral("19 августа 1996 г. № 295"),
+           QStringLiteral("За большой вклад присвоить художникам Аракчееву Борису Владимировичу, "
+                          "Порожняку Тарасу Николаевичу и Шутову Геннадию Федоровичу почетное звание "
+                          "«Заслуженный работник промышленности Республики Беларусь»."),
+           kPresident});
+    QCOMPARE(int(m_parser->m_Persons.size()), 3);
+    QStringList names;
+    for (PersonInfo& person : m_parser->m_Persons) {
+        names << text(person.Name);
+        QCOMPARE(text(m_parser->GetPersonDescription(person, false)), QStringLiteral("художник"));
+    }
+    names.sort();
+    QCOMPARE(names, QStringList({QStringLiteral("Аракчеев Борис Владимирович"),
+                                 QStringLiteral("Порожняк Тарас Николаевич"),
+                                 QStringLiteral("Шутов Геннадий Федорович")}));
+
+    // «и» внутри организации не мешает снять человека в конце
+    m_parser->ResetData();
+    parse({kUkazRu, QStringLiteral("17 апреля 1998 г. № 220"),
+           QStringLiteral("За вклад присвоить тренерам школы БелОСТО и профсоюзов Антонову Владимиру "
+                          "Васильевичу и Полысаевой Тамаре Викентьевне почетное звание "
+                          "«Заслуженный работник промышленности Республики Беларусь»."),
+           kPresident});
+    QCOMPARE(int(m_parser->m_Persons.size()), 2);
+    for (PersonInfo& person : m_parser->m_Persons)
+        QVERIFY(!text(m_parser->GetPersonDescription(person, false)).contains(QStringLiteral("Антонову")));
 }
 
 // «Беларуси» и «Республики» не фамилия: имя митрополита и министра стоит рядом

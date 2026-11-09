@@ -1057,6 +1057,7 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 	{
 		while (SpltPersonInfo(m_Persons[i], true))
 			;
+		peelListedPeople(m_Persons[i]);
 	}
 
 	return bResult;
@@ -1214,6 +1215,97 @@ bool CDocumentParser::SpltPersonInfo(PersonInfo& person, bool requirePatronymic)
 	NormalizePersonInfo(person2);
 	m_Persons.push_back(person2);
 
+	return true;
+}
+
+bool CDocumentParser::peelListedPeople(PersonInfo& person)
+{
+	if (person.Organization || person.Description.empty())
+		return false;
+
+	const LangType lang = person.Ukaz.RussianLang ? LangRU : LangBY;
+	const NounCase nounCase = GetNounCaseByAwardId(person.AwardId);
+	const wchar_t* conjunction = person.Ukaz.RussianLang ? L" и" : L" і";
+	const size_t conjunctionLength = std::wcslen(conjunction);
+
+	std::wstring text = person.Description;
+	std::vector<std::wstring> names;
+	for (;;)
+	{
+		std::wstring trial = text;
+		StrTrim(trial);
+		bool separator = false;
+		while (!trial.empty() && (trial.back() == L',' || trial.back() == L';'))
+		{
+			trial.pop_back();
+			StrTrim(trial);
+			separator = true;
+		}
+		// « и» уже с пробелом, поэтому «имени» не отрезается
+		if (trial.size() > conjunctionLength
+			&& trial.compare(trial.size() - conjunctionLength, conjunctionLength, conjunction) == 0)
+		{
+			trial.erase(trial.size() - conjunctionLength);
+			StrTrim(trial);
+			separator = true;
+		}
+
+		std::wstring name;
+		std::wstring rest = trial;
+		if (!takePersonName(m_NameConverter, rest, lang, nounCase, name))
+			break;
+		const size_t space = name.rfind(L' ');
+		const std::wstring last = space == std::wstring::npos ? name : name.substr(space + 1);
+		if (!m_NameConverter.IsMiddleName(last, lang, nounCase))
+			break;
+		if (!separator)
+		{
+			const size_t pos = trial.rfind(name);
+			if (pos == std::wstring::npos || pos == 0)
+				break;
+			size_t before = pos;
+			while (before > 0 && trial[before - 1] == L' ')
+				--before;
+			const bool comma = before > 0 && (trial[before - 1] == L',' || trial[before - 1] == L';');
+			if (!comma)
+				break;
+		}
+
+		names.push_back(name);
+		text = std::move(rest);
+	}
+
+	if (names.empty())
+		return false;
+
+	StrTrim(text);
+	person.Description = text;
+	// копии собираем отдельно: push_back сдвигает person, он ссылается внутрь m_Persons
+	std::vector<PersonInfo> added;
+	for (const std::wstring& name : names)
+	{
+		PersonInfo extra;
+		extra.AwardId = person.AwardId;
+		extra.FileName = person.FileName;
+		extra.Ukaz = person.Ukaz;
+		extra.InGroup = person.InGroup;
+		extra.Name = name;
+		extra.Description = text;
+		NormalizePersonInfo(extra);
+		const auto same = [&](const PersonInfo& existing) {
+			return existing.AwardId == extra.AwardId && existing.Name == extra.Name
+				&& existing.Ukaz.Number == extra.Ukaz.Number && existing.Ukaz.Date == extra.Ukaz.Date;
+		};
+		bool exists = extra.Name == person.Name;
+		for (const PersonInfo& existing : m_Persons)
+			exists = exists || same(existing);
+		for (const PersonInfo& existing : added)
+			exists = exists || same(existing);
+		if (!exists)
+			added.push_back(std::move(extra));
+	}
+	for (PersonInfo& extra : added)
+		m_Persons.push_back(std::move(extra));
 	return true;
 }
 

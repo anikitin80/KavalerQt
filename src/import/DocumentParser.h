@@ -72,6 +72,9 @@ protected:
 	void ExtractPersonInfo(std::wstring& curAward, std::wstring& strAwardedInfo);
 	void NormalizePersonInfo(PersonInfo& person);
 	bool ExtractMilitaryRank(PersonInfo& person, LangType lang, NounCase nounCase);
+	// «художникам Аракчееву …, Порожняку … и Шутову …»: имя предыдущего человека
+	// не должность. Запятая или союз в конце отделяют его в свою запись.
+	bool peelListedPeople(PersonInfo& person);
 	void AddGroupInfo(const UkazInfo& ukaz, const std::wstring& fileName, const std::wstring& groupInfo,
 		const std::wstring& role, const std::wstring& other);
 	bool GetGroupInfo(const UkazInfo& ukaz, std::wstring& info, std::wstring& role, std::wstring& other);
