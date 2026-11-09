@@ -172,23 +172,28 @@ bool CProfessionConverter::SaveDictionary(const std::wstring& filePath, LangType
 	if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
 		return false;
 
-	std::map<std::wstring, std::pair<std::wstring, std::wstring>> dictionary;
+	// у одного именительного бывает несколько форм («суддзі» и «суддзям»,
+	// «артыста» и «артыстаў»): каждая пара идёт своей строкой, иначе
+	// сохранение оставило бы одну и потеряло остальные
+	std::map<std::wstring, std::pair<std::vector<std::wstring>, std::vector<std::wstring>>> dictionary;
 	LanguageData& data = languageData(lang);
-	Dictionary* dictionaryAcc = &data.accusative;
-	Dictionary* dictionaryDat = &data.dative;
-
-	for (auto iter = dictionaryAcc->begin(); iter != dictionaryAcc->end(); ++iter)
-		dictionary[iter->second].second = iter->first;
-	for (auto iter = dictionaryDat->begin(); iter != dictionaryDat->end(); ++iter)
-		dictionary[iter->second].first = iter->first;
+	for (const auto& item : data.dative)
+		dictionary[item.second].first.push_back(item.first);
+	for (const auto& item : data.accusative)
+		dictionary[item.second].second.push_back(item.first);
 
 	QTextStream output(&file);
 	output.setEncoding(QStringConverter::Utf8);
 	output.setGenerateByteOrderMark(true);
 	for (const auto& item : dictionary)
-		output << QString::fromStdWString(item.first) << ';'
-		       << QString::fromStdWString(item.second.first) << ';'
-		       << QString::fromStdWString(item.second.second) << '\n';
+	{
+		const std::vector<std::wstring>& dative = item.second.first;
+		const std::vector<std::wstring>& accusative = item.second.second;
+		for (size_t i = 0; i < std::max(dative.size(), accusative.size()); ++i)
+			output << QString::fromStdWString(item.first) << ';'
+			       << (i < dative.size() ? QString::fromStdWString(dative[i]) : QString()) << ';'
+			       << (i < accusative.size() ? QString::fromStdWString(accusative[i]) : QString()) << '\n';
+	}
 	return true;
 }
 

@@ -25,6 +25,7 @@ private slots:
     void newWordsWorkWithoutDictionaryFile();
     void emptyDictionaryValuesAreSkipped();
     void dictionaryRoundTrip();
+    void severalFormsSurviveSaving();
     void otherCaseSuppliesTheNominative();
     void dictionaryKeysMatchLookup();
     void adjectiveChainIsNotANewWord();
@@ -239,6 +240,34 @@ void TestProfessionConverter::dictionaryRoundTrip()
     std::wstring again = L"сварщику участка";
     QVERIFY(reader.ConvertProfession(again, LangRU, Dative));
     QCOMPARE(QString::fromStdWString(again), QStringLiteral("сварщик участка"));
+}
+
+// несколько форм одного слова («суддзі» и «суддзям», «артыста» и «артыстаў») переживают сохранение
+void TestProfessionConverter::severalFormsSurviveSaving()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("PositionsBY.csv"));
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(QStringLiteral("суддзя;суддзі;суддзю\nсуддзя;суддзям;\nартыст;артысту;артыста\nартыст;;артыстаў\n").toUtf8());
+    file.close();
+
+    CProfessionConverter writer;
+    QVERIFY(writer.SetDictionaryPath(path.toStdWString(), LangBY));
+    std::vector<NewDictItem> items{{L"слесар", L"слесару", LangBY, Dative, true}};
+    QVERIFY(writer.UpdateDictionary(items)); // сохранение переписывает файл
+
+    CProfessionConverter reader;
+    QVERIFY(reader.SetDictionaryPath(path.toStdWString(), LangBY));
+    const struct { const wchar_t* form; NounCase nounCase; const wchar_t* nominative; } forms[] = {
+        {L"суддзі", Dative, L"суддзя"}, {L"суддзям", Dative, L"суддзя"}, {L"суддзю", Accusative, L"суддзя"},
+        {L"артыста", Accusative, L"артыст"}, {L"артыстаў", Accusative, L"артыст"}, {L"слесару", Dative, L"слесар"}};
+    for (const auto& form : forms) {
+        std::wstring text = std::wstring(form.form) + L" цэха";
+        QVERIFY2(reader.ConvertProfession(text, LangBY, form.nounCase), qPrintable(QString::fromWCharArray(form.form)));
+        QCOMPARE(QString::fromStdWString(text), QString::fromWCharArray(form.nominative) + QStringLiteral(" цэха"));
+    }
 }
 
 // недостающий падеж восстанавливается из именительного, уже лежащего в другом падеже
