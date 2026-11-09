@@ -1,19 +1,12 @@
 #pragma once
 
 #include "NameConverter.h"
+#include "RankConverter.h"
 
 #include <map>
 #include <set>
 #include <string>
 #include <vector>
-
-struct RankInfo
-{
-	std::wstring Nominative;
-	std::wstring Dative;
-	std::wstring Accusative;
-
-};
 
 struct NewDictItem
 {

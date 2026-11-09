@@ -15,6 +15,7 @@ endfunction()
 
 kavaler_add_test(tst_textutil)
 kavaler_add_test(tst_nameconverter)
+kavaler_add_test(tst_rankconverter)
 kavaler_add_test(tst_professionconverter)
 kavaler_add_test(tst_documentparser)
 kavaler_add_test(tst_decrees)

@@ -48,8 +48,6 @@ public:
 	UkazInfo m_UkazInfo;
 	CNameConverter m_NameConverter;
 	CProfessionConverter m_ProfessionConverter;
-	static const std::vector<RankInfo> MilitatyRanksRU;
-	static const std::vector<RankInfo> MilitatyRanksBY;
 
 	std::map<long, DecreeAward> m_Awards;
 
@@ -71,7 +69,6 @@ protected:
 	void UpdateAwardStat(int id, std::wstring& award, int nCount);
 	void ExtractPersonInfo(std::wstring& curAward, std::wstring& strAwardedInfo);
 	void NormalizePersonInfo(PersonInfo& person);
-	bool ExtractMilitaryRank(PersonInfo& person, LangType lang, NounCase nounCase);
 	// «художникам Аракчееву …, Порожняку … и Шутову …»: имя предыдущего человека
 	// не должность. Запятая или союз в конце отделяют его в свою запись.
 	bool peelListedPeople(PersonInfo& person);

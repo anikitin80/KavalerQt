@@ -17,6 +17,8 @@ add_library(KavalerParser STATIC
     src/import/ParserTypes.h
     src/import/NameConverter.h
     src/import/NameConverter.cpp
+    src/import/RankConverter.h
+    src/import/RankConverter.cpp
     src/import/ProfessionConverter.h
     src/import/ProfessionConverter.cpp
     src/import/DocumentParser.h
