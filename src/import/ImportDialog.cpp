@@ -22,6 +22,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QSet>
 #include <QSettings>
 #include <QTableWidget>
 #include <QTreeWidget>
@@ -150,6 +151,9 @@ ImportDialog::ImportDialog(Catalog* catalog, QWidget* parent)
     m_persons->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_persons->verticalHeader()->setVisible(false);
     m_personCount = new QLabel(QStringLiteral("Награжденные (0):"));
+    m_onlyNew = new QCheckBox(QStringLiteral("Только новые"));
+    m_onlyNew->setToolTip(QStringLiteral("Скрыть людей, которые уже есть в каталоге"));
+    m_onlyNew->setChecked(QSettings().value(QStringLiteral("ImportOnlyNew"), false).toBool());
     m_useGroup = new QCheckBox(QStringLiteral("Добавить к должности данные группы"));
     m_useGroup->setEnabled(false);
     m_group = new QLineEdit;
@@ -176,6 +180,12 @@ ImportDialog::ImportDialog(Catalog* catalog, QWidget* parent)
     startRow->addStretch();
     startRow->addWidget(dictionaries);
 
+    auto* personsRow = new QHBoxLayout;
+    personsRow->addWidget(m_personCount);
+    personsRow->addSpacing(16);
+    personsRow->addWidget(m_onlyNew);
+    personsRow->addStretch();
+
     auto* groupRow = new QHBoxLayout;
     groupRow->addWidget(m_useGroup);
     groupRow->addWidget(m_group, 1);
@@ -192,7 +202,7 @@ ImportDialog::ImportDialog(Catalog* catalog, QWidget* parent)
     layout->addLayout(startRow);
     layout->addWidget(m_progress);
     layout->addWidget(m_awards, 88);   // высоты как в исходном: 88 и 153
-    layout->addWidget(m_personCount);
+    layout->addLayout(personsRow);
     layout->addWidget(m_persons, 153);
     layout->addLayout(groupRow);
     layout->addLayout(buttons);
@@ -208,6 +218,10 @@ ImportDialog::ImportDialog(Catalog* catalog, QWidget* parent)
         const QString fileName = item->data(0, Qt::UserRole + 1).toString();
         if (!fileName.isEmpty())
             QDesktopServices::openUrl(QUrl::fromLocalFile(QDir(m_folder).filePath(fileName)));
+    });
+    connect(m_onlyNew, &QCheckBox::toggled, this, [this](bool checked) {
+        QSettings().setValue(QStringLiteral("ImportOnlyNew"), checked);
+        showPersons();
     });
     connect(m_useGroup, &QCheckBox::toggled, this, [this](bool checked) {
         if (m_filling || m_fileName.isEmpty())
@@ -506,6 +520,16 @@ void ImportDialog::showPersons()
         }
     }
 
+    // «За безупречную службу» дают и гражданским: нет звания — ошибка разбора,
+    // только когда у других людей той же награды в этом файле звание есть
+    QSet<QString> rankedAwards;
+    for (const PersonInfo& person : m_parser.m_Persons) {
+        if (!person.MilitaryRank.empty())
+            rankedAwards.insert(fromWide(person.FileName) + QChar(0x1F) + QString::number(person.AwardId));
+    }
+    const bool onlyNew = m_onlyNew->isChecked();
+    const QVector<ImportMatch> matches = onlyNew ? matchImported(m_parser.m_Persons, *m_catalog) : QVector<ImportMatch>();
+
     m_persons->setRowCount(0);
     int shown = 0;
     for (int index = 0; index < int(m_parser.m_Persons.size()); ++index) {
@@ -513,6 +537,8 @@ void ImportDialog::showPersons()
         if (m_awardId && m_awardId != person.AwardId)
             continue;
         if (!m_fileName.isEmpty() && m_fileName != fromWide(person.FileName))
+            continue;
+        if (onlyNew && index < matches.size() && matches.at(index).known)
             continue;
         const int row = m_persons->rowCount();
         m_persons->insertRow(row);
@@ -528,7 +554,8 @@ void ImportDialog::showPersons()
             : fromWide(m_parser.GetPersonDescription(size_t(index)));
         auto* job = new QTableWidgetItem(jobText);
         job->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-        const bool rankMissing = person.MilitaryRank.empty() && CDocumentParser::IsMilitaryAward(person.AwardId);
+        const bool rankMissing = person.MilitaryRank.empty() && CDocumentParser::IsMilitaryAward(person.AwardId)
+            && rankedAwards.contains(fromWide(person.FileName) + QChar(0x1F) + QString::number(person.AwardId));
         if (!person.Organization && ((person.Flags & PersonInfo::NF_PROFESSION) == 0 || rankMissing))
             job->setForeground(QColor(200, 0, 0));
         m_persons->setItem(row, 1, job);
