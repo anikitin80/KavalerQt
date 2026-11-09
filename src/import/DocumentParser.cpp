@@ -831,6 +831,9 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 					{
 						const size_t addedFrom = m_Persons.size();
 						ExtractPersonInfo(curAward, strAwardedInfo);
+						// награждённый одной строкой тоже человек награды: иначе она
+						// считается пустой и в окне импорта горит красным
+						nAwardedCount += int(m_Persons.size() - addedFrom);
 						// пометка может стоять после названия награды, вне strAwardedInfo
 						if (personBeforeAward && awardId > 0 && awardPhrase > 0 && m_Persons.size() > addedFrom
 							&& posTargetStart + awardPhrase < strLine.length())

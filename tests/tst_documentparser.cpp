@@ -770,6 +770,10 @@ void TestDocumentParser::organizationIsAwardedItself()
     QVERIFY(fortress.Name.empty());
     QCOMPARE(text(m_parser->GetPersonDescription(fortress, false)),
              QStringLiteral("Дзяржаўную ўстанову «Мемарыяльны комплекс «Брэсцкая крэпасць-герой»"));
+    // награждённая одной строкой организация — один человек награды, а не пустая награда
+    QCOMPARE(int(m_parser->m_AwardsStat.size()), 1);
+    QCOMPARE(m_parser->m_AwardsStat.front().TotalCount, 1);
+    QVERIFY(!m_parser->m_AwardsStat.front().NeedReview);
 
     m_parser->ResetData();
     parse({kUkazRu, QStringLiteral("10 февраля 2023 г. № 33"),
