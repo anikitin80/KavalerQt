@@ -60,7 +60,8 @@ public:
 protected:
 
 	void ParseDecreeHeader(const std::wstring& strLine);
-	void ParseGroupInfo(const std::wstring& strLine);
+	// истина, если в строке есть сведения о группе
+	bool ParseGroupInfo(const std::wstring& strLine);
 	void ParseSection(const std::wstring& strLine);
 	void UpdateAwardStat(int id, std::wstring& award, int nCount);
 	void ExtractPersonInfo(std::wstring& curAward, std::wstring& strAwardedInfo);
@@ -77,5 +78,9 @@ protected:
 	std::map<std::wstring, int> m_mapFileMonth;
 	std::wstring m_FileName;
 	std::wstring m_SectionCity; // «г. Мінск» в городском разделе списка
+	// сведения о группе действуют: из заголовка указа — до его конца,
+	// из пункта («1. ... узнагародзіць работнікаў ...») — до следующего пункта
+	bool m_GroupActive = false;
+	bool m_GroupWholeDecree = false;
 };
 

@@ -64,6 +64,7 @@ private slots:
     void dashInsideQuotesIsNotSecondProfession();
     void twoDecreesInOneFile();
     void groupInfoBelongsToItsDecree();
+    void groupInfoCoversItsPointOnly();
     void groupInfoIsTheOrganisationOnly();
     void groupKeepsInitialsAndPrecedesTheDegree();
     void organizationIsAwardedItself();
@@ -633,10 +634,44 @@ void TestDocumentParser::groupInfoBelongsToItsDecree()
     QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[0], false)), QStringLiteral("водитель"));
     m_parser->CheckGroupInfo(L"2019.docx", true);
     m_parser->CheckGroupInfo(L"2020.docx", true);
+    // «работников» — сами награждённые, к должности идёт только организация
     QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[0], false)),
-             QStringLiteral("водитель работников ОАО «Нафтан»"));
+             QStringLiteral("водитель ОАО «Нафтан»"));
     QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[1], false)),
-             QStringLiteral("водитель работников ОАО «Гродно Азот»"));
+             QStringLiteral("водитель ОАО «Гродно Азот»"));
+}
+
+// группа из пункта указа — только для людей этого пункта; из заголовка — для всех
+void TestDocumentParser::groupInfoCoversItsPointOnly()
+{
+    parse({kUkazBy, QStringLiteral("2 верасня 2008 г. № 488"),
+           QStringLiteral("Аб узнагароджанні дзяржаўнымі ўзнагародамі Рэспублікі Беларусь"),
+           QStringLiteral("1. За асабістую мужнасць узнагародзіць работнікаў рэспубліканскага унітарнага прадпрыемства "
+                          "«Авіякампанія Трансавіяэкспарт»:"),
+           QStringLiteral("ордэнам «За асабістую мужнасць»"),
+           QStringLiteral("Баглова\vМіхаіла Іванавіча"), QStringLiteral("–"), QStringLiteral("штурмана авіяцыйнай эскадрыллі"),
+           QStringLiteral("2. За шматгадовую плённую працу:"),
+           QStringLiteral("2.1. узнагародзіць:"),
+           QStringLiteral("медалём «За працоўныя заслугі»"),
+           QStringLiteral("Іванова\vІвана Іванавіча"), QStringLiteral("–"), QStringLiteral("дырэктара адкрытага акцыянернага таварыства «Буддэталі»"),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")}, QStringLiteral("488.docx"));
+    m_parser->CheckGroupInfo(L"488.docx", true);
+    QCOMPARE(int(m_parser->m_Persons.size()), 2);
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[0], false)),
+             QStringLiteral("штурман авіяцыйнай эскадрыллі рэспубліканскага унітарнага прадпрыемства «Авіякампанія Трансавіяэкспарт»"));
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[1], false)),
+             QStringLiteral("дырэктар адкрытага акцыянернага таварыства «Буддэталі»"));
+
+    // «почетного звания ...» после организации к ней не относится
+    parse({kUkazRu, QStringLiteral("19 декабря 1995 г. № 502"),
+           QStringLiteral("О присвоении группе работников Белорусской государственной политехнической академии "
+                          "почетного звания «Заслуженный работник образования Республики Беларусь»"),
+           QStringLiteral("Присвоить почетное звание «Заслуженный работник образования Республики Беларусь»:"),
+           QStringLiteral("Петрову\vИвану Ивановичу"), QStringLiteral("–"), QStringLiteral("декану приборостроительного факультета"),
+           kPresident}, QStringLiteral("502.docx"));
+    m_parser->CheckGroupInfo(L"502.docx", true);
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons.back(), false)),
+             QStringLiteral("декан приборостроительного факультета Белорусской государственной политехнической академии"));
 }
 
 // цель после организации отрезается («у развіццё ...»), организация

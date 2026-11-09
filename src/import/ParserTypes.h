@@ -51,6 +51,8 @@ struct PersonInfo
     bool Posthumous = false;
     // награждена сама организация: Name пустое, название и район лежат в Description
     bool Organization = false;
+    // стоит там, где действуют сведения о группе указа (см. CDocumentParser::m_GroupActive)
+    bool InGroup = false;
 };
 
 struct DecreeAward

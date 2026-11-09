@@ -117,6 +117,7 @@ void CDocumentParser::ResetData()
 	m_mapFileMonth.clear();
 	m_GroupsInfo.clear();
 	m_UkazInfo.Clear();
+	m_GroupActive = m_GroupWholeDecree = false;
 }
 
 namespace {
@@ -277,7 +278,8 @@ const std::vector<std::wstring> searchActionsBY = { L"знагародзіць",
 const std::vector<std::wstring> searchActionsRU = { L"наградить", L"присвоить", L"Присвоить" };
 const std::vector<std::wstring> searchGroup = { L"группу", L"группы", L"работников", L"работнікаў", L"супрацоўнікаў", L"сотрудникам",
 	L"сотрудников", L"ваеннаслужачых", L"военнослужащих" };
-const std::vector<std::wstring> searchGroupEnd = { L"государственными", L"орденом", L"медалью", L"дзяржаўнымі", L"ордэнам", L"медалём", L"почетные", L"почетное", L"почетных" };
+const std::vector<std::wstring> searchGroupEnd = { L"государственными", L"орденом", L"медалью", L"дзяржаўнымі", L"ордэнам", L"медалём", L"почетные", L"почетное", L"почетных",
+	L"почетного", L"ганаровага", L"ганаровае", L"ганаровых" };
 
 const wchar_t* posthumousMark(bool russian)
 {
@@ -641,15 +643,51 @@ size_t academicTitleComma(const std::wstring& text)
 	return std::wstring::npos;
 }
 
+// пункт указа: «2. За ...», «2.1. узнагародзіць:»
+bool startsWithPointNumber(const std::wstring& line)
+{
+	size_t pos = line.find_first_not_of(L" \t");
+	if (pos == std::wstring::npos || !iswdigit(line[pos]))
+		return false;
+	while (pos < line.length() && (iswdigit(line[pos]) || line[pos] == L'.'))
+		++pos;
+	return pos > 0 && line[pos - 1] == L'.' && (pos == line.length() || line[pos] == L' ');
+}
+
+// «работников Белорусского государственного университета»: головное слово —
+// это сами награждённые, к должности добавляется организация
+void stripGroupHead(std::wstring& groupInfo)
+{
+	static const wchar_t* heads[] = {
+		L"наградить", L"узнагародзіць", L"группы", L"групы", L"творческих", L"творчых",
+		L"работников", L"работнікаў", L"сотрудников", L"супрацоўнікаў", L"артистов", L"артыстаў",
+		L"прадпрыемстваў", L"предприятий",
+	};
+	for (bool stripped = true; stripped;)
+	{
+		stripped = false;
+		StrTrim(groupInfo);
+		for (const wchar_t* head : heads)
+		{
+			const size_t length = std::wcslen(head);
+			if (groupInfo.compare(0, length, head) == 0 && groupInfo.length() > length && groupInfo[length] == L' ')
+			{
+				groupInfo.erase(0, length + 1);
+				stripped = true;
+			}
+		}
+	}
+}
+
 } // namespace
 
 // сведения о группе: текст после слова группы до конца предложения
 // или до вида награды («орденом», «медалью», ...)
-void CDocumentParser::ParseGroupInfo(const std::wstring& strLine)
+bool CDocumentParser::ParseGroupInfo(const std::wstring& strLine)
 {
 	size_t posStart = 0, posEnd = 0;
 	if (!FindTokens(strLine, searchGroup, posStart, posEnd))
-		return;
+		return false;
 	std::wstring groupInfo = posEnd < strLine.length() ? strLine.substr(posEnd + 1) : std::wstring();
 	posEnd = groupSentenceEnd(groupInfo);
 	if (posEnd != std::wstring::npos)
@@ -672,7 +710,9 @@ void CDocumentParser::ParseGroupInfo(const std::wstring& strLine)
 		}
 	}
 
+	stripGroupHead(groupInfo);
 	AddGroupInfo(m_UkazInfo, m_FileName, groupInfo);
+	return !groupInfo.empty();
 }
 
 bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vector<std::wstring>& arrLines)
@@ -693,12 +733,22 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 		awardId = nAwardedCount = 0;
 	};
 
+	// люди, добавленные прошлыми строками, получают сведения о группе, действовавшие
+	// на их строке: состояние меняется только в начале разбора строки
+	size_t markedPersons = m_Persons.size();
+	const auto markGroup = [&] {
+		for (; markedPersons < m_Persons.size(); ++markedPersons)
+			m_Persons[markedPersons].InGroup = m_GroupActive;
+	};
+
 	for (auto itrLine = arrLines.begin(); itrLine != arrLines.end(); itrLine++)
 	{
+		markGroup();
 		// найден новый указ президента
 		if (FindTokens(*itrLine, searchUkazStart, posStart, posEnd))
 		{
 			finishAward();
+			m_GroupActive = m_GroupWholeDecree = false;
 			bUkazStarted = true;
 			bAwardStarted = bAwardTypeFound = bPossibleGroupStart = bMultiplePochet = false;
 			m_UkazInfo.Clear();
@@ -721,7 +771,9 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 			ToCyrillicI(strLine, false);
 
 		// найден приказ о награждении
-		if (FindTokens(strLine, m_UkazInfo.RussianLang ? searchActionsRU : searchActionsBY, posStart, posEnd))
+		const bool groupBeforeAction = !bAwardStarted;
+		const bool actionLine = FindTokens(strLine, m_UkazInfo.RussianLang ? searchActionsRU : searchActionsBY, posStart, posEnd);
+		if (actionLine)
 		{
 			bAwardStarted = true;
 			bAwardTypeFound = false;
@@ -729,8 +781,16 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 			posActionEnd = posEnd;
 		}
 
-		if (m_UkazInfo.Number)
-			ParseGroupInfo(strLine);
+		// группа из пункта кончается на следующем пункте или «узнагародзіць» без группы
+		if (m_GroupActive && !m_GroupWholeDecree && (actionLine || startsWithPointNumber(strLine)))
+			m_GroupActive = false;
+		if (m_UkazInfo.Number && ParseGroupInfo(strLine))
+		{
+			m_GroupActive = true;
+			// заголовок указа («Аб узнагароджанні групы работнікаў ...») — на весь указ
+			if (groupBeforeAction && !actionLine)
+				m_GroupWholeDecree = true;
+		}
 		ParseSection(strLine);
 
 		if (bAwardStarted)
@@ -879,6 +939,7 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 			}
 		}
 	}
+	markGroup();
 
 	UpdateAwardStat(awardId, curAward, nAwardedCount);
 
@@ -987,6 +1048,7 @@ bool CDocumentParser::SpltPersonInfo(PersonInfo& person, bool requirePatronymic)
 	person2.AwardId = person.AwardId;
 	person2.FileName = person.FileName;
 	person2.Ukaz = person.Ukaz;
+	person2.InGroup = person.InGroup;
 
 	bool bSameProfession = false;
 	NounCase nounCase = GetNounCaseByAwardId(person.AwardId);
@@ -1226,7 +1288,8 @@ std::wstring CDocumentParser::GetPersonDescription(PersonInfo& person, bool bGet
 {
 	std::wstring strDesc = person.Description.c_str();
 	std::wstring strGroupInfo;
-	if (GetGroupInfo(person.Ukaz, strGroupInfo))
+	// сведения о группе — только людям того пункта указа, где они стоят
+	if (person.InGroup && GetGroupInfo(person.Ukaz, strGroupInfo))
 	{
 		StrTrim(strGroupInfo);
 		// второй раз не добавляем: «дырэктар ААТ «Белкард»» уже называет организацию
