@@ -400,6 +400,22 @@ size_t CProfessionConverter::ConvertWordChain(std::wstring& strSource, size_t po
 // сама должность: «(загадчыка аддзялення)» → «(загадчык аддзялення)»,
 // «(галоўнага ўрача)» → «(галоўны ўрач)», остальное — родительный. Возвращает
 // позицию после скобок (posStart, если скобок нет)
+namespace {
+
+// «(псіхолага)», «(статс-сакратара)» стоят после трёх слов родительного.
+// Остальные скобки ближе: дальше в них филиал и должность, которую каталог хранит как есть.
+bool bracketAllowsLongGap(const std::wstring& text, size_t open, size_t close)
+{
+	std::wstring inside = ToLower(text.substr(open + 1, close - open - 1));
+	const size_t cut = inside.find_first_of(L" )");
+	if (cut != std::wstring::npos)
+		inside.resize(cut);
+	return inside == L"псіхолага" || inside == L"псіхолагу"
+		|| inside == L"статс-сакратара" || inside == L"статс-сакратару";
+}
+
+} // namespace
+
 size_t CProfessionConverter::ConvertBracketed(std::wstring& strSource, size_t posStart, LangType lang, NounCase nounCase)
 {
 	const size_t posOpen = strSource.find(L'(', posStart);
@@ -408,7 +424,7 @@ size_t CProfessionConverter::ConvertBracketed(std::wstring& strSource, size_t po
 	const std::wstring between = strSource.substr(posStart, posOpen - posStart);
 	const size_t posClose = strSource.find(L')', posOpen);
 	if (posClose == std::wstring::npos || between.find_first_of(L",–«»;") != std::wstring::npos
-		|| std::count(between.begin(), between.end(), L' ') > 3)
+		|| std::count(between.begin(), between.end(), L' ') > (bracketAllowsLongGap(strSource, posOpen, posClose) ? 6 : 3))
 		return posStart;
 
 	// каждая часть «статс-сакратара» отдельно («урача-тэрапеўта»: часть после
@@ -627,8 +643,6 @@ bool CProfessionConverter::restoreUnknownHead(std::wstring& strSource, size_t& p
 		: std::vector<std::wstring>{ L"га", L"го", L"ую", L"юю", L"ом" };
 	const auto adjectiveEnding = [&endings](const std::wstring& candidate) {
 		const std::wstring lower = ToLower(candidate);
-		if (lower == L"научном")
-			return true;
 		if (lower.length() < 4)
 			return false;
 		const std::wstring ending = lower.substr(lower.length() - 2);
@@ -675,25 +689,120 @@ bool CProfessionConverter::restoreUnknownHead(std::wstring& strSource, size_t& p
 	return false;
 }
 
+namespace {
+
+bool isJobPreposition(const std::wstring& word)
+{
+	return word == L"па" || word == L"по" || word == L"на" || word == L"у" || word == L"ў"
+		|| word == L"в" || word == L"ва" || word == L"з" || word == L"с" || word == L"за"
+		|| word == L"да" || word == L"для" || word == L"при" || word == L"пры"
+		|| word == L"і" || word == L"и" || word == L"от" || word == L"ад"
+		|| word == L"над" || word == L"аб" || word == L"об" || word == L"к" || word == L"ко"
+		|| word == L"до" || word == L"из" || word == L"са" || word == L"со" || word == L"во";
+}
+
+bool startsWithSenior(const std::wstring& text)
+{
+	size_t pos = 0;
+	const std::wstring word = ToLower(CProfessionConverter::GetNextWord(text, pos));
+	return word == L"старшага" || word == L"старшего" || word == L"старшаму" || word == L"старшему";
+}
+
+} // namespace
+
+bool CProfessionConverter::convertInitialAdjectives(std::wstring& strSource, LangType lang, NounCase nounCase)
+{
+	const std::vector<std::wstring> endings = nounCase == Dative
+		? std::vector<std::wstring>{ L"му", L"ай", L"яй", L"ом" }
+		: std::vector<std::wstring>{ L"га", L"го", L"ую", L"юю", L"ом" };
+	const auto adjectiveEnding = [&endings](const std::wstring& candidate) {
+		const std::wstring lower = ToLower(candidate);
+		if (lower.length() < 4)
+			return false;
+		const std::wstring ending = lower.substr(lower.length() - 2);
+		return std::find(endings.begin(), endings.end(), ending) != endings.end();
+	};
+
+	struct Piece { size_t pos; std::wstring word; std::wstring adjusted; };
+	std::vector<Piece> pieces;
+	size_t pos = 0;
+	while (pos < strSource.length())
+	{
+		size_t wordPos = pos;
+		size_t wordEnd = 0;
+		const std::wstring word = GetNextWord(strSource, wordPos, &wordEnd);
+		if (word.empty() || !adjectiveEnding(word))
+			break;
+		std::wstring adjusted = word;
+		bool rules = CNameConverter::ApplyRules(adjusted, RulesAdjectives, SexAny, lang, nounCase, false);
+		if (!rules && ToLower(word) == L"научном")
+		{
+			adjusted = word[0] == L'Н' ? L"Научный" : L"научный";
+			rules = true;
+		}
+		if (!rules)
+			break;
+		pieces.push_back({ wordPos, word, adjusted });
+		pos = wordEnd;
+	}
+	size_t nounPos = pos;
+	size_t nounEnd = 0;
+	const std::wstring noun = GetNextWord(strSource, nounPos, &nounEnd);
+	std::wstring nounNominative;
+	const bool nounOk = !noun.empty() && ruleNominative(noun, lang, nounCase, nounNominative);
+	// голое «філіяла» и одно «адасобленага падраздзялення» не должность;
+	// «старшага па корпусу» — да: после прилагательного сразу предлог
+	const std::wstring firstAdjective = pieces.empty() ? std::wstring() : ToLower(pieces.front().word);
+	const bool seniorBeforePreposition = pieces.size() == 1 && !noun.empty()
+		&& isJobPreposition(ToLower(noun))
+		&& (firstAdjective == L"старшага" || firstAdjective == L"старшего"
+			|| firstAdjective == L"старшаму" || firstAdjective == L"старшему");
+	if (pieces.empty() || (pieces.size() < 2 && !nounOk && !seniorBeforePreposition))
+		return false;
+
+	for (auto piece = pieces.rbegin(); piece != pieces.rend(); ++piece)
+		strSource.replace(piece->pos, piece->word.length(), piece->adjusted);
+	if (nounOk)
+	{
+		const size_t shift = [&] {
+			size_t delta = 0;
+			for (const Piece& piece : pieces)
+				delta += piece.word.length() - piece.adjusted.length();
+			return delta;
+		}();
+		ReplaceKeepingFirstLetter(strSource, nounPos - shift, noun.length(), nounNominative);
+	}
+	return true;
+}
+
 bool CProfessionConverter::ConvertProfession(std::wstring& strSource, LangType lang, NounCase nounCase, bool allowUnknownHead)
 {
 	bool bResult = false;
 
 	ConvertNonMilitaryRank(strSource, nounCase);
 
-	// основное слово ищется среди первых слов
+	// основное слово ищется среди первых слов. Предлог не занимает место только
+	// после «старшага»: иначе «дэпартамента» в конце длинной должности становится
+	// её главным словом. «следчага» как раз за таким предлогом.
 	const int maxProfessionWords = 5;
 	size_t posStart = 0, posMainWord = 0;
-	for (int i = 0; i < maxProfessionWords && posStart < strSource.length(); i++)
+	const bool skipPrepositions = startsWithSenior(strSource);
+	for (int i = 0; i < maxProfessionWords && posStart < strSource.length(); )
 	{
 		size_t posEnd = posStart;
 		const std::wstring word = ToLower(GetNextWord(strSource, posStart, &posEnd));
 		if (word.empty())
 			break;
+		if (skipPrepositions && isJobPreposition(word))
+		{
+			posStart = posEnd;
+			continue;
+		}
+		++i;
 
 		// «исполняющего обязанности начальника»: должность — прилагательное
 		// перед этим, остальное родительный (приводится как начальные прилагательные)
-		if (i > 0 && (word == L"обязанности" || word == L"абавязкі" || word == L"абавязкi"))
+		if (i > 1 && (word == L"обязанности" || word == L"абавязкі" || word == L"абавязкi"))
 		{
 			bResult = true;
 			posMainWord = posStart;
@@ -716,6 +825,10 @@ bool CProfessionConverter::ConvertProfession(std::wstring& strSource, LangType l
 
 	if (!bResult && allowUnknownHead)
 		bResult = restoreUnknownHead(strSource, posMainWord, lang, nounCase);
+	// «старшего пожарного пожарной части»; после тире только «старшага паветранага радыста»,
+	// не «філіяла» и не «Баранавіцкага станкабудаўнічага завода»
+	if (!bResult && (allowUnknownHead || startsWithSenior(strSource)))
+		bResult = convertInitialAdjectives(strSource, lang, nounCase);
 	if (!bResult)
 		FindNewWords(strSource, lang, nounCase);
 
@@ -723,6 +836,23 @@ bool CProfessionConverter::ConvertProfession(std::wstring& strSource, LangType l
 	const size_t minAdjectivesLength = 5;
 	if (posMainWord >= minAdjectivesLength)
 		ConvertLeadingAdjectives(strSource, posMainWord, lang, nounCase);
+
+	// «начальнік … (статс-сакратара)»: голова уже именительная, скобка далеко,
+	// обычное окно её не берёт. Каталог здесь именительный.
+	const std::pair<std::wstring, std::wstring> secretaries[] = {
+		{ L"(статс-сакратара)", L"(статс-сакратар)" },
+		{ L"(статс-сакратару)", L"(статс-сакратар)" },
+	};
+	for (const auto& form : secretaries)
+	{
+		size_t pos = 0;
+		while ((pos = strSource.find(form.first, pos)) != std::wstring::npos)
+		{
+			strSource.replace(pos, form.first.length(), form.second);
+			pos += form.second.length();
+			bResult = true;
+		}
+	}
 
 	return bResult;
 }

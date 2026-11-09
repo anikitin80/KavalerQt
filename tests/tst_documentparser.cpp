@@ -59,6 +59,7 @@ private slots:
     void countryIsNotASurname();
     void listWithLineBreaks();
     void housewifeGetsTheCityOfTheSection();
+    void repeatedSpacesInTheDecreeBecomeOne();
     void listEndingWithDashDoesNotCrash();
     void listStartingWithDashDoesNotCrash();
     void belarusianDecree();
@@ -572,6 +573,23 @@ void TestDocumentParser::housewifeGetsTheCityOfTheSection()
     QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[0], false)), QStringLiteral("хатняя гаспадыня, г. Мінск"));
     QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[1], false)), QStringLiteral("хатняя гаспадыня, г. Мінск"));
     QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[2], false)), QStringLiteral("хатняя гаспадыня"));
+}
+
+void TestDocumentParser::repeatedSpacesInTheDecreeBecomeOne()
+{
+    parse({kUkazRu, QStringLiteral("24 августа 1998 г. № 411"),
+           QStringLiteral("За заслуги наградить:"),
+           QStringLiteral("орденом Матери"),
+           QStringLiteral("Алексеевич\vНадежду Иосифовну"), QStringLiteral("–"),
+           QStringLiteral("домашнюю хозяйку, г.\u00A0 Жлобин"),
+           QStringLiteral("Иванову\vМарию Ивановну"), QStringLiteral("–"),
+           QStringLiteral("домашнюю хозяйку, г.  Минск"),
+           kPresident});
+    QCOMPARE(int(m_parser->m_Persons.size()), 2);
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[0], false)),
+             QStringLiteral("домашняя хозяйка, г. Жлобин"));
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[1], false)),
+             QStringLiteral("домашняя хозяйка, г. Минск"));
 }
 
 void TestDocumentParser::listEndingWithDashDoesNotCrash()

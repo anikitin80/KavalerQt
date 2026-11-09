@@ -41,6 +41,8 @@ const std::vector<RankInfo> CDocumentParser::MilitatyRanksBY = {
 	{ L"старшына", L"старшыне", L"старшыну" },
 	{ L"малодшы лейтэнант", L"малодшаму лейтэнанту", L"малодшага лейтэнанта" },
 	{ L"старшы лейтэнант", L"старшаму лейтэнанту", L"старшага лейтэнанта" },
+	// в указе первая «е» набрана как «э»; именительный остаётся каталожным «лейтэнант»
+	{ L"старшы лейтэнант", L"старшаму лэйтэнанту", L"старшага лэйтэнанта" },
 	{ L"лейтэнант", L"лейтэнанту", L"лейтэнанта" },
 	{ L"капітан", L"капітану", L"капітана" },
 	{ L"маёр", L"маёру", L"маёра" },
@@ -285,6 +287,37 @@ const std::vector<std::wstring> searchGroupEnd = { L"государственн�
 const wchar_t* posthumousMark(bool russian)
 {
 	return russian ? L"(посмертно)" : L"(пасмяротна)";
+}
+
+// повтор пробелов, в том числе неразрывного: «дывізіёна\u00A0\u00A0841-й», «г.\u00A0 Жлобин».
+// одиночный неразрывный остаётся: он склеивает «у\u00A0г.\u00A0Нові» и «1.\u00A0Узнагародзіць»
+void collapseRepeatedSpaces(std::wstring& text)
+{
+	std::wstring collapsed;
+	collapsed.reserve(text.size());
+	wchar_t blank = 0;
+	int run = 0;
+	const auto flush = [&]() {
+		if (run == 1)
+			collapsed.push_back(blank);
+		else if (run > 1)
+			collapsed.push_back(L' ');
+		run = 0;
+	};
+	for (wchar_t c : text)
+	{
+		if (c == L' ' || c == L'\u00A0')
+		{
+			if (run == 0)
+				blank = c;
+			++run;
+			continue;
+		}
+		flush();
+		collapsed.push_back(c);
+	}
+	flush();
+	text.swap(collapsed);
 }
 
 // вырезает пометку и всё после неё
@@ -866,6 +899,7 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 			continue;
 
 		std::wstring strLine = *itrLine;
+		collapseRepeatedSpaces(strLine);
 		size_t posActionEnd = 0, posTargetStart = 0;
 
 		if (0 == m_UkazInfo.Number)
@@ -1314,8 +1348,11 @@ void CDocumentParser::NormalizePersonInfo(PersonInfo& person)
 	StrTrim(person.Name);
 	stripComradeTitle(person.Name);
 	StrTrim(person.Name);
+	collapseRepeatedSpaces(person.Name);
+	std::replace(person.Name.begin(), person.Name.end(), L'\u00A0', L' ');
 	StrTrim(person.Description);
-	std::replace(person.Description.begin(), person.Description.end(), L' ', L' ');
+	collapseRepeatedSpaces(person.Description);
+	std::replace(person.Description.begin(), person.Description.end(), L'\u00A0', L' ');
 
 	NounCase nounCase = GetNounCaseByAwardId(person.AwardId);
 
@@ -1525,6 +1562,8 @@ std::wstring CDocumentParser::GetPersonDescription(PersonInfo& person, bool bGet
 		strDesc += person.MilitaryRank;
 	}
 
+	collapseRepeatedSpaces(strDesc);
+	std::replace(strDesc.begin(), strDesc.end(), L'\u00A0', L' ');
 	return strDesc;
 }
 

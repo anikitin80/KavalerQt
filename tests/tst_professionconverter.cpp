@@ -127,6 +127,23 @@ void TestProfessionConverter::convert_data()
                                                << QStringLiteral("советник-консультант отдела");
     QTest::newRow("by acc unknown head and adjective") << QStringLiteral("старшага дэпартамента ўстановы") << LangBY << Accusative
                                                        << QStringLiteral("старшы дэпартамент ўстановы");
+    QTest::newRow("ru dat scientific dative") << QStringLiteral("ведущему научному сотруднику института") << LangRU << Dative
+                                              << QStringLiteral("ведущий научный сотрудник института");
+    QTest::newRow("ru acc firefighter") << QStringLiteral("старшего пожарного пожарной части") << LangRU << Accusative
+                                        << QStringLiteral("старший пожарный пожарной части");
+    // «па» не занимает место среди первых слов, «следчага» находится
+    QTest::newRow("by acc senior investigator") << QStringLiteral("старшага па корпусу дзяжурнай службы следчага ізалятара") << LangBY << Accusative
+                                                << QStringLiteral("старшы па корпусу дзяжурнай службы следчы ізалятара");
+    QTest::newRow("by acc air radio operator") << QStringLiteral("старшага паветранага радыста эскадрыллі") << LangBY << Accusative
+                                               << QStringLiteral("старшы паветраны радыст эскадрыллі");
+    QTest::newRow("by acc state secretary") << QStringLiteral("начальніка галоўнага ўпраўлення кадраў (статс-сакратара)") << LangBY << Accusative
+                                            << QStringLiteral("начальнік галоўнага ўпраўлення кадраў (статс-сакратар)");
+    QTest::newRow("by acc state secretary already nominative") << QStringLiteral("начальнік ўпраўлення ідэалагічнай работы і кадравага забеспячэння (статс-сакратара)") << LangBY << Accusative
+                                                               << QStringLiteral("начальнік ўпраўлення ідэалагічнай работы і кадравага забеспячэння (статс-сакратар)");
+    QTest::newRow("by acc senior on duty") << QStringLiteral("старшага па корпусу дзяжурнай службы турмы") << LangBY << Accusative
+                                           << QStringLiteral("старшы па корпусу дзяжурнай службы турмы");
+    QTest::newRow("by acc psychologist") << QStringLiteral("начальніка службы сацыяльнай работы (псіхолага)") << LangBY << Accusative
+                                         << QStringLiteral("начальнік службы сацыяльнай работы (псіхолаг)");
 }
 
 void TestProfessionConverter::convert()

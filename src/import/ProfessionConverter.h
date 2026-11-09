@@ -78,6 +78,9 @@ protected:
 	size_t ConvertBracketed(std::wstring& strSource, size_t posStart, LangType lang, NounCase nounCase);
 	void ConvertAfterComma(std::wstring& strSource, size_t posStart, LangType lang, NounCase nounCase);
 	void ConvertLeadingAdjectives(std::wstring& strSource, size_t posMainWord, LangType lang, NounCase nounCase);
+	// «старшего пожарного», «старшага паветранага радыста»: цепочка согласованных
+	// прилагательных в начале, когда словарной должности среди первых слов нет
+	bool convertInitialAdjectives(std::wstring& strSource, LangType lang, NounCase nounCase);
 
 	// дательный, винительный, файл и известные именительные одного языка
 	struct LanguageData
