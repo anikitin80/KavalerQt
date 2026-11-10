@@ -65,6 +65,20 @@ void TestProfessionConverter::convert_data()
                                                         << QStringLiteral("лектар-музыказнавец аркестра");
     QTest::newRow("by acc student keeps faculty") << QStringLiteral("студэнта трэцяга курса механіка-матэматычнага факультэта") << LangBY << Accusative
                                                   << QStringLiteral("студэнт трэцяга курса механіка-матэматычнага факультэта");
+    QTest::newRow("by acc adjective in bracket after head") << QStringLiteral("медыцынскую сястру (палатную) стацыянара бальніцы") << LangBY << Accusative
+                                                            << QStringLiteral("медыцынская сястра (палатная) стацыянара бальніцы");
+    QTest::newRow("by acc adjective after head") << QStringLiteral("медыцынскую сястру ўчастковую педыятрычнага аддзялення") << LangBY << Accusative
+                                                 << QStringLiteral("медыцынская сястра ўчастковая педыятрычнага аддзялення");
+    QTest::newRow("by acc genitive after head stays") << QStringLiteral("сястру гаспадыню аддзялення") << LangBY << Accusative
+                                                      << QStringLiteral("сястра гаспадыню аддзялення");
+    QTest::newRow("by acc hyphenated specialty after head") << QStringLiteral("урача анестэзіёлага-рэаніматолага (загадчыка аддзялення) бальніцы") << LangBY << Accusative
+                                                            << QStringLiteral("урач анестэзіёлаг-рэаніматолаг (загадчык аддзялення) бальніцы");
+    QTest::newRow("by dat hyphenated specialty after head") << QStringLiteral("урачу анестэзіёлагу-рэаніматолагу аддзялення") << LangBY << Dative
+                                                            << QStringLiteral("урач анестэзіёлаг-рэаніматолаг аддзялення");
+    QTest::newRow("by acc psychiatrist-narcologist") << QStringLiteral("урача псіхіятра-нарколага дзяржаўнай установы") << LangBY << Accusative
+                                                     << QStringLiteral("урач псіхіятр-нарколаг дзяржаўнай установы");
+    QTest::newRow("by acc hyphenated genitive after head stays") << QStringLiteral("урача анестэзіёлага-рэанімацыйнага аддзялення") << LangBY << Accusative
+                                                                 << QStringLiteral("урач анестэзіёлага-рэанімацыйнага аддзялення");
     QTest::newRow("ru acc") << QStringLiteral("механика колхоза «Рассвет»") << LangRU << Accusative
                             << QStringLiteral("механик колхоза «Рассвет»");
     QTest::newRow("ru hyphen, second part new") << QStringLiteral("водителю-экспедитору филиала") << LangRU << Dative

@@ -1418,8 +1418,11 @@ std::wstring CDocumentParser::GetPersonDescription(PersonInfo& person, bool bGet
 		strDesc += person.MilitaryRank;
 	}
 
+	// \u0440\u0430\u0437\u0440\u044B\u0432 \u0441\u0442\u0440\u043E\u043A\u0438 \u0432\u043D\u0443\u0442\u0440\u0438 \u0430\u0431\u0437\u0430\u0446\u0430 (\u00AB\u043A\u0430\u0434\u0440\u0430\u045E<w:br/>\u0456 \u0456\u0434\u044D\u0430\u043B\u0430\u0433\u0456\u0447\u043D\u0430\u0439\u00BB) \u2014 \u0442\u043E\u0436\u0435 \u043F\u0440\u043E\u0431\u0435\u043B
+	for (wchar_t& c : strDesc)
+		if (c == L'\u00A0' || c == L'\n' || c == L'\r' || c == L'\t' || c == L'\v')
+			c = L' ';
 	collapseRepeatedSpaces(strDesc);
-	std::replace(strDesc.begin(), strDesc.end(), L'\u00A0', L' ');
 	return strDesc;
 }
 

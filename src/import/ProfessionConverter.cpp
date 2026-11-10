@@ -468,6 +468,82 @@ size_t CProfessionConverter::ConvertBracketed(std::wstring& strSource, size_t po
 	return strSource.find(L')', posOpen) + 1;
 }
 
+size_t CProfessionConverter::ConvertTrailingWord(std::wstring& strSource, size_t posStart, LangType lang, NounCase nounCase)
+{
+	if (posStart == 0 || posStart + 1 >= strSource.length() || strSource[posStart] != L' ')
+		return posStart;
+	const size_t posHead = strSource.find_last_of(L" -", posStart - 1);
+	const std::wstring head = ToLower(strSource.substr(posHead == std::wstring::npos ? 0 : posHead + 1,
+		posHead == std::wstring::npos ? posStart : posStart - posHead - 1));
+	if (head.empty() || IsAdjective(head))
+		return posStart;
+
+	const bool bracket = strSource[posStart + 1] == L'(';
+	const size_t posWord = posStart + (bracket ? 2 : 1);
+	const size_t posWordEnd = strSource.find_first_of(L" ,-–)«»", posWord);
+	if (posWordEnd == std::wstring::npos || posWordEnd == posWord)
+		return posStart;
+	std::wstring word = strSource.substr(posWord, posWordEnd - posWord);
+	const std::wstring lower = ToLower(word);
+
+	// «медыцынскую сястру (палатную)», «санітарку палатную»: прилагательное женского
+	// рода после должности; в скобке оно одно
+	const wchar_t last = head.back();
+	const bool feminineHead = last == L'а' || last == L'я';
+	// дательный совпадает с родительным («старшыні Пастаяннай камісіі»): только в скобке
+	const bool feminineAdjective = nounCase == Dative ? bracket && EndsWithAny(lower, { L"ай", L"яй", L"ой", L"ей" })
+		: EndsWithAny(lower, { L"ую", L"юю" });
+	if (feminineHead && feminineAdjective && (!bracket || strSource[posWordEnd] == L')')
+		&& CNameConverter::ApplyRules(word, RulesAdjectives, SexAny, lang, nounCase, false))
+	{
+		strSource.replace(posWord, posWordEnd - posWord, word);
+		return posWord + word.length() + (bracket ? 1 : 0);
+	}
+
+	// «урача анестэзіёлага-рэаніматолага», «урача псіхіятра-нарколага»: за врачом
+	// его специальность через дефис. После других должностей это родительный:
+	// «памочніка ўрача-гігіеніста», «намесніка акадэміка-сакратара»
+	if (bracket || strSource[posWordEnd] != L'-' || (head != L"урач" && head != L"врач"))
+		return posStart;
+	std::wstring compound = lower;
+	size_t posEnd = posWordEnd;
+	while (posEnd < strSource.length() && strSource[posEnd] == L'-')
+	{
+		const size_t next = strSource.find_first_of(L" ,–)«»-", posEnd + 1);
+		const size_t partEnd = next == std::wstring::npos ? strSource.length() : next;
+		compound += L"-" + ToLower(strSource.substr(posEnd + 1, partEnd - posEnd - 1));
+		posEnd = partEnd;
+	}
+	std::wstring converted;
+	for (size_t from = 0; from <= compound.length(); )
+	{
+		size_t to = compound.find(L'-', from);
+		if (to == std::wstring::npos)
+			to = compound.length();
+		// первая часть — словарная должность, остальные как в ConvertWordChain
+		std::wstring word = compound.substr(from, to - from);
+		const WordForm part = findForm(word, lang, nounCase);
+		const bool first = converted.empty();
+		if (first && (!part.inDictionary || part.declinedLength != word.length() || IsAdjective(part.nominative)))
+			return posStart;
+		// «анестэзіёлага-рэанімацыйнага аддзялення» — составное прилагательное
+		// (не «рэаніматолага»: у существительного перед «-ага» нет «н», «к», «в», «ч»)
+		if (!first && EndsWithAny(word, { L"нага", L"кага", L"вага", L"чага", L"ога", L"ого", L"его", L"аму", L"ому", L"ему",
+			L"ай", L"ой", L"ей", L"яй", L"ую", L"юю", L"ых", L"іх", L"их" }))
+			return posStart;
+		if (part.found && part.declinedLength == word.length())
+			word = part.nominative;
+		else if (!AddNewWord(word, lang, nounCase))
+			return posStart;
+		if (!first)
+			converted += L'-';
+		converted += word;
+		from = to + 1;
+	}
+	ReplaceKeepingFirstLetter(strSource, posWord, posEnd - posWord, converted);
+	return posWord + converted.length();
+}
+
 // вторая должность после запятой: «саліст оперы, вядучага майстра сцэны»,
 // «кампазітар, члена Саюза кампазітараў» (не внутри кавычек)
 namespace {
@@ -831,6 +907,7 @@ bool CProfessionConverter::ConvertProfession(std::wstring& strSource, LangType l
 			bResult = true;
 			posMainWord = posStart;
 			posStart = ConvertWordChain(strSource, posStart, form.declinedLength, form.nominative, lang, nounCase);
+			posStart = ConvertTrailingWord(strSource, posStart, lang, nounCase);
 			posStart = ConvertBracketed(strSource, posStart, lang, nounCase);
 			ConvertAfterConjunction(strSource, posStart, lang, nounCase);
 			ConvertAfterComma(strSource, posStart, lang, nounCase);
