@@ -70,6 +70,11 @@ protected:
 	size_t ConvertWordChain(std::wstring& strSource, size_t posStart, size_t declinedLength, std::wstring nominative, LangType lang, NounCase nounCase);
 	size_t ConvertBracketed(std::wstring& strSource, size_t posStart, LangType lang, NounCase nounCase);
 	void ConvertAfterComma(std::wstring& strSource, size_t posStart, LangType lang, NounCase nounCase);
+	// вторая должность сразу после первой через «і»: «мастацкі кіраўнік і галоўнага дырыжора»
+	void ConvertAfterConjunction(std::wstring& strSource, size_t posStart, LangType lang, NounCase nounCase);
+	// с posWord (после запятой или «і») начинается должность: она в словаре,
+	// возможно после одного-двух прилагательных или незнакомого слова и «і»
+	bool StartsWithProfession(const std::wstring& strSource, size_t posWord, LangType lang, NounCase nounCase) const;
 	void ConvertLeadingAdjectives(std::wstring& strSource, size_t posMainWord, LangType lang, NounCase nounCase);
 	// «старшего пожарного», «старшага паветранага радыста»: цепочка согласованных
 	// прилагательных в начале, когда словарной должности среди первых слов нет

@@ -423,8 +423,15 @@ size_t CProfessionConverter::ConvertBracketed(std::wstring& strSource, size_t po
 		return posStart;
 	const std::wstring between = strSource.substr(posStart, posOpen - posStart);
 	const size_t posClose = strSource.find(L')', posOpen);
-	if (posClose == std::wstring::npos || between.find_first_of(L",–«»;") != std::wstring::npos
-		|| std::count(between.begin(), between.end(), L' ') > (bracketAllowsLongGap(strSource, posOpen, posClose) ? 6 : 3))
+	if (posClose == std::wstring::npos)
+		return posStart;
+	// «урач хуткай медыцынскай дапамогі (загадчыку цэнтра …)»: скобка далеко,
+	// но начинается с должности из словаря
+	size_t posInside = posOpen + 1;
+	const bool professionInside = findForm(ToLower(GetNextWord(strSource, posInside)), lang, nounCase).found;
+	const bool longGap = professionInside || bracketAllowsLongGap(strSource, posOpen, posClose);
+	if (between.find_first_of(L",–«»;") != std::wstring::npos
+		|| std::count(between.begin(), between.end(), L' ') > (longGap ? 6 : 3))
 		return posStart;
 
 	// каждая часть «статс-сакратара» отдельно («урача-тэрапеўта»: часть после
@@ -480,66 +487,94 @@ size_t CProfessionConverter::ConvertBracketed(std::wstring& strSource, size_t po
 
 // вторая должность после запятой: «саліст оперы, вядучага майстра сцэны»,
 // «кампазітар, члена Саюза кампазітараў» (не внутри кавычек)
+namespace {
+
+bool isConjunctionWord(const std::wstring& word)
+{
+	return word == L"і" || word == L"и" || word == L"i";
+}
+
+// «…, цяпер генеральнага дырэктара …»: связка перед второй должностью
+bool isLinkWord(const std::wstring& word)
+{
+	return isConjunctionWord(word) || word == L"цяпер" || word == L"теперь";
+}
+
+} // namespace
+
+bool CProfessionConverter::StartsWithProfession(const std::wstring& strSource, size_t posWord, LangType lang, NounCase nounCase) const
+{
+	// должность может идти после одного-двух прилагательных: «, галоўнага навуковага супрацоўніка»,
+	// после незнакомого слова и «і»: «, каскадзёра і пастаноўшчыка», или после «цяпер»
+	for (int w = 0; w < 3; ++w)
+	{
+		std::wstring next = ToLower(GetNextWord(strSource, posWord));
+		if (next.empty())
+			return false;
+		posWord += next.length();
+		if (isLinkWord(next))
+			continue;
+		// не «механічнай, хіміка-тэрмічнай апрацоўкі»: это составное прилагательное
+		bool compoundAdjective = false;
+		if (posWord < strSource.length() && strSource[posWord] == L'-')
+		{
+			size_t posPart = posWord;
+			const std::wstring part = ToLower(GetNextWord(strSource, posPart));
+			compoundAdjective = EndsWithAny(part, { L"ай", L"ой", L"ых", L"іх", L"их", L"ым", L"ае", L"ое", L"ыя", L"ые" });
+		}
+		// прилагательное из словаря перед «і»/«и» — часть списка
+		// прилагательных, не должность: «грамадзянскага, працоўнага і сацыяльнага
+		// заканадаўства» (а «заведующего кафедрой» — одна должность)
+		const WordForm found = findForm(next, lang, nounCase);
+		if (found.inDictionary && IsAdjective(found.nominative))
+		{
+			size_t posAfter = posWord;
+			if (isConjunctionWord(ToLower(GetNextWord(strSource, posAfter))))
+				return false;
+		}
+		if (found.found && !compoundAdjective)
+			return true;
+		std::wstring adjective = next;
+		if (!CNameConverter::ApplyRules(adjective, RulesAdjectives, SexAny, lang, nounCase, false))
+		{
+			size_t posAfter = posWord;
+			if (!isConjunctionWord(ToLower(GetNextWord(strSource, posAfter))))
+				return false;
+		}
+	}
+	return false;
+}
+
+// вторая должность после запятой: «саліст оперы, вядучага майстра сцэны»,
+// «кампазітар, члена Саюза кампазітараў», «…, цяпер намесніка Міністра»
+// (не внутри кавычек). Остальные запятые разбирает вложенный ConvertProfession.
 void CProfessionConverter::ConvertAfterComma(std::wstring& strSource, size_t posStart, LangType lang, NounCase nounCase)
 {
 	for (size_t posComma = strSource.find(L',', posStart); posComma != std::wstring::npos;
 		 posComma = strSource.find(L',', posComma + 1))
 	{
-		if (InsideQuotes(strSource, posComma))
-			continue;
-		// должность может идти после одного-двух прилагательных: «, галоўнага навуковага супрацоўніка»,
-		// или после незнакомого слова и «і»: «, каскадзёра і пастаноўшчыка»
-		bool profession = false;
-		size_t posWord = posComma + 1;
-		const auto isConjunction = [](const std::wstring& word) {
-			return word == L"і" || word == L"и" || word == L"i";
-		};
-		for (int w = 0; w < 3 && !profession; ++w)
-		{
-			std::wstring next = ToLower(GetNextWord(strSource, posWord));
-			if (next.empty())
-				break;
-			posWord += next.length();
-			if (isConjunction(next))
-				continue;
-			// не «механічнай, хіміка-тэрмічнай апрацоўкі»: это составное прилагательное
-			bool compoundAdjective = false;
-			if (posWord < strSource.length() && strSource[posWord] == L'-')
-			{
-				size_t posPart = posWord;
-				const std::wstring part = ToLower(GetNextWord(strSource, posPart));
-				compoundAdjective = EndsWithAny(part, { L"ай", L"ой", L"ых", L"іх", L"их", L"ым", L"ае", L"ое", L"ыя", L"ые" });
-			}
-			// прилагательное из словаря перед «і»/«и» — часть списка
-			// прилагательных, не должность: «грамадзянскага, працоўнага і сацыяльнага
-			// заканадаўства» (а «заведующего кафедрой» — одна должность)
-			const WordForm found = findForm(next, lang, nounCase);
-			bool beforeConjunction = false;
-			if (found.inDictionary && IsAdjective(found.nominative))
-			{
-				size_t posAfter = posWord;
-				const std::wstring after = ToLower(GetNextWord(strSource, posAfter));
-				beforeConjunction = isConjunction(after);
-			}
-			if (beforeConjunction)
-				break;
-			if (found.found && !compoundAdjective)
-				profession = true;
-			else if (!CNameConverter::ApplyRules(next, RulesAdjectives, SexAny, lang, nounCase, false))
-			{
-				size_t posAfter = posWord;
-				const std::wstring after = ToLower(GetNextWord(strSource, posAfter));
-				if (!isConjunction(after))
-					break;
-			}
-		}
-		if (!profession)
+		if (InsideQuotes(strSource, posComma) || !StartsWithProfession(strSource, posComma + 1, lang, nounCase))
 			continue;
 		std::wstring rest = strSource.substr(posComma + 1);
 		ConvertProfession(rest, lang, nounCase);
 		strSource.replace(posComma + 1, std::wstring::npos, rest);
 		return;
 	}
+}
+
+void CProfessionConverter::ConvertAfterConjunction(std::wstring& strSource, size_t posStart, LangType lang, NounCase nounCase)
+{
+	size_t posWord = posStart;
+	const std::wstring next = ToLower(GetNextWord(strSource, posWord));
+	// «і» сразу за должностью, без запятой и кавычек между ними
+	if (!isConjunctionWord(next) || strSource.find_first_of(L",«»\"", posStart) < posWord)
+		return;
+	posWord += next.length();
+	if (!StartsWithProfession(strSource, posWord, lang, nounCase))
+		return;
+	std::wstring rest = strSource.substr(posWord);
+	ConvertProfession(rest, lang, nounCase);
+	strSource.replace(posWord, std::wstring::npos, rest);
 }
 
 // слова перед основным, достаточно далеко от начала, — прилагательные:
@@ -816,6 +851,7 @@ bool CProfessionConverter::ConvertProfession(std::wstring& strSource, LangType l
 			posMainWord = posStart;
 			posStart = ConvertWordChain(strSource, posStart, form.declinedLength, form.nominative, lang, nounCase);
 			posStart = ConvertBracketed(strSource, posStart, lang, nounCase);
+			ConvertAfterConjunction(strSource, posStart, lang, nounCase);
 			ConvertAfterComma(strSource, posStart, lang, nounCase);
 			break;
 		}
@@ -830,7 +866,11 @@ bool CProfessionConverter::ConvertProfession(std::wstring& strSource, LangType l
 	if (!bResult && (allowUnknownHead || startsWithSenior(strSource)))
 		bResult = convertInitialAdjectives(strSource, lang, nounCase);
 	if (!bResult)
+	{
 		FindNewWords(strSource, lang, nounCase);
+		// «работніцы …, майстру спорту»: первая должность незнакома, вторая — нет
+		ConvertAfterComma(strSource, 0, lang, nounCase);
+	}
 
 	// у основного слова в самом начале прилагательных перед ним нет
 	const size_t minAdjectivesLength = 5;

@@ -30,6 +30,7 @@ private slots:
     void dictionaryKeysMatchLookup();
     void adjectiveChainIsNotANewWord();
     void neuterGenitiveIsNotAProfession();
+    void secondJobAfterUnknownFirst();
 };
 
 void TestProfessionConverter::initTestCase()
@@ -144,6 +145,24 @@ void TestProfessionConverter::convert_data()
                                            << QStringLiteral("старшы па корпусу дзяжурнай службы турмы");
     QTest::newRow("by acc psychologist") << QStringLiteral("начальніка службы сацыяльнай работы (псіхолага)") << LangBY << Accusative
                                          << QStringLiteral("начальнік службы сацыяльнай работы (псіхолаг)");
+    // вторая должность: через «і» без запятой, после «цяпер», в далёкой скобке
+    QTest::newRow("by dat second job after і") << QStringLiteral("мастацкаму кіраўніку і галоўнаму дырыжору аркестра") << LangBY << Dative
+                                               << QStringLiteral("мастацкі кіраўнік і галоўны дырыжор аркестра");
+    QTest::newRow("by dat second job after цяпер") << QStringLiteral("дырэктару завода, цяпер намесніку міністра") << LangBY << Dative
+                                                   << QStringLiteral("дырэктар завода, цяпер намеснік міністра");
+    QTest::newRow("by dat job in a far bracket") << QStringLiteral("урачу хуткай медыцынскай дапамогі (загадчыку падстанцыі)") << LangBY << Dative
+                                                 << QStringLiteral("урач хуткай медыцынскай дапамогі (загадчык падстанцыі)");
+}
+
+// первая должность незнакома, вторая после запятой всё равно приводится
+void TestProfessionConverter::secondJobAfterUnknownFirst()
+{
+    CProfessionConverter converter;
+    TestData::useTestDictionaries(converter);
+    std::wstring text = L"работніцы закрытага акцыянернага таварыства «Атлант», майстру спорту міжнароднага класа";
+    converter.ConvertProfession(text, LangBY, Dative);
+    QVERIFY2(QString::fromStdWString(text).endsWith(QStringLiteral("«Атлант», майстар спорту міжнароднага класа")),
+             qPrintable(QString::fromStdWString(text)));
 }
 
 void TestProfessionConverter::convert()
