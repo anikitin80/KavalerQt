@@ -66,7 +66,6 @@ protected:
 		size_t declinedLength = 0;
 	};
 	WordForm findForm(const std::wstring& word, LangType lang, NounCase nounCase) const;
-	void ConvertNonMilitaryRank(std::wstring& strSource, NounCase nounCase);
 	size_t ConvertWordChain(std::wstring& strSource, size_t posStart, size_t declinedLength, std::wstring nominative, LangType lang, NounCase nounCase);
 	size_t ConvertBracketed(std::wstring& strSource, size_t posStart, LangType lang, NounCase nounCase);
 	void ConvertAfterComma(std::wstring& strSource, size_t posStart, LangType lang, NounCase nounCase);
@@ -97,6 +96,5 @@ protected:
 	std::vector<NewDictItem> m_NewWords;
 	static const RulesList RulesAdjectives;
 	static const RulesList RulesProfession;
-	static const std::vector<RankInfo> NonMilitatyRanksBY;
 };
 

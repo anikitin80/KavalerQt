@@ -150,6 +150,9 @@ void TestProfessionConverter::convert_data()
                                                << QStringLiteral("мастацкі кіраўнік і галоўны дырыжор аркестра");
     QTest::newRow("by dat second job after цяпер") << QStringLiteral("дырэктару завода, цяпер намесніку міністра") << LangBY << Dative
                                                    << QStringLiteral("дырэктар завода, цяпер намеснік міністра");
+    // одно слово в далёкой скобке каталог держит как в указе
+    QTest::newRow("by acc single-word bracket stays") << QStringLiteral("старшага тэхніка інжынерна-тэхнічных сродкаў аховы (начальніка)") << LangBY << Accusative
+                                                      << QStringLiteral("старшы тэхнік інжынерна-тэхнічных сродкаў аховы (начальніка)");
     QTest::newRow("by dat job in a far bracket") << QStringLiteral("урачу хуткай медыцынскай дапамогі (загадчыку падстанцыі)") << LangBY << Dative
                                                  << QStringLiteral("урач хуткай медыцынскай дапамогі (загадчык падстанцыі)");
 }

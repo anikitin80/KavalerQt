@@ -27,10 +27,6 @@ const RulesList CProfessionConverter::RulesProfession = CNameConverter::ExpandRu
 	{ SexAny, LangAny, L"ю", L"я", L"-ь"}
 });
 
-const std::vector<RankInfo> CProfessionConverter::NonMilitatyRanksBY = {
-	{ L"прафесар", L"прафесару", L"прафесара"}
-};
-
 namespace {
 
 // слово кончается одним из окончаний и длиннее его хотя бы на три буквы
@@ -291,29 +287,6 @@ void CProfessionConverter::ReplaceKeepingFirstLetter(std::wstring& text, size_t 
 	text.replace(pos + 1, oldLength - 1, replacement, 1, std::wstring::npos);
 }
 
-// «загадчыку кафедры, прафесару»: невоинское звание после последней запятой
-void CProfessionConverter::ConvertNonMilitaryRank(std::wstring& strSource, NounCase nounCase)
-{
-	const size_t posComma = strSource.rfind(L',');
-	if (posComma == std::wstring::npos)
-		return;
-	const size_t posStart = strSource.find_first_not_of(L" ,", posComma);
-	if (posStart == std::wstring::npos)
-		return;
-	const std::wstring strCheck = strSource.substr(posStart);
-	for (const auto& rank : NonMilitatyRanksBY)
-	{
-		const std::wstring& rankOriginal = (nounCase == Dative ? rank.Dative : rank.Accusative);
-		if (rankOriginal.length() > strCheck.length())
-			continue;
-		if (strCheck.compare(0, rankOriginal.length(), rankOriginal) == 0)
-		{
-			strSource.replace(posStart, rankOriginal.length(), rank.Nominative);
-			return;
-		}
-	}
-}
-
 // приводит словарное слово в posStart и то, что к нему относится:
 // остальные части составного («урача-анестэзіёлага-рэаніматолага») и, после
 // прилагательного, следующие слова должности («дзяжурнага памочніка», «вядучага
@@ -402,8 +375,9 @@ size_t CProfessionConverter::ConvertWordChain(std::wstring& strSource, size_t po
 // позицию после скобок (posStart, если скобок нет)
 namespace {
 
-// «(псіхолага)», «(статс-сакратара)» стоят после трёх слов родительного.
-// Остальные скобки ближе: дальше в них филиал и должность, которую каталог хранит как есть.
+// «(псіхолага)», «(статс-сакратара)» стоят после трёх слов родительного, и каталог
+// хранит их в именительном. Это правило каталога, словарём его не заменить: другие
+// скобки из одного слова («(вадзіцеля)», «(урача)», «(начальніка)») он держит как в указе.
 bool bracketAllowsLongGap(const std::wstring& text, size_t open, size_t close)
 {
 	std::wstring inside = ToLower(text.substr(open + 1, close - open - 1));
@@ -425,10 +399,13 @@ size_t CProfessionConverter::ConvertBracketed(std::wstring& strSource, size_t po
 	const size_t posClose = strSource.find(L')', posOpen);
 	if (posClose == std::wstring::npos)
 		return posStart;
-	// «урач хуткай медыцынскай дапамогі (загадчыку цэнтра …)»: скобка далеко,
-	// но начинается с должности из словаря
-	size_t posInside = posOpen + 1;
-	const bool professionInside = findForm(ToLower(GetNextWord(strSource, posInside)), lang, nounCase).found;
+	// «урач хуткай медыцынскай дапамогі (загадчыку цэнтра …)», «(урача-псіхіятра)»: скобка
+	// далеко, но начинается с должности из словаря, за которой скобка продолжается.
+	// Одно слово в скобке каталог держит в родительном: «сродкаў аховы (начальніка)»,
+	// «разліку (вадзіцеля)»; исключения — bracketAllowsLongGap
+	const size_t posWordEnd = strSource.find_first_of(L" ,-–)", posOpen + 1);
+	const bool professionInside = posWordEnd != std::wstring::npos && strSource[posWordEnd] != L')'
+		&& findForm(ToLower(strSource.substr(posOpen + 1, posWordEnd - posOpen - 1)), lang, nounCase).found;
 	const bool longGap = professionInside || bracketAllowsLongGap(strSource, posOpen, posClose);
 	if (between.find_first_of(L",–«»;") != std::wstring::npos
 		|| std::count(between.begin(), between.end(), L' ') > (longGap ? 6 : 3))
@@ -813,8 +790,6 @@ bool CProfessionConverter::convertInitialAdjectives(std::wstring& strSource, Lan
 bool CProfessionConverter::ConvertProfession(std::wstring& strSource, LangType lang, NounCase nounCase, bool allowUnknownHead)
 {
 	bool bResult = false;
-
-	ConvertNonMilitaryRank(strSource, nounCase);
 
 	// основное слово ищется среди первых слов. Предлог не занимает место только
 	// после «старшага»: иначе «дэпартамента» в конце длинной должности становится
