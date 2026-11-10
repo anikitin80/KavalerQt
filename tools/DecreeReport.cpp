@@ -3,6 +3,7 @@
 //
 //   decree_report --db D:/Awards/DB/Kavaler.sqlite --docs D:/Awards/AwardsDoc
 //                 --out build/reports/2026-11-06 [--compare build/reports/<previous>]
+//   decree_report ... --rules-only   фамилии только по правилам, без каталога
 //   decree_report --names --db D:/Awards/DB/Kavaler.sqlite --out build/reports/names
 //
 // --names указы не читает. Выписывает белорусские полные имена, сохранённые
@@ -40,6 +41,7 @@
 #include "Catalog.h"
 #include "DocumentParser.h"
 #include "DocxText.h"
+#include "KnownSurnames.h"
 #include "TextUtil.h"
 
 #include <QCommandLineParser>
@@ -343,9 +345,11 @@ int main(int argc, char** argv)
     const QCommandLineOption filterOption(QStringLiteral("filter"), QStringLiteral("Only files whose path contains this text."), QStringLiteral("text"));
     const QCommandLineOption limitOption(QStringLiteral("limit"), QStringLiteral("Only the first N files."), QStringLiteral("N"));
     const QCommandLineOption allOption(QStringLiteral("all"), QStringLiteral("Write every person to persons.tsv, not only the differing ones."));
+    const QCommandLineOption rulesOnlyOption(QStringLiteral("rules-only"),
+                                             QStringLiteral("Restore surnames by the rules alone, without the catalog's surnames."));
     const QCommandLineOption namesOption(QStringLiteral("names"),
                                          QStringLiteral("Report Belarusian full names with more than one Russian spelling. Does not read decrees."));
-    for (const auto& option : {dbOption, docsOption, outOption, compareOption, dictRuOption, dictByOption, filterOption, limitOption, allOption, namesOption})
+    for (const auto& option : {dbOption, docsOption, outOption, compareOption, dictRuOption, dictByOption, filterOption, limitOption, allOption, rulesOnlyOption, namesOption})
         cli.addOption(option);
     cli.process(app);
     const bool namesOnly = cli.isSet(namesOption);
@@ -413,6 +417,9 @@ int main(int argc, char** argv)
     }
     CDocumentParser parser;
     parser.Initialize(awards);
+    // как окно импорта: неоднозначную фамилию решает каталог (--rules-only — только правила)
+    if (!cli.isSet(rulesOnlyOption))
+        loadKnownSurnames(parser.m_NameConverter, catalog);
     parser.m_ProfessionConverter.SetDictionaryPath(dictRu.toStdWString(), LangRU);
     parser.m_ProfessionConverter.SetDictionaryPath(dictBy.toStdWString(), LangBY);
 

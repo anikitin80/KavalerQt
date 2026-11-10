@@ -2,6 +2,7 @@
 
 #include "DocxText.h"
 #include "ImportMatch.h"
+#include "KnownSurnames.h"
 
 #include <QAction>
 #include <QCheckBox>
@@ -128,6 +129,8 @@ ImportDialog::ImportDialog(Catalog* catalog, QWidget* parent)
         awards[item.ID] = item;
     }
     m_parser.Initialize(awards);
+    // неоднозначную фамилию («Склюту» — Склют или Склюта) решает каталог
+    loadKnownSurnames(m_parser.m_NameConverter, *catalog);
 
     m_fileMode = new QRadioButton(QStringLiteral("Файл"));
     auto* folderMode = new QRadioButton(QStringLiteral("Каталог"));

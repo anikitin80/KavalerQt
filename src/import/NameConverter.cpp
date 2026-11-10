@@ -301,10 +301,15 @@ bool CNameConverter::NormalizeName(std::wstring& fullName, LangType lang, NounCa
 	});
 
 	// двойная фамилия: склоняется каждая часть, «Карпінскую-Пешка», «Денисовой-Клебанович»
+	const std::wstring obliqueLastName = lastName;
 	bool bResLN = ForEachPart(lastName, [&](std::wstring& part) {
 		return ApplyRules(part, ExceptionsLastName, sex, lang, nounCase, true)
 			|| ApplyRules(part, RulesLastName, sex, lang, nounCase, false);
 	});
+	// у имени с отчеством фамилия — первое слово; иностранные имена не трогаем
+	if (!middleName.empty() && nounCase != Nominative && lastName.find(L'-') == std::wstring::npos
+		&& ChooseKnownSurname(lastName, obliqueLastName, sex, lang))
+		bResLN = true;
 
 	if(middleName.empty())
 		fullName = firstName + L' ' + lastName;
@@ -327,4 +332,129 @@ SexType CNameConverter::GetSex(std::wstring& middleName, NounCase nounCase)
 	}
 
 	return SexMale;
+}
+
+void CNameConverter::SetKnownSurnames(LangType lang, std::unordered_map<std::wstring, int> counts)
+{
+	(lang == LangRU ? m_KnownSurnamesRU : m_KnownSurnamesBY) = std::move(counts);
+}
+
+namespace {
+
+bool isNameVowel(wchar_t c)
+{
+	return std::wstring(L"аеёиоуыэюяіАЕЁИОУЫЭЮЯІ").find(c) != std::wstring::npos;
+}
+
+bool isNameConsonant(wchar_t c)
+{
+	return !isNameVowel(c) && std::wstring(L"йўьъ'’-").find(c) == std::wstring::npos && c >= L'А' && c <= L'я';
+}
+
+} // namespace
+
+std::vector<std::wstring> CNameConverter::SurnameVariants(const std::wstring& oblique, const std::wstring& ruleResult, SexType sex)
+{
+	std::vector<std::wstring> bases{ ruleResult };
+	const std::wstring lower = ToLower(oblique);
+	// несклоняемая фамилия: «Мдзівані», «Бачарышвілі», «Жигэу» стоят в указе как есть
+	if (lower.length() > 3 && (lower.back() == L'і' || lower.back() == L'и'
+		|| (lower.back() == L'у' && isNameVowel(lower[lower.length() - 2]))))
+		bases.push_back(oblique);
+	const auto endsWith = [&lower](const wchar_t* ending) {
+		const std::wstring e(ending);
+		return lower.length() > e.length() + 2 && lower.compare(lower.length() - e.length(), e.length(), e) == 0;
+	};
+	if (sex != SexFemale)
+	{
+		// «Склюту» — Склют или Склюта, «Ардзяка» — Ардзяк, «Колесня» — Колеснь (беглая ниже)
+		if (endsWith(L"у") || endsWith(L"а") || endsWith(L"ю") || endsWith(L"я"))
+		{
+			const std::wstring stem = oblique.substr(0, oblique.length() - 1);
+			bases.push_back(stem);
+			bases.push_back(stem + L"а");
+			if (endsWith(L"ю") || endsWith(L"я"))
+			{
+				bases.push_back(stem + L"ь");
+				bases.push_back(stem + L"й"); // «Неглюя» — Неглюй
+			}
+			// «Ціву» — Ціў: в конце белорусского слова «в» становится «ў»
+			if (!stem.empty() && stem.back() == L'в')
+				bases.push_back(stem.substr(0, stem.length() - 1) + L"ў");
+		}
+	}
+	else if (endsWith(L"ой") || endsWith(L"ай") || endsWith(L"ей") || endsWith(L"ую"))
+	{
+		// «Гаявой» — Гаява или Гаявая
+		const std::wstring stem = oblique.substr(0, oblique.length() - 2);
+		bases.push_back(stem + L"а");
+		bases.push_back(stem + L"ая");
+	}
+
+	std::vector<std::wstring> variants;
+	const auto add = [&variants, &ruleResult](const std::wstring& word) {
+		if (word.length() > 1 && ToLower(word) != ToLower(ruleResult)
+			&& std::find(variants.begin(), variants.end(), word) == variants.end())
+			variants.push_back(word);
+	};
+	for (const std::wstring& base : bases)
+	{
+		add(base);
+		const size_t n = base.length();
+		// беглая гласная: «Лобанк» — Лобанок, «Глушц» — Глушец, «Колеснь» — Колесень
+		if (n >= 4 && base.compare(n - 2, 2, L"нь") == 0 && isNameConsonant(base[n - 3]))
+		{
+			for (const wchar_t* vowel : { L"е", L"а", L"э", L"ё" })
+				add(base.substr(0, n - 2) + vowel + L"нь");
+		}
+		else if (n >= 3 && isNameConsonant(base[n - 1]) && isNameConsonant(base[n - 2]))
+		{
+			for (const wchar_t* vowel : { L"о", L"е", L"а", L"э", L"ё" })
+				add(base.substr(0, n - 1) + vowel + base.substr(n - 1));
+		}
+		// одна гласная, безударная в косвенном падеже: «Валк» — Волк/Воўк, «Бабр» — Бобр, «Ярш» — Ёрш
+		size_t vowels = 0, at = 0;
+		for (size_t i = 0; i < n; ++i)
+		{
+			if (isNameVowel(base[i]))
+			{
+				++vowels;
+				at = i;
+			}
+		}
+		if (vowels == 1 && (base[at] == L'а' || base[at] == L'я' || base[at] == L'Я' || base[at] == L'А'))
+		{
+			std::wstring stressed = base;
+			stressed[at] = base[at] == L'а' ? L'о' : base[at] == L'А' ? L'О' : base[at] == L'я' ? L'ё' : L'Ё';
+			add(stressed);
+			if (at + 1 < n && stressed[at + 1] == L'л')
+				add(stressed.substr(0, at + 1) + L"ў" + stressed.substr(at + 2));
+		}
+	}
+	return variants;
+}
+
+bool CNameConverter::ChooseKnownSurname(std::wstring& surname, const std::wstring& oblique, SexType sex, LangType lang) const
+{
+	const auto& known = lang == LangRU ? m_KnownSurnamesRU : m_KnownSurnamesBY;
+	if (known.empty() || surname.empty() || known.count(ToLower(surname)))
+		return false;
+	std::wstring source = oblique;
+	if (lang == LangBY)
+		ToCyrillicI(source, true);
+	int best = 0;
+	std::wstring chosen;
+	for (const std::wstring& variant : SurnameVariants(source, surname, sex))
+	{
+		const auto found = known.find(ToLower(variant));
+		if (found != known.end() && found->second > best)
+		{
+			best = found->second;
+			chosen = variant;
+		}
+	}
+	if (chosen.empty())
+		return false;
+	surname = chosen;
+	return true;
 }

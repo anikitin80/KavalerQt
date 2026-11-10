@@ -43,6 +43,7 @@ add_executable(Kavaler WIN32
     src/import/Translator.cpp
     src/import/ImportDialog.cpp
     src/import/ImportMatch.h
+    src/import/KnownSurnames.h
     src/import/ImportMatch.cpp
     resources.qrc
 )

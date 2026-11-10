@@ -22,6 +22,7 @@ private slots:
     void isMiddleName_data();
     void isMiddleName();
     void sex();
+    void catalogPicksTheSurname();
 };
 
 void TestNameConverter::normalizeName_data()
@@ -259,6 +260,43 @@ void TestNameConverter::sex()
     QCOMPARE(converter.GetSex(femaleDatUpper, Dative), SexFemale);
     QCOMPARE(converter.GetSex(femaleUpper, Accusative), SexFemale);
     QCOMPARE(converter.GetSex(male, Accusative), SexMale);
+}
+
+// косвенная фамилия даёт несколько именительных: берётся известный каталогу,
+// а фамилия правила, если каталог её знает, остаётся
+void TestNameConverter::catalogPicksTheSurname()
+{
+    const auto convert = [](CNameConverter& converter, const QString& decree, LangType lang, NounCase nounCase) {
+        std::wstring name = decree.toStdWString();
+        converter.NormalizeName(name, lang, nounCase);
+        return QString::fromStdWString(name);
+    };
+    CNameConverter rulesOnly;
+    QCOMPARE(convert(rulesOnly, QStringLiteral("Склюту Іосіфу Абрамавічу"), LangBY, Dative),
+             QStringLiteral("Склюта Іосіф Абрамавіч"));
+
+    CNameConverter converter;
+    converter.SetKnownSurnames(LangBY, {{L"склют", 2}, {L"масол", 4}, {L"колесень", 1}, {L"воўк", 3}, {L"ёрш", 1},
+                                        {L"кухта", 1}, {L"кухт", 9}});
+    converter.SetKnownSurnames(LangRU, {{L"лобанок", 2}});
+    QCOMPARE(convert(converter, QStringLiteral("Склюту Іосіфу Абрамавічу"), LangBY, Dative),
+             QStringLiteral("Склют Іосіф Абрамавіч"));
+    QCOMPARE(convert(converter, QStringLiteral("Масла Леаніда Леанідавіча"), LangBY, Accusative),
+             QStringLiteral("Масол Леанід Леанідавіч"));
+    QCOMPARE(convert(converter, QStringLiteral("Колесня Уладзіміра Васільевіча"), LangBY, Accusative),
+             QStringLiteral("Колесень Уладзімір Васільевіч"));
+    QCOMPARE(convert(converter, QStringLiteral("Валка Аляксандра Аляксандравіча"), LangBY, Accusative),
+             QStringLiteral("Воўк Аляксандр Аляксандравіч"));
+    QCOMPARE(convert(converter, QStringLiteral("Ярша Алега Віктаравіча"), LangBY, Accusative),
+             QStringLiteral("Ёрш Алег Віктаравіч"));
+    QCOMPARE(convert(converter, QStringLiteral("Лобанку Александру Ивановичу"), LangRU, Dative),
+             QStringLiteral("Лобанок Александр Иванович"));
+    // «Кухта» каталог знает: более частый «Кухт» её не вытесняет
+    QCOMPARE(convert(converter, QStringLiteral("Кухту Івану Іванавічу"), LangBY, Dative),
+             QStringLiteral("Кухта Іван Іванавіч"));
+    // неизвестная каталогу фамилия без известных вариантов остаётся по правилу
+    QCOMPARE(convert(converter, QStringLiteral("Зайцаву Івану Іванавічу"), LangBY, Dative),
+             convert(rulesOnly, QStringLiteral("Зайцаву Івану Іванавічу"), LangBY, Dative));
 }
 
 QTEST_GUILESS_MAIN(TestNameConverter)

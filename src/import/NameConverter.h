@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 enum SexType
@@ -92,6 +93,13 @@ public:
 	SexType GetSex(std::wstring& middleName, NounCase nounCase);
 	bool IsMiddleName(const std::wstring& name, LangType lang, NounCase nounCase);
 
+	// фамилии каталога (нижний регистр → сколько записей): косвенная форма часто
+	// даёт несколько именительных («Склюту» — Склют или Склюта, «Лобанку» —
+	// Лобанок), и тогда берётся тот, что каталог уже знает. Пусто — только правила.
+	void SetKnownSurnames(LangType lang, std::unordered_map<std::wstring, int> counts);
+	// именительные, которые может дать косвенная фамилия oblique, кроме ruleResult
+	static std::vector<std::wstring> SurnameVariants(const std::wstring& oblique, const std::wstring& ruleResult, SexType sex);
+
 	static bool ApplyRules(std::wstring& name, const RulesList& rules, SexType sex, LangType lang, NounCase nounCase, bool bFullWordMatch);
 	// правило с окончаниями «ую,ею» / «уя,ея» становится отдельным правилом на каждую пару;
 	// им собирается каждая таблица (без него списки через запятую никогда не совпадут)
@@ -99,6 +107,11 @@ public:
 
 protected:
 	static bool ForEachPart(std::wstring& word, const std::function<bool(std::wstring&)>& convert);
+	// фамилия правила неизвестна каталогу, а один из вариантов известен: берётся он
+	bool ChooseKnownSurname(std::wstring& surname, const std::wstring& oblique, SexType sex, LangType lang) const;
+
+	std::unordered_map<std::wstring, int> m_KnownSurnamesRU;
+	std::unordered_map<std::wstring, int> m_KnownSurnamesBY;
 
 	static const RulesList ExceptionsFirstName;
 	static const RulesList ExceptionsLastName;
