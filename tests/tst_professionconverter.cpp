@@ -51,6 +51,20 @@ void TestProfessionConverter::convert_data()
                                          << QStringLiteral("Слесарь цеха № 5");
     QTest::newRow("ru acc with adjective") << QStringLiteral("старшего инспектора отдела") << LangRU << Accusative
                                            << QStringLiteral("старший инспектор отдела");
+    QTest::newRow("ru dat -кому adjective") << QStringLiteral("техническому директору общества") << LangRU << Dative
+                                            << QStringLiteral("технический директор общества");
+    QTest::newRow("ru acc -кого adjective") << QStringLiteral("коммерческого директора предприятия") << LangRU << Accusative
+                                            << QStringLiteral("коммерческий директор предприятия");
+    QTest::newRow("ru dat -шей adjective") << QStringLiteral("старшей медицинской сестре больницы") << LangRU << Dative
+                                           << QStringLiteral("старшая медицинская сестра больницы");
+    QTest::newRow("ru acc stressed -ой from dictionary") << QStringLiteral("бурового мастера управления") << LangRU << Accusative
+                                                         << QStringLiteral("буровой мастер управления");
+    QTest::newRow("by acc -гога adjective") << QStringLiteral("другога пілота авіяцыйнай эскадрыллі") << LangBY << Accusative
+                                            << QStringLiteral("другі пілот авіяцыйнай эскадрыллі");
+    QTest::newRow("by acc fleeting vowel after hyphen") << QStringLiteral("лектара-музыказнаўца аркестра") << LangBY << Accusative
+                                                        << QStringLiteral("лектар-музыказнавец аркестра");
+    QTest::newRow("by acc student keeps faculty") << QStringLiteral("студэнта трэцяга курса механіка-матэматычнага факультэта") << LangBY << Accusative
+                                                  << QStringLiteral("студэнт трэцяга курса механіка-матэматычнага факультэта");
     QTest::newRow("ru acc") << QStringLiteral("механика колхоза «Рассвет»") << LangRU << Accusative
                             << QStringLiteral("механик колхоза «Рассвет»");
     QTest::newRow("ru hyphen, second part new") << QStringLiteral("водителю-экспедитору филиала") << LangRU << Dative
