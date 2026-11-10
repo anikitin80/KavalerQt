@@ -869,7 +869,100 @@ bool CProfessionConverter::ConvertProfession(std::wstring& strSource, LangType l
 		}
 	}
 
+	SeparateLeadingDegree(strSource, lang, nounCase);
+	SeparateTrailingTitle(strSource, lang, nounCase);
 	return bResult;
+}
+
+namespace {
+
+// именительные званий, которые указ ставит перед именем без запятой
+bool isTitleNominative(const std::wstring& word)
+{
+	static const wchar_t* titles[] = {
+		L"профессор", L"академик", L"композитор", L"доцент", L"член-корреспондент",
+		L"прафесар", L"акадэмік", L"кампазітар", L"дацэнт", L"член-карэспандэнт",
+	};
+	for (const wchar_t* title : titles)
+	{
+		if (word == title)
+			return true;
+	}
+	return false;
+}
+
+bool isDegreeNominative(const std::wstring& word)
+{
+	return word == L"доктор" || word == L"кандидат" || word == L"доктар" || word == L"кандыдат";
+}
+
+bool isSciencesWord(const std::wstring& word)
+{
+	return word == L"наук" || word == L"навук";
+}
+
+// слова и их начала: «доктару медыцынскіх навук» → {доктару, медыцынскіх, навук}
+std::vector<std::pair<size_t, std::wstring>> splitWords(const std::wstring& text)
+{
+	std::vector<std::pair<size_t, std::wstring>> words;
+	size_t pos = 0;
+	while (pos < text.length())
+	{
+		pos = text.find_first_not_of(L' ', pos);
+		if (pos == std::wstring::npos)
+			break;
+		const size_t end = std::min(text.find(L' ', pos), text.length());
+		words.push_back({ pos, text.substr(pos, end - pos) });
+		pos = end;
+	}
+	return words;
+}
+
+} // namespace
+
+// «…університэта профессору», «…акадэміі навук Беларусі акадэміка», «…інстытута доктару
+// медыцынскіх навук»: указ ставит звание перед именем без запятой, каталог отделяет
+// его запятой и хранит в именительном
+void CProfessionConverter::SeparateTrailingTitle(std::wstring& strSource, LangType lang, NounCase nounCase)
+{
+	const auto words = splitWords(strSource);
+	if (words.size() < 3)
+		return;
+	// звание — последнее слово, учёная степень — три последних («доктару медыцынскіх навук»)
+	size_t titleIndex = words.size() - 1;
+	if (isSciencesWord(ToLower(words.back().second)))
+		titleIndex = words.size() - 3;
+	if (titleIndex < 2)
+		return;
+	const std::wstring& before = words[titleIndex - 1].second;
+	if (before.empty() || before.back() == L',' || before == L"–" || before == L"-")
+		return;
+	const std::wstring title = ToLower(words[titleIndex].second);
+	const WordForm form = findForm(title, lang, nounCase);
+	if (!form.found)
+		return;
+	const bool degree = titleIndex == words.size() - 3 && isDegreeNominative(form.nominative);
+	if (!degree && !(titleIndex == words.size() - 1 && isTitleNominative(form.nominative)))
+		return;
+	const size_t pos = words[titleIndex].first;
+	ReplaceKeepingFirstLetter(strSource, pos, form.declinedLength, form.nominative);
+	strSource.insert(pos - 1, L",");
+}
+
+// «доктар тэхнічных навук прарэктару па вучэбнай рабоце»: степень в начале, а должность
+// за ней осталась в косвенном падеже; каталог пишет «доктар тэхнічных навук, прарэктар …»
+void CProfessionConverter::SeparateLeadingDegree(std::wstring& strSource, LangType lang, NounCase nounCase)
+{
+	const auto words = splitWords(strSource);
+	if (words.size() < 4 || !isDegreeNominative(ToLower(words[0].second)) || !isSciencesWord(ToLower(words[2].second)))
+		return;
+	const size_t posJob = words[3].first;
+	if (!findForm(ToLower(words[3].second), lang, nounCase).found)
+		return;
+	std::wstring rest = strSource.substr(posJob);
+	ConvertProfession(rest, lang, nounCase);
+	strSource.replace(posJob, std::wstring::npos, rest);
+	strSource.insert(posJob - 1, L",");
 }
 
 void CProfessionConverter::FindNewWords(std::wstring& strSource, LangType lang, NounCase nounCase)

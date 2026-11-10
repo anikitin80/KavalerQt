@@ -155,6 +155,17 @@ void TestProfessionConverter::convert_data()
                                                       << QStringLiteral("старшы тэхнік інжынерна-тэхнічных сродкаў аховы (начальніка)");
     QTest::newRow("by dat job in a far bracket") << QStringLiteral("урачу хуткай медыцынскай дапамогі (загадчыку падстанцыі)") << LangBY << Dative
                                                  << QStringLiteral("урач хуткай медыцынскай дапамогі (загадчык падстанцыі)");
+    // звание и учёная степень перед именем без запятой: каталог отделяет их запятой
+    QTest::newRow("ru dat trailing professor") << QStringLiteral("декану физического факультета университета профессору") << LangRU << Dative
+                                               << QStringLiteral("декан физического факультета университета, профессор");
+    QTest::newRow("ru acc trailing academician") << QStringLiteral("директора института академии наук академика") << LangRU << Accusative
+                                                 << QStringLiteral("директор института академии наук, академик");
+    QTest::newRow("by dat trailing degree") << QStringLiteral("дырэктару інстытута доктару тэхнічных навук") << LangBY << Dative
+                                            << QStringLiteral("дырэктар інстытута, доктар тэхнічных навук");
+    QTest::newRow("by dat leading degree") << QStringLiteral("доктару тэхнічных навук прарэктару па вучэбнай рабоце") << LangBY << Dative
+                                           << QStringLiteral("доктар тэхнічных навук, прарэктар па вучэбнай рабоце");
+    QTest::newRow("by dat title after a comma stays") << QStringLiteral("загадчыку кафедры, прафесару") << LangBY << Dative
+                                                      << QStringLiteral("загадчык кафедры, прафесар");
 }
 
 // первая должность незнакома, вторая после запятой всё равно приводится

@@ -74,6 +74,10 @@ protected:
 	// с posWord (после запятой или «і») начинается должность: она в словаре,
 	// возможно после одного-двух прилагательных или незнакомого слова и «і»
 	bool StartsWithProfession(const std::wstring& strSource, size_t posWord, LangType lang, NounCase nounCase) const;
+	// звание или учёная степень в конце без запятой: «…універсітэта профессору» → «…, профессор»
+	void SeparateTrailingTitle(std::wstring& strSource, LangType lang, NounCase nounCase);
+	// степень в начале и должность за ней: «доктар … навук прарэктару» → «доктар … навук, прарэктар»
+	void SeparateLeadingDegree(std::wstring& strSource, LangType lang, NounCase nounCase);
 	void ConvertLeadingAdjectives(std::wstring& strSource, size_t posMainWord, LangType lang, NounCase nounCase);
 	// «старшего пожарного», «старшага паветранага радыста»: цепочка согласованных
 	// прилагательных в начале, когда словарной должности среди первых слов нет
