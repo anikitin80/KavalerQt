@@ -229,7 +229,7 @@ const std::vector<std::wstring> searchFinishBY = { L"Прэзідэнт Рэсп
 const std::vector<std::wstring> searchFinishRU = { L"Президент Республики Беларусь" };
 const std::vector<std::wstring> searchUkazStart = { L"УКАЗ ПР", L"УКАЗ ПР", L"УКАЗПР" };
 const std::vector<std::wstring> searchActionsBY = { L"знагародзіць", L"прысвоіць", L"Прысвоіць" };
-const std::vector<std::wstring> searchActionsRU = { L"наградить", L"присвоить", L"Присвоить" };
+const std::vector<std::wstring> searchActionsRU = { L"наградить", L"Наградить", L"присвоить", L"Присвоить" };
 const std::vector<std::wstring> searchGroup = { L"группу", L"группы", L"работников", L"работникам", L"работнікаў", L"супрацоўнікаў",
 	L"супрацоўнікам", L"сотрудникам", L"сотрудников", L"артистов", L"артистам", L"артыстаў", L"артыстам",
 	L"ваеннаслужачых", L"военнослужащих" };

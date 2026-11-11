@@ -74,6 +74,7 @@ private slots:
     void wrappedWordsAreJoinedByTheCatalog();
     void latinLettersInTheJobAndName();
     void dashInTheActionLineIsNotAList();
+    void actionWordWithCapitalLetterRu();
     void resetClearsEverything();
 
 private:
@@ -1036,6 +1037,25 @@ void TestDocumentParser::dashInTheActionLineIsNotAList()
     for (const PersonInfo& person : m_parser->m_Persons)
         names << text(person.Name);
     QCOMPARE(names, QStringList({QStringLiteral("Лагодзіч Юрый Іванавіч"), QStringLiteral("Лабан Пётр Пятровіч")}));
+}
+
+void TestDocumentParser::actionWordWithCapitalLetterRu()
+{
+    // «1. Наградить:» с прописной: раньше весь пункт пропускался
+    parse({kUkazRu, QStringLiteral("14 января 1998 г.№ 31"),
+           QStringLiteral("1. Наградить:"),
+           QStringLiteral("орденом Почета"),
+           QStringLiteral("БлохинаНиколая Григорьевича"), QStringLiteral("–"),
+           QStringLiteral("директора племсовхоза имени Чкалова Горецкого района"),
+           QStringLiteral("2. Присвоить почетные звания Республики Беларусь:"),
+           QStringLiteral("«Заслуженный работник промышленности Республики Беларусь»"),
+           QStringLiteral("ГрищенкоВладимиру Станиславовичу"), QStringLiteral("–"),
+           QStringLiteral("наладчику токарных автоматов"),
+           QStringLiteral("Президент Республики Беларусь")});
+    QStringList names;
+    for (const PersonInfo& person : m_parser->m_Persons)
+        names << text(person.Name);
+    QCOMPARE(names, QStringList({QStringLiteral("Блохин Николай Григорьевич"), QStringLiteral("Грищенко Владимир Станиславович")}));
 }
 
 void TestDocumentParser::resetClearsEverything()
