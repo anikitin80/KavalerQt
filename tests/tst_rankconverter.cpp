@@ -65,7 +65,23 @@ void TestRankConverter::extract_data()
     QTest::newRow("by rank in retirement") << QStringLiteral("прафесара кафедры, палкоўніка ўнутранай службы ў адстаўцы")
                                            << LangBY << Accusative << QStringLiteral("палкоўнік ўнутранай службы ў адстаўцы")
                                            << QStringLiteral("прафесара кафедры");
+    // звание в конце без запятой, хотя запятая в должности есть
+    QTest::newRow("by trailing without comma") << QStringLiteral("памочніка начальніка аддзела, па барацьбе з карупцыяй Камітэта дзяржаўнай бяспекі маёра")
+                                               << LangBY << Accusative << QStringLiteral("маёр")
+                                               << QStringLiteral("памочніка начальніка аддзела, па барацьбе з карупцыяй Камітэта дзяржаўнай бяспекі");
+    QTest::newRow("by trailing генерал-палкоўнік") << QStringLiteral("члена Дзяржаўнага Савета, Міністра абароны Кітайскай Народнай Рэспублікі генерал-палкоўніка")
+                                                   << LangBY << Accusative << QStringLiteral("генерал-палкоўнік")
+                                                   << QStringLiteral("члена Дзяржаўнага Савета, Міністра абароны Кітайскай Народнай Рэспублікі");
+    // звание первым, должность после запятой
+    QTest::newRow("ru leading rank") << QStringLiteral("полковнику, начальнику 927-го управления") << LangRU << Dative
+                                     << QStringLiteral("полковник") << QStringLiteral("начальнику 927-го управления");
+    QTest::newRow("ru leading rank with tail") << QStringLiteral("полковнику милиции, начальнику отдела") << LangRU << Dative
+                                               << QStringLiteral("полковник милиции") << QStringLiteral("начальнику отдела");
     // должности, не звания
+    QTest::newRow("by памочнік капітана is a position") << QStringLiteral("старшага памочніка капітана")
+                                                        << LangBY << Accusative << QString() << QStringLiteral("старшага памочніка капітана");
+    QTest::newRow("ru старшина группы is a position") << QStringLiteral("старшине группы, водителю") << LangRU << Dative
+                                                      << QString() << QStringLiteral("старшине группы, водителю");
     QTest::newRow("by саветнік is a position") << QStringLiteral("саветніка ўпраўлення кадравай работы")
                                                << LangBY << Accusative << QString() << QStringLiteral("саветніка ўпраўлення кадравай работы");
     QTest::newRow("by капітан-механік is a position") << QStringLiteral("капітана-механіка прадпрыемства водных шляхоў")

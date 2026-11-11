@@ -131,6 +131,8 @@ ImportDialog::ImportDialog(Catalog* catalog, QWidget* parent)
     m_parser.Initialize(awards);
     // неоднозначную фамилию («Склюту» — Склют или Склюта) решает каталог
     loadKnownSurnames(m_parser.m_NameConverter, *catalog);
+    // дефис переноса строки («ком-плексу») убирается, если каталог знает слово без него
+    loadKnownWords(m_parser, *catalog);
 
     m_fileMode = new QRadioButton(QStringLiteral("Файл"));
     auto* folderMode = new QRadioButton(QStringLiteral("Каталог"));

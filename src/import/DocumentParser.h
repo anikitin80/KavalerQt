@@ -42,6 +42,13 @@ public:
 
 	static bool IsMilitaryAward(int awardId);
 
+	// слова должностей и званий каталога (нижний регистр → сколько раз): по ним
+	// дефис переноса строки («ком-плексу», «пра-паршчыка») отличается от дефиса
+	// составного слова. Пусто — дефисы не трогаются.
+	void SetKnownWords(LangType lang, std::map<std::wstring, int> counts);
+	// убирает дефис переноса, если каталог знает слово слитно и не видел его с дефисом
+	void JoinWrappedWords(std::wstring& text, LangType lang) const;
+
 	std::vector<AwardInfo> m_AwardsStat;
 	std::vector<PersonInfo> m_Persons;
 	std::vector<GroupInfo> m_GroupsInfo;
@@ -87,6 +94,8 @@ protected:
 	// сведения о группе действуют: из заголовка указа — до его конца,
 	// из пункта («1. ... узнагародзіць работнікаў ...») — до следующего пункта
 	bool m_GroupActive = false;
+	std::map<std::wstring, int> m_KnownWordsRU;
+	std::map<std::wstring, int> m_KnownWordsBY;
 	bool m_GroupWholeDecree = false;
 };
 

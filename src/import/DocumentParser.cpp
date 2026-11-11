@@ -5,6 +5,9 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cwchar>
+#include <cwctype>
+
+#include <QString>
 
 void CDocumentParser::Initialize(std::map<long, DecreeAward>& awards)
 {
@@ -1015,7 +1018,9 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 						NormalizePersonInfo(info);
 						m_Persons.push_back(info);
 					}
-					else if ((bPossibleGroupStart || bMultiplePochet) && strLine[pos] == L'–')
+					// строка с «узнагародзіць» / «прысвоіць» уже разобрана как одно
+					// награждение: тире в ней — внутри должности, а не список
+					else if ((bPossibleGroupStart || bMultiplePochet) && strLine[pos] == L'–' && !actionLine)
 					{
 						// старый формат списка в docx
 						nAwardedCount++;
@@ -1292,8 +1297,148 @@ bool CDocumentParser::peelListedPeople(PersonInfo& person)
 	return true;
 }
 
+void CDocumentParser::SetKnownWords(LangType lang, std::map<std::wstring, int> counts)
+{
+	(lang == LangRU ? m_KnownWordsRU : m_KnownWordsBY) = std::move(counts);
+}
+
+namespace {
+
+bool isLowerCyrillic(wchar_t c)
+{
+	return (c >= L'а' && c <= L'я') || c == L'ё' || c == L'і' || c == L'ў';
+}
+
+bool isUpperCyrillic(wchar_t c)
+{
+	return (c >= L'А' && c <= L'Я') || c == L'Ё' || c == L'І' || c == L'Ў';
+}
+
+bool isWordLetter(wchar_t c)
+{
+	return isLowerCyrillic(c) || isUpperCyrillic(c) || c == L'\'' || c == L'\u2019' || c == L'\u02BC';
+}
+
+// сколько раз каталог видел слово; слово, которое каталог знает только в другой
+// форме («прапаршчыка» при «прапаршчык»), считается один раз
+int knownCount(const std::map<std::wstring, int>& words, const std::wstring& word)
+{
+	const auto exact = words.find(word);
+	if (exact != words.end())
+		return exact->second;
+	if (word.length() < 7)
+		return 0;
+	const std::wstring stem = word.substr(0, word.length() - 2);
+	const auto next = words.lower_bound(stem);
+	return next != words.end() && next->first.compare(0, stem.length(), stem) == 0 ? 1 : 0;
+}
+
+// латинские двойники в кириллических словах («пaдпaлкоўнiка», «Віктаровічa»)
+void toCyrillicLetters(std::wstring& text, LangType lang)
+{
+	text = NormalizeCyrillicText(QString::fromStdWString(text), lang == LangBY).toStdWString();
+}
+
+// «”Ушацкі лясгас“», «“…”»: типографские кавычки — ёлочки, как в каталоге
+void toGuillemets(std::wstring& text)
+{
+	for (size_t i = 0; i < text.size(); ++i)
+	{
+		const wchar_t c = text[i];
+		if (c != L'\u201C' && c != L'\u201D' && c != L'\u201E')
+			continue;
+		const bool letterAfter = i + 1 < text.size() && (isWordLetter(text[i + 1]) || iswalnum(text[i + 1]));
+		const bool letterBefore = i > 0 && (isWordLetter(text[i - 1]) || iswalnum(text[i - 1]));
+		if (letterAfter && !letterBefore)
+			text[i] = L'«';
+		else if (letterBefore && !letterAfter)
+			text[i] = L'»';
+	}
+}
+
+// «АксануУладзіміраўну»: отчество слиплось с именем
+void splitGluedPatronymic(CNameConverter& names, std::wstring& name, LangType lang, NounCase nounCase)
+{
+	for (size_t i = 1; i < name.size(); ++i)
+	{
+		if (!isLowerCyrillic(name[i - 1]) || !isUpperCyrillic(name[i]))
+			continue;
+		size_t end = name.find(L' ', i);
+		if (end == std::wstring::npos)
+			end = name.size();
+		if (names.IsMiddleName(name.substr(i, end - i), lang, nounCase))
+			name.insert(i, 1, L' ');
+	}
+}
+
+// «Алексия ІІ»: римская цифра в русском имени латиницей, как в каталоге
+void latinRomanNumerals(std::wstring& name)
+{
+	size_t begin = 0;
+	while (begin < name.size())
+	{
+		size_t end = name.find_first_of(L" ()", begin);
+		if (end == std::wstring::npos)
+			end = name.size();
+		bool roman = end - begin >= 2;
+		for (size_t i = begin; i < end && roman; ++i)
+			roman = std::wstring(L"ІIVХX").find(name[i]) != std::wstring::npos;
+		if (roman)
+		{
+			for (size_t i = begin; i < end; ++i)
+			{
+				if (name[i] == L'І')
+					name[i] = L'I';
+				else if (name[i] == L'Х')
+					name[i] = L'X';
+			}
+		}
+		begin = end + 1;
+	}
+}
+
+} // namespace
+
+void CDocumentParser::JoinWrappedWords(std::wstring& text, LangType lang) const
+{
+	const auto& words = lang == LangRU ? m_KnownWordsRU : m_KnownWordsBY;
+	if (words.empty())
+		return;
+	for (size_t i = 1; i + 1 < text.size(); ++i)
+	{
+		if (text[i] != L'-' || !isLowerCyrillic(text[i - 1]) || !isLowerCyrillic(text[i + 1]))
+			continue;
+		size_t begin = i;
+		while (begin > 0 && isWordLetter(text[begin - 1]))
+			--begin;
+		size_t end = i + 1;
+		while (end < text.size() && isWordLetter(text[end]))
+			++end;
+		if (i - begin < 2 || end - i - 1 < 2)
+			continue;
+		const std::wstring left = ToLower(text.substr(begin, i - begin));
+		const std::wstring right = ToLower(text.substr(i + 1, end - i - 1));
+		// каталог часто хранит перенос как в указе («ста-цыянарнага») и составные
+		// слова с дефисом («агульна-адукацыйнай»): такое слово остаётся
+		if (words.count(left + L"-" + right))
+			continue;
+		if (knownCount(words, left + right) > 0)
+			text.erase(i, 1);
+	}
+}
+
 void CDocumentParser::NormalizePersonInfo(PersonInfo& person)
 {
+	{
+		const LangType textLang = person.Ukaz.RussianLang ? LangRU : LangBY;
+		// мягкий перенос Word в тексте не виден
+		person.Name.erase(std::remove(person.Name.begin(), person.Name.end(), L'\u00AD'), person.Name.end());
+		person.Description.erase(std::remove(person.Description.begin(), person.Description.end(), L'\u00AD'), person.Description.end());
+		toCyrillicLetters(person.Name, textLang);
+		toCyrillicLetters(person.Description, textLang);
+		toGuillemets(person.Description);
+		JoinWrappedWords(person.Description, textLang);
+	}
 	StrTrim(person.Name);
 	stripComradeTitle(person.Name);
 	StrTrim(person.Name);
@@ -1318,8 +1463,11 @@ void CDocumentParser::NormalizePersonInfo(PersonInfo& person)
 			person.Flags |= PersonInfo::NF_PROFESSION;
 		return;
 	}
+	splitGluedPatronymic(m_NameConverter, person.Name, lang, nounCase);
 	if (m_NameConverter.NormalizeName(person.Name, lang, nounCase))
 		person.Flags |= PersonInfo::NF_NAME;
+	if (lang == LangRU)
+		latinRomanNumerals(person.Name);
 
 	if (cutPosthumous(person.Description, lang == LangRU))
 	{

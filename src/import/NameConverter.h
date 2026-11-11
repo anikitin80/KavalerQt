@@ -91,6 +91,9 @@ class CNameConverter
 public:
 	bool NormalizeName(std::wstring& fullName, LangType lang, NounCase nounCase);
 	SexType GetSex(std::wstring& middleName, NounCase nounCase);
+	// косвенная фамилия-прилагательное: «Быкоўскую» — женская, «Сычэўскага» — мужская.
+	// SexAny, если это не прилагательное.
+	static SexType AdjectiveSurnameSex(const std::wstring& surname, NounCase nounCase);
 	bool IsMiddleName(const std::wstring& name, LangType lang, NounCase nounCase);
 
 	// фамилии каталога (нижний регистр → сколько записей): косвенная форма часто

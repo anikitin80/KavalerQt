@@ -3,7 +3,7 @@
 //
 //   decree_report --db D:/Awards/DB/Kavaler.sqlite --docs D:/Awards/AwardsDoc
 //                 --out build/reports/2026-11-06 [--compare build/reports/<previous>]
-//   decree_report ... --rules-only   фамилии только по правилам, без каталога
+//   decree_report ... --rules-only   фамилии и переносы только по правилам, без каталога
 //   decree_report --names --db D:/Awards/DB/Kavaler.sqlite --out build/reports/names
 //
 // --names указы не читает. Выписывает белорусские полные имена, сохранённые
@@ -346,7 +346,7 @@ int main(int argc, char** argv)
     const QCommandLineOption limitOption(QStringLiteral("limit"), QStringLiteral("Only the first N files."), QStringLiteral("N"));
     const QCommandLineOption allOption(QStringLiteral("all"), QStringLiteral("Write every person to persons.tsv, not only the differing ones."));
     const QCommandLineOption rulesOnlyOption(QStringLiteral("rules-only"),
-                                             QStringLiteral("Restore surnames by the rules alone, without the catalog's surnames."));
+                                             QStringLiteral("Restore surnames by the rules alone and keep line-wrap hyphens, without the catalog's surnames and words."));
     const QCommandLineOption namesOption(QStringLiteral("names"),
                                          QStringLiteral("Report Belarusian full names with more than one Russian spelling. Does not read decrees."));
     for (const auto& option : {dbOption, docsOption, outOption, compareOption, dictRuOption, dictByOption, filterOption, limitOption, allOption, rulesOnlyOption, namesOption})
@@ -417,9 +417,11 @@ int main(int argc, char** argv)
     }
     CDocumentParser parser;
     parser.Initialize(awards);
-    // как окно импорта: неоднозначную фамилию решает каталог (--rules-only — только правила)
-    if (!cli.isSet(rulesOnlyOption))
+    // как окно импорта: неоднозначную фамилию и дефис переноса решает каталог (--rules-only — только правила)
+    if (!cli.isSet(rulesOnlyOption)) {
         loadKnownSurnames(parser.m_NameConverter, catalog);
+        loadKnownWords(parser, catalog);
+    }
     parser.m_ProfessionConverter.SetDictionaryPath(dictRu.toStdWString(), LangRU);
     parser.m_ProfessionConverter.SetDictionaryPath(dictBy.toStdWString(), LangBY);
 

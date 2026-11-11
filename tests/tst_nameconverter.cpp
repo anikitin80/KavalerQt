@@ -67,6 +67,26 @@ void TestNameConverter::normalizeName_data()
                                             << QStringLiteral("Мінору Камата");
     QTest::newRow("by acc Хізры") << QStringLiteral("Асадулаева Хізру Газіевіча") << LangBY << Accusative
                                   << QStringLiteral("Асадулаеў Хізры Газіевіч");
+    // дательный «Нікіту» — Нікіта, но «Марату» — Марат
+    QTest::newRow("by dat male Нікіта") << QStringLiteral("Уколаву Нікіту Міхайлавічу") << LangBY << Dative
+                                        << QStringLiteral("Уколаў Нікіта Міхайлавіч");
+    QTest::newRow("by dat male Марат") << QStringLiteral("Грыгорчыку Марату Казіміравічу") << LangBY << Dative
+                                       << QStringLiteral("Грыгорчык Марат Казіміравіч");
+    QTest::newRow("by acc male Мікіта") << QStringLiteral("Лесняка Мікіту Мікалаевіча") << LangBY << Accusative
+                                        << QStringLiteral("Лесняк Мікіта Мікалаевіч");
+    QTest::newRow("by dat Алі") << QStringLiteral("Шабанаву Алі Шабанавічу") << LangBY << Dative
+                                << QStringLiteral("Шабанаў Алі Шабанавіч");
+    QTest::newRow("ru dat Любовь") << QStringLiteral("Беловой Любови Леонидовне") << LangRU << Dative
+                                   << QStringLiteral("Белова Любовь Леонидовна");
+    QTest::newRow("ru dat Майя") << QStringLiteral("Айдаровой Майе Васильевне") << LangRU << Dative
+                                 << QStringLiteral("Айдарова Майя Васильевна");
+    QTest::newRow("by acc female -юю") << QStringLiteral("Паследнюю Тамару Іванаўну") << LangBY << Accusative
+                                       << QStringLiteral("Паследняя Тамара Іванаўна");
+    // фамилия-прилагательное без отчества стоит первой и даёт пол
+    QTest::newRow("by acc adjective male") << QStringLiteral("Сычэўскага Яна") << LangBY << Accusative
+                                           << QStringLiteral("Сычэўскі Ян");
+    QTest::newRow("by acc adjective female") << QStringLiteral("Быкоўскую Алену") << LangBY << Accusative
+                                             << QStringLiteral("Быкоўская Алена");
     QTest::newRow("ru acc male Никита") << QStringLiteral("Петрова Никиту Ивановича") << LangRU << Accusative
                                         << QStringLiteral("Петров Никита Иванович");
     QTest::newRow("by acc female -ава")<< QStringLiteral("Багданаву Таццяну Аляксандраўну") << LangBY << Accusative
@@ -207,6 +227,16 @@ void TestNameConverter::unknownPatronymicIsReported()
     std::wstring name = L"Иванову Ивану оглы";
     QVERIFY(!converter.NormalizeName(name, LangRU, Dative));
     QCOMPARE(QString::fromStdWString(name), QStringLiteral("Иванов Иван оглы"));
+
+    // отчество с ошибкой: пол даёт фамилия-прилагательное
+    name = L"Струнеўскую Святлану Міколу";
+    QVERIFY(!converter.NormalizeName(name, LangBY, Accusative));
+    QCOMPARE(QString::fromStdWString(name), QStringLiteral("Струнеўская Святлана Міколу"));
+
+    // китайское имя без отчества: фамилия на «-оу» не склоняется
+    name = L"Сюй Цайхоу";
+    converter.NormalizeName(name, LangBY, Accusative);
+    QCOMPARE(QString::fromStdWString(name), QStringLiteral("Сюй Цайхоу"));
 }
 
 void TestNameConverter::aliasAtStartDoesNotThrow()

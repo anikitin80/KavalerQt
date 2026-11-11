@@ -2,6 +2,7 @@
 #include "TextUtil.h"
 
 #include <algorithm>
+#include <cwchar>
 
 // приводит имена к именительному падежу
 
@@ -53,6 +54,7 @@ const RulesList CNameConverter::RulesLastName = ExpandRules({
 	{ SexFemale,LangAny,L"ай,ой",		L"",			L"--а"},	// Никитиной
 	{ SexFemale,LangAny,L"бей",			L"",			L""},		// Воробей: раньше «-ей»
 	{ SexFemale,LangAny,L"ей",			L"ую",			L"--ая"},
+	{ SexFemale,LangBY, L"",			L"юю",			L"--яя"},	// Паследнюю
 	{ SexFemale,LangBY, L"а",			L"а",			L"" },
 	{ SexFemale,LangBY, L"ня",			L"ня",			L"" },
 	{ SexFemale,LangAny,L"бей",			L"бей",			L""},
@@ -81,6 +83,8 @@ const RulesList CNameConverter::RulesLastName = ExpandRules({
 	{ SexMale,	LangBY, L"цу,лу,ту,ку,пу", L"",		L"-а" },	// Кухту, Жыгалу («-ру» чаще «-р»: Косару)
 	{ SexAny,	LangAny,L"те",			L"",			L"-а" },	// Федуте
 	{ SexAny,	LangAny,L"це",			L"",			L"--та" },	// Федуце
+	// несклоняемые на гласную и «у»: «Сюй Цайхоу»
+	{ SexAny,	LangAny,L"оу,эу,ау,еу",	L"оу,эу,ау,еу",	L"" },
 	{ SexAny,	LangRU, L"о",			L"о",			L"" },
 	{ SexAny,	LangBY, L"о,е,э",		L"о,е,э",		L"" },
 	{ SexAny,	LangBY, L"ы",			L"",			L"-а" },    // Рагойшы
@@ -108,12 +112,18 @@ const RulesList CNameConverter::ExceptionsFirstName = ExpandRules({
 	{ SexMale, LangAny, L"", L"у,лу,ху,жу,чжу,мінору,минору", L"" },
 	// дагестанское Хизри: указ пишет винительный «Хізру», общее правило дало бы «Хізра»
 	{ SexMale, LangBY, L"хізру", L"хізру", L"-ы" },
-	{ SexMale, LangRU, L"хизру", L"хизру", L"-и" }
+	{ SexMale, LangRU, L"хизру", L"хизру", L"-и" },
+	// дательный «Нікіту» — Нікіта, но «Марату» — Марат: имена на согласную «т»
+	{ SexMale, LangBY, L"марату,талгату,ігнату,айрату,рафату,ахмату,мурату,булату,ізату,рахмату", L"", L"-" },
+	// «Шабанаву Алі»: «-лі» общего правила — женская «Наталлі», «Алі» не склоняется
+	{ SexMale, LangAny, L"алі,али", L"алі,али", L"" },
+	// «Беловой Любови»: беглая «о» не выпадает, «-ь» возвращается
+	{ SexFemale, LangRU, L"любови", L"", L"--вь" }
 });
 
 const RulesList CNameConverter::RulesFirstName = ExpandRules({
 	{ SexAny,	LangAny, L"",			L"ю",		L"-я" },	// Наталью, Илью
-	{ SexAny,	LangRU, L"ье,ое",		L"",		L"-я" },	// Наталье, Зое
+	{ SexAny,	LangRU, L"ье,ое,йе",	L"",		L"-я" },	// Наталье, Зое, Майе
 	{ SexFemale,LangRU, L"ии",			L"",		L"-я" },	// Марии, Алиции
 	// латинская «i» здесь уже заменена на «і» (ApplyRules)
 	{ SexAny,	LangBY, L"еі,оі,ьі,лі,іі,ыі,сі,’і,'і",L"", L"-я" },	// Наталлi, Надзеi, Зоі, Алесі, Соф’і
@@ -281,13 +291,24 @@ bool CNameConverter::NormalizeName(std::wstring& fullName, LangType lang, NounCa
 	// неузнанное отчество — неразобранное имя: окно импорта смотрит на NF_NAME
 	bool middleNameOk = true;
 	SexType sex = SexMale;	// по умолчанию мужской
+	// фамилия-прилагательное: по ней видны пол и место фамилии, когда отчества
+	// нет («Сычэўскага Яна», «Быкоўскую Алену») или оно с ошибкой («Міколу»)
+	const SexType adjectiveSex = AdjectiveSurnameSex(lastName, nounCase);
+	bool surnameFirst = false;
 	if (!middleName.empty())
 	{
 		sex = GetSex(middleName, nounCase);
+		if (sex == SexMale && adjectiveSex == SexFemale && !IsMiddleName(middleName, lang, nounCase))
+			sex = SexFemale;
 		// двойное отчество: «Гедзімінасавіча-Альбертасавіча»
 		middleNameOk = ForEachPart(middleName, [&](std::wstring& part) {
 			return ApplyRules(part, RulesMiddleName, sex, lang, nounCase, false);
 		});
+	}
+	else if (adjectiveSex != SexAny)
+	{
+		sex = adjectiveSex;
+		surnameFirst = true;
 	}
 	else
 	{
@@ -311,7 +332,9 @@ bool CNameConverter::NormalizeName(std::wstring& fullName, LangType lang, NounCa
 		&& ChooseKnownSurname(lastName, obliqueLastName, sex, lang))
 		bResLN = true;
 
-	if(middleName.empty())
+	if (surnameFirst)
+		fullName = lastName + L' ' + firstName;
+	else if(middleName.empty())
 		fullName = firstName + L' ' + lastName;
 	else
 		fullName = lastName + L' ' + firstName + L' ' + middleName;
@@ -332,6 +355,29 @@ SexType CNameConverter::GetSex(std::wstring& middleName, NounCase nounCase)
 	}
 
 	return SexMale;
+}
+
+SexType CNameConverter::AdjectiveSurnameSex(const std::wstring& surname, NounCase nounCase)
+{
+	const std::wstring lower = ToLower(surname);
+	const auto endsWith = [&lower](const wchar_t* ending) {
+		const size_t length = std::wcslen(ending);
+		return lower.length() > length + 1 && lower.compare(lower.length() - length, length, ending) == 0;
+	};
+	static const wchar_t* female[] = { L"скую", L"цкую", L"ская", L"цкая", L"скай", L"цкай", L"ской", L"цкой" };
+	static const wchar_t* maleAccusative[] = { L"скага", L"цкага", L"ского", L"цкого" };
+	static const wchar_t* maleDative[] = { L"скаму", L"цкаму", L"скому", L"цкому" };
+	for (const wchar_t* ending : female)
+	{
+		if (endsWith(ending))
+			return SexFemale;
+	}
+	for (const wchar_t* ending : nounCase == Dative ? maleDative : maleAccusative)
+	{
+		if (endsWith(ending))
+			return SexMale;
+	}
+	return SexAny;
 }
 
 void CNameConverter::SetKnownSurnames(LangType lang, std::unordered_map<std::wstring, int> counts)

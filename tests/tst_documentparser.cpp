@@ -71,6 +71,9 @@ private slots:
     void organizationIsAwardedItself();
     void organizationInAwardList();
     void workplaceIsNotAnOrganization();
+    void wrappedWordsAreJoinedByTheCatalog();
+    void latinLettersInTheJobAndName();
+    void dashInTheActionLineIsNotAList();
     void resetClearsEverything();
 
 private:
@@ -948,6 +951,91 @@ void TestDocumentParser::workplaceIsNotAnOrganization()
     QCOMPARE(int(m_parser->m_Persons.size()), 1);
     QVERIFY(!m_parser->m_Persons.front().Organization);
     QCOMPARE(text(m_parser->m_Persons.front().Name), QStringLiteral("Іваноў Іван Іванавіч"));
+}
+
+// дефис переноса строки из указа («ком-плексу», «прапар-шчыка») убирается,
+// если каталог знает слово без него; составное слово каталога остаётся
+void TestDocumentParser::wrappedWordsAreJoinedByTheCatalog()
+{
+    m_parser->SetKnownWords(LangBY, {{L"комплексу", 3}, {L"прапаршчык", 5}, {L"агульнаадукацыйная", 2},
+                                     {L"сярэдняя", 2}, {L"інжынер-канструктар", 4}, {L"выбуховатэхнічнай", 3},
+                                     {L"выбухова-тэхнічнай", 1}});
+    parse({kUkazBy, QStringLiteral("23 лютага 2006 г. № 120"),
+           QStringLiteral("За асабістую мужнасць узнагародзіць:"),
+           QStringLiteral("медалём «За адвагу»"),
+           QStringLiteral("ЛагодзiчаЮрыя Iванавiча"), QStringLiteral("–"),
+           QStringLiteral("выхавальніка ком-плексу «Сярэдняя агульна-адукацыйная школа», старшага прапар-шчыка"),
+           QStringLiteral("ІвановаІвана Іванавіча"), QStringLiteral("–"),
+           QStringLiteral("інжынера-канструктара цэнтра выбухова-тэхнічнай службы"),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QCOMPARE(int(m_parser->m_Persons.size()), 2);
+    PersonInfo& first = m_parser->m_Persons[0];
+    QCOMPARE(text(first.MilitaryRank), QStringLiteral("старшы прапаршчык"));
+    QCOMPARE(text(m_parser->GetPersonDescription(first, false)),
+             QStringLiteral("выхавальнік комплексу «Сярэдняя агульнаадукацыйная школа»"));
+    // каталог видел слово и с дефисом: оно остаётся как в указе
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[1], false)),
+             QStringLiteral("інжынер-канструктар цэнтра выбухова-тэхнічнай службы"));
+
+    // без слов каталога дефисы не трогаются
+    init();
+    parse({kUkazBy, QStringLiteral("23 лютага 2006 г. № 120"),
+           QStringLiteral("За асабістую мужнасць узнагародзіць:"),
+           QStringLiteral("медалём «За адвагу»"),
+           QStringLiteral("ЛагодзiчаЮрыя Iванавiча"), QStringLiteral("–"),
+           QStringLiteral("выхавальніка ком-плексу"),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[0], false)), QStringLiteral("выхавальнік ком-плексу"));
+}
+
+// латинские буквы внутри кириллических слов не мешают найти звание и фамилию;
+// типографские кавычки становятся ёлочками
+void TestDocumentParser::latinLettersInTheJobAndName()
+{
+    parse({kUkazBy, QStringLiteral("23 лютага 2006 г. № 120"),
+           QStringLiteral("За асабістую мужнасць узнагародзіць:"),
+           QStringLiteral("медалём «За адвагу»"),
+           QStringLiteral("ВіктаровічaАляксандра Мікалаевіча"), QStringLiteral("–"),
+           QStringLiteral("начальніка аддзялення вайсковай часці 7404, пaдпaлкоўнiка"),
+           QStringLiteral("КачанаПятра Пятровіча"), QStringLiteral("–"),
+           QStringLiteral("лесніка ўстановы ”Ушацкі лясгас“, г. Ушачы"),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QCOMPARE(int(m_parser->m_Persons.size()), 2);
+    PersonInfo& first = m_parser->m_Persons[0];
+    QCOMPARE(text(first.Name), QStringLiteral("Віктаровіч Аляксандр Мікалаевіч"));
+    QCOMPARE(text(first.MilitaryRank), QStringLiteral("падпалкоўнік"));
+    QCOMPARE(text(m_parser->GetPersonDescription(first, false)),
+             QStringLiteral("начальнік аддзялення вайсковай часці 7404"));
+    const QString forester = text(m_parser->GetPersonDescription(m_parser->m_Persons[1], false));
+    QVERIFY2(forester.contains(QStringLiteral("«Ушацкі лясгас»")), qPrintable(forester));
+    QVERIFY2(forester.endsWith(QStringLiteral("лясгас», г. Ушачы")), qPrintable(forester));
+
+    // римская цифра в русском имени — латиницей, как в каталоге
+    init();
+    parse({kUkazRu, QStringLiteral("23 сентября 1998 г. № 460"),
+           QStringLiteral("За заслуги наградить Патриарха Московского и всея Руси Алексия ІІ (Ридигера Алексея Михайловича) "
+                          "медалью «За отвагу»."),
+           kPresident});
+    QCOMPARE(int(m_parser->m_Persons.size()), 1);
+    QVERIFY(text(m_parser->m_Persons[0].Name).startsWith(QStringLiteral("Алексий II ")));
+}
+
+// «2. Прысвоіць дырэктару ... – Лідскія электрычныя сеткі Лабану ...»: строка
+// с действием после списка — одно награждение, тире в ней не делает её строкой списка
+void TestDocumentParser::dashInTheActionLineIsNotAList()
+{
+    parse({kUkazBy, QStringLiteral("24 кастрычніка 2005 г. № 498"),
+           QStringLiteral("1. Узнагародзіць:"),
+           QStringLiteral("медалём «За адвагу»"),
+           QStringLiteral("ЛагодзiчаЮрыя Iванавiча"), QStringLiteral("–"),
+           QStringLiteral("старшага інспектара"),
+           QStringLiteral("2. Прысвоіць дырэктару філіяла прадпрыемства «Гроднаэнерга» – Лідскія электрычныя сеткі "
+                          "Лабану Пятру Пятровічу ганаровае званне «Заслужаны ўрач Рэспублікі Беларусь»."),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QStringList names;
+    for (const PersonInfo& person : m_parser->m_Persons)
+        names << text(person.Name);
+    QCOMPARE(names, QStringList({QStringLiteral("Лагодзіч Юрый Іванавіч"), QStringLiteral("Лабан Пётр Пятровіч")}));
 }
 
 void TestDocumentParser::resetClearsEverything()

@@ -2,6 +2,7 @@
 #include "TextUtil.h"
 
 #include <algorithm>
+#include <cwchar>
 
 namespace {
 
@@ -73,6 +74,88 @@ std::vector<const RankInfo*> ranksLongestFirst(const std::vector<RankInfo>& allR
 	return ranks;
 }
 
+// «старшага памочніка капітана»: звание после такого слова — чьё-то, это должность
+bool afterAide(const std::wstring& text, size_t rankPos)
+{
+	if (rankPos < 2)
+		return false;
+	const size_t wordEnd = rankPos - 1;
+	const size_t space = text.rfind(L' ', wordEnd - 1);
+	const size_t wordBegin = space == std::wstring::npos ? 0 : space + 1;
+	const std::wstring before = ToLower(text.substr(wordBegin, wordEnd - wordBegin));
+	static const wchar_t* aides[] = { L"памочн", L"помощн", L"дублёр", L"дублер", L"ад'ютант", L"адъютант" };
+	for (const wchar_t* word : aides)
+	{
+		if (before.compare(0, std::wcslen(word), word) == 0)
+			return true;
+	}
+	return false;
+}
+
+// звание в самом конце без запятой: «…Камітэта дзяржаўнай бяспекі маёра»,
+// «…Кітайскай Народнай Рэспублікі генерал-палкоўніка». «памочніка капітана» — должность.
+bool extractTrailing(std::wstring& description, std::wstring& rank, const std::vector<const RankInfo*>& ranks, NounCase nounCase)
+{
+	std::wstring text = description;
+	ToCyrillicI(text, false);
+	for (const RankInfo* pRank : ranks)
+	{
+		if (pRank->Nominative.find(L"саветнік") != std::wstring::npos)
+			continue;
+		const std::wstring& form = nounCase == Dative ? pRank->Dative : pRank->Accusative;
+		if (text.length() <= form.length() + 1
+			|| text.compare(text.length() - form.length(), form.length(), form) != 0
+			|| text[text.length() - form.length() - 1] != L' ')
+			continue;
+		const size_t wordEnd = text.length() - form.length() - 1;
+		if (afterAide(text, wordEnd + 1))
+			continue;
+		rank = pRank->Nominative;
+		description.erase(wordEnd);
+		StrTrim(description);
+		return true;
+	}
+	return false;
+}
+
+// звание в начале перед запятой: «полковнику, начальнику ...», «генерал-полковнику, Министру обороны»
+bool extractLeading(std::wstring& description, std::wstring& rank, const std::vector<const RankInfo*>& ranks, NounCase nounCase)
+{
+	const size_t comma = description.find(L',');
+	if (comma == std::wstring::npos)
+		return false;
+	std::wstring head = description.substr(0, comma);
+	ToCyrillicI(head, false);
+	for (const RankInfo* pRank : ranks)
+	{
+		const std::wstring& form = nounCase == Dative ? pRank->Dative : pRank->Accusative;
+		if (head.compare(0, form.length(), form) != 0)
+			continue;
+		const std::wstring rest = head.substr(form.length());
+		if (!rest.empty() && rest[0] != L' ')
+			continue;
+		// хвост звания: «милиции», «унутранай службы»; «старшине группы» — должность
+		static const wchar_t* tails[] = {
+			L" милиции", L" міліцыі", L" юстиции", L" юстыцыі", L" внутренней службы", L" унутранай службы",
+			L" медицинской службы", L" медыцынскай службы",
+		};
+		bool knownTail = rest.empty();
+		for (const wchar_t* tail : tails)
+			knownTail = knownTail || rest == tail;
+		if (!knownTail)
+			continue;
+		std::wstring job = description.substr(comma + 1);
+		StrTrim(job);
+		if (job.empty())
+			return false;
+		rank = pRank->Nominative + rest;
+		StrTrim(rank);
+		description = std::move(job);
+		return true;
+	}
+	return false;
+}
+
 } // namespace
 
 bool CRankConverter::Extract(std::wstring& description, std::wstring& rank, LangType lang, NounCase nounCase)
@@ -140,7 +223,7 @@ bool CRankConverter::Extract(std::wstring& description, std::wstring& rank, Lang
 		else
 		{
 			posStart = strCheck.find(rankOriginal.c_str());
-			if (posStart != std::wstring::npos)
+			if (posStart != std::wstring::npos && !afterAide(strCheck, posStart))
 			{
 				rank = info.Nominative + strCheck.substr(posStart + rankOriginal.length());
 				StrTrim(rank);
@@ -151,5 +234,6 @@ bool CRankConverter::Extract(std::wstring& description, std::wstring& rank, Lang
 		}
 	}
 
-	return false;
+	return extractTrailing(description, rank, ranks, nounCase)
+		|| extractLeading(description, rank, ranks, nounCase);
 }
