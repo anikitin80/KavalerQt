@@ -79,6 +79,8 @@ protected:
 	// «художникам Аракчееву …, Порожняку … и Шутову …»: имя предыдущего человека
 	// не должность. Запятая или союз в конце отделяют его в свою запись.
 	bool peelListedPeople(PersonInfo& person);
+	// пустая должность: тот же человек выше в указе, иначе должность пункта
+	void fillMissingJobs(size_t from);
 	void AddGroupInfo(const UkazInfo& ukaz, const std::wstring& fileName, const std::wstring& groupInfo,
 		const std::wstring& role, const std::wstring& other);
 	bool GetGroupInfo(const UkazInfo& ukaz, std::wstring& info, std::wstring& role, std::wstring& other);

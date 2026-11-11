@@ -81,6 +81,9 @@ private slots:
     void honoraryTitleInCapitals();
     void listOfNamesWithoutDash();
     void severalNamesBeforeDash();
+    void jobFromTheActionLine();
+    void jobFromTheActivityInThePoint();
+    void jobFromAnEarlierPoint();
     void resetClearsEverything();
 
 private:
@@ -1163,6 +1166,57 @@ void TestDocumentParser::severalNamesBeforeDash()
              QStringList({QStringLiteral("Антоненка Алег Уладзіміравіч | член каманды Прэзідэнта Рэспублікі Беларусь па хакеі"),
                           QStringLiteral("Панамароў Сцяпан Анатольевіч | член каманды Прэзідэнта Рэспублікі Беларусь па хакеі"),
                           QStringLiteral("Грышукевіч Леанід Іванавіч | спартсмен-інструктар хакейнага клуба")}));
+}
+
+void TestDocumentParser::jobFromTheActionLine()
+{
+    // указ 396/2005: должность у всех людей пункта — в строке «Узнагародзіць …:»
+    parse({kUkazBy, QStringLiteral("23 жніўня 2005 г.№ 396"),
+           QStringLiteral("1. Узнагародзіць спартсменаў-інструктараў нацыянальнай каманды Рэспублікі Беларусь па лёгкай атлетыцы:"),
+           QStringLiteral("ордэнам Айчыны ІІІ ступені – Ціхана Івана Рыгоравіча;"),
+           QStringLiteral("медалём «За працоўныя заслугі» – Драгун Аксану Уладзіміраўну, Тураву Рыту Мікалаеўну."),
+           QStringLiteral("2. Прысвоіць ганаровыя званні Рэспублікі Беларусь:"),
+           QStringLiteral("«Заслужаны трэнер Рэспублікі Беларусь» – старшаму трэнеру нацыянальнай каманды Літвінаву Сяргею Мікалаевічу."),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QStringList names = personNames(m_parser->m_Persons, true);
+    names.sort();
+    const QString job = QStringLiteral(" | спартсмен-інструктар нацыянальнай каманды Рэспублікі Беларусь па лёгкай атлетыцы");
+    QCOMPARE(names.mid(0, 3), QStringList({QStringLiteral("Драгун Аксана Уладзіміраўна") + job,
+                                           QStringLiteral("Турава Рыта Мікалаеўна") + job,
+                                           QStringLiteral("Ціхан Іван Рыгоравіч") + job}));
+}
+
+void TestDocumentParser::jobFromTheActivityInThePoint()
+{
+    // указ 603/2008: «… дзейнасць дэпутатаў …,» в пункте, люди в подпунктах, звание — в дательном
+    parse({kUkazBy, QStringLiteral("10 лістапада 2008 г.№ 603"),
+           QStringLiteral("1. За плённую дзяржаўную і грамадскую дзейнасць дэпутатаў Палаты прадстаўнікоў трэцяга склікання, іх значны ўклад:"),
+           QStringLiteral("1.1. узнагародзіць:"),
+           QStringLiteral("ордэнам Пашаны"),
+           QStringLiteral("Салаўёва Анатолія Міхайлавіча"),
+           QStringLiteral("1.2. прысвоіць ганаровае званне «Заслужаны работнік прамысловасці Рэспублікі Беларусь» Герасімаву Віктару Васільевічу."),
+           QStringLiteral("2. За шматгадовую працу ўзнагародзіць загадчыка аддзела Собалева Валерыя Васільевіча медалём «За працоўныя заслугі»."),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QStringList names = personNames(m_parser->m_Persons, true);
+    names.sort();
+    const QString job = QStringLiteral(" | дэпутат Палаты прадстаўнікоў трэцяга склікання");
+    QCOMPARE(names, QStringList({QStringLiteral("Герасімаў Віктар Васільевіч") + job,
+                                 QStringLiteral("Салаўёў Анатолій Міхайлавіч") + job,
+                                 QStringLiteral("Собалеў Валерый Васільевіч | загадчык аддзела")}));
+}
+
+void TestDocumentParser::jobFromAnEarlierPoint()
+{
+    // указ 77/2018: пункт 2 присваивает звание тем, у кого должность в пункте 1
+    parse({kUkazBy, QStringLiteral("22 лютага 2018 г.№ 77"),
+           QStringLiteral("1. Узнагародзіць:"),
+           QStringLiteral("ордэнам Пашаны"),
+           QStringLiteral("КрыўкоІрыну Валер’еўну"), QStringLiteral("–"),
+           QStringLiteral("спартсмена-інструктара нацыянальнай каманды Рэспублікі Беларусь па біятлоне"),
+           QStringLiteral("2. Прысвоіць Крыўко Ірыне Валер’еўне ганаровае званне «Заслужаны майстар спорту Рэспублікі Беларусь»."),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    const QString person = QStringLiteral("Крыўко Ірына Валер’еўна | спартсмен-інструктар нацыянальнай каманды Рэспублікі Беларусь па біятлоне");
+    QCOMPARE(personNames(m_parser->m_Persons, true), QStringList({person, person}));
 }
 
 void TestDocumentParser::resetClearsEverything()

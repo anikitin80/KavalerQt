@@ -346,6 +346,75 @@ std::wstring sentenceCaseIfUpper(const std::wstring& line)
 	return text.toStdWString();
 }
 
+// уровень номера пункта в начале строки: «2. …» — 1, «1.1. …» — 2, нет номера — 0.
+// После номера обычный или неразрывный пробел.
+int pointLevel(const std::wstring& line)
+{
+	size_t pos = line.find_first_not_of(L" \t ");
+	if (pos == std::wstring::npos || !iswdigit(line[pos]))
+		return 0;
+	int level = 0;
+	while (pos < line.size() && iswdigit(line[pos]))
+	{
+		while (pos < line.size() && iswdigit(line[pos]))
+			++pos;
+		if (pos >= line.size() || line[pos] != L'.')
+			return 0;
+		++pos;
+		++level;
+	}
+	return pos < line.size() && (line[pos] == L' ' || line[pos] == L' ') ? level : 0;
+}
+
+// Должность всех людей пункта, если она написана в его строке:
+// «1. Узнагародзіць спартсменаў-інструктараў нацыянальнай каманды …:» (указ 396/2005) или
+// «1. За плённую … дзейнасць дэпутатаў Палаты прадстаўнікоў … склікання, …» (569/2011).
+// Первое слово — во множественном числе («…аў», «…ов»), возвращается в единственном.
+std::wstring jobFromPointLine(const std::wstring& line, size_t actionEnd, LangType lang)
+{
+	std::wstring text = line;
+	std::replace(text.begin(), text.end(), L' ', L' ');
+	const auto plural = [&](std::wstring job) -> std::wstring {
+		job.erase(0, job.find_first_not_of(L' '));
+		job.erase(job.find_last_not_of(L' ') + 1);
+		if (job.empty() || IsCapital(job[0]))
+			return {};
+		static const wchar_t* awards[] = { L"медал", L"орден", L"ордэн", L"почетн", L"ганаров" };
+		const std::wstring lower = ToLower(job);
+		for (const wchar_t* award : awards)
+		{
+			if (lower.find(award) != std::wstring::npos)
+				return {};
+		}
+		std::wstring single = job;
+		singularFirstWord(single, lang);
+		return single == job ? std::wstring() : single;
+	};
+
+	if (actionEnd != std::wstring::npos)
+	{
+		const size_t last = text.find_last_not_of(L' ');
+		if (last != std::wstring::npos && text[last] == L':' && last > actionEnd)
+		{
+			const std::wstring job = plural(text.substr(actionEnd, last - actionEnd));
+			if (!job.empty())
+				return job;
+		}
+	}
+	for (const wchar_t* marker : { L"дзейнасць ", L"деятельность " })
+	{
+		const size_t at = text.find(marker);
+		if (at == std::wstring::npos)
+			continue;
+		const size_t from = at + std::wcslen(marker);
+		const size_t end = text.find_first_of(L",:", from);
+		const std::wstring job = plural(text.substr(from, end == std::wstring::npos ? std::wstring::npos : end - from));
+		if (!job.empty())
+			return job;
+	}
+	return {};
+}
+
 // «Барданова Александра Ивановича –» без должности после тире
 // (указ 217/1999 о Героях Советского Союза): три слова с заглавной
 bool nameWithoutJob(const std::wstring& line, size_t dash)
@@ -962,9 +1031,15 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 	// люди, добавленные прошлыми строками, получают сведения о группе, действовавшие
 	// на их строке: состояние меняется только в начале разбора строки
 	size_t markedPersons = m_Persons.size();
+	const size_t markedFrom = markedPersons;
+	// должность пункта, действующая на строке, где человек стоит
+	std::wstring pointJob;
 	const auto markGroup = [&] {
 		for (; markedPersons < m_Persons.size(); ++markedPersons)
+		{
 			m_Persons[markedPersons].InGroup = m_GroupActive;
+			m_Persons[markedPersons].PointJob = pointJob;
+		}
 	};
 
 	for (auto itrLine = arrLines.begin(); itrLine != arrLines.end(); itrLine++)
@@ -980,6 +1055,7 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 			m_UkazInfo.Clear();
 			m_UkazInfo.RussianLang = ((*itrLine)[posEnd] == L'Е');
 			m_SectionCity.clear();
+			pointJob.clear();
 			continue;
 		}
 
@@ -1019,6 +1095,18 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 				m_GroupWholeDecree = true;
 		}
 		ParseSection(strLine);
+
+		// новый пункт указа («2.») сбрасывает должность, подпункт («1.1.») — только если даёт свою
+		{
+			const int level = pointLevel(strLine);
+			if (level > 0 || actionLine)
+			{
+				const std::wstring job = jobFromPointLine(strLine, actionLine ? posActionEnd : std::wstring::npos,
+					m_UkazInfo.RussianLang ? LangRU : LangBY);
+				if (!job.empty() || level == 1)
+					pointJob = job;
+			}
+		}
 
 		if (bAwardStarted)
 		{
@@ -1285,6 +1373,7 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 			;
 		peelListedPeople(m_Persons[i]);
 	}
+	fillMissingJobs(markedFrom);
 
 	return bResult;
 }
@@ -1388,6 +1477,7 @@ bool CDocumentParser::SpltPersonInfo(PersonInfo& person, bool requirePatronymic)
 	person2.FileName = person.FileName;
 	person2.Ukaz = person.Ukaz;
 	person2.InGroup = person.InGroup;
+	person2.PointJob = person.PointJob;
 
 	bool bSameProfession = false;
 	NounCase nounCase = GetNounCaseByAwardId(person.AwardId);
@@ -1519,6 +1609,7 @@ bool CDocumentParser::peelListedPeople(PersonInfo& person)
 		extra.FileName = person.FileName;
 		extra.Ukaz = person.Ukaz;
 		extra.InGroup = person.InGroup;
+		extra.PointJob = person.PointJob;
 		extra.Name = name;
 		extra.Description = text;
 		NormalizePersonInfo(extra);
@@ -1537,6 +1628,45 @@ bool CDocumentParser::peelListedPeople(PersonInfo& person)
 	for (PersonInfo& extra : added)
 		m_Persons.push_back(std::move(extra));
 	return true;
+}
+
+void CDocumentParser::fillMissingJobs(size_t from)
+{
+	for (size_t i = from; i < m_Persons.size(); ++i)
+	{
+		PersonInfo& person = m_Persons[i];
+		if (person.Organization || !person.Description.empty())
+			continue;
+
+		// «2. Прысвоіць Алімбекавай Дзінары …» после пункта 1, где у неё есть должность (указ 77/2018)
+		bool copied = false;
+		for (size_t j = from; j < m_Persons.size() && !copied; ++j)
+		{
+			const PersonInfo& other = m_Persons[j];
+			if (j == i || other.Description.empty() || other.Name != person.Name
+				|| other.Ukaz.Number != person.Ukaz.Number || other.Ukaz.Date != person.Ukaz.Date)
+				continue;
+			person.Description = other.Description;
+			if (person.MilitaryRank.empty())
+				person.MilitaryRank = other.MilitaryRank;
+			person.Flags |= other.Flags & (PersonInfo::NF_PROFESSION | PersonInfo::NF_RANK);
+			copied = true;
+		}
+		if (copied || person.PointJob.empty())
+			continue;
+
+		// имя уже в именительном: нормализуем только должность. Она в строке пункта
+		// в родительном («дэпутатаў» → «дэпутата») и при звании, где люди в дательном:
+		// без награды падеж винительный, у одушевлённых он совпадает с родительным
+		PersonInfo job;
+		job.Ukaz = person.Ukaz;
+		job.Description = person.PointJob;
+		NormalizePersonInfo(job);
+		person.Description = job.Description;
+		if (person.MilitaryRank.empty())
+			person.MilitaryRank = job.MilitaryRank;
+		person.Flags |= job.Flags & (PersonInfo::NF_PROFESSION | PersonInfo::NF_RANK);
+	}
 }
 
 void CDocumentParser::SetKnownWords(LangType lang, std::map<std::wstring, int> counts)

@@ -53,6 +53,9 @@ struct PersonInfo
     bool Organization = false;
     // стоит там, где действуют сведения о группе указа (см. CDocumentParser::m_GroupActive)
     bool InGroup = false;
+    // должность из строки пункта («Узнагародзіць спартсменаў-інструктараў …:»),
+    // если своей в списке нет; в Description попадает в конце разбора
+    std::wstring PointJob;
 };
 
 struct DecreeAward
