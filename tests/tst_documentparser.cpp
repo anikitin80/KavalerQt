@@ -75,6 +75,12 @@ private slots:
     void latinLettersInTheJobAndName();
     void dashInTheActionLineIsNotAList();
     void actionWordWithCapitalLetterRu();
+    void nameWithEmptyJob();
+    void sentencesAfterTheActionLine();
+    void namesAloneOnTheirLines();
+    void honoraryTitleInCapitals();
+    void listOfNamesWithoutDash();
+    void severalNamesBeforeDash();
     void resetClearsEverything();
 
 private:
@@ -117,6 +123,7 @@ void TestDocumentParser::awardId_data()
     QTest::newRow("honorary title") << QStringLiteral("почетное звание «Народный артист Беларуси»") << true << 29;
     QTest::newRow("honorary title long name") << QStringLiteral("почетное звание «Заслуженный врач Республики Беларусь»")
                                               << true << 43;
+    QTest::newRow("typo in the last letter") << QStringLiteral("медалём «За працоўныя заслуг»") << false << 18;
     QTest::newRow("unknown medal") << QStringLiteral("медалью «Неизвестная»") << true << 0;
     QTest::newRow("not an award") << QStringLiteral("грамотой Совета Министров") << true << 0;
 }
@@ -1056,6 +1063,106 @@ void TestDocumentParser::actionWordWithCapitalLetterRu()
     for (const PersonInfo& person : m_parser->m_Persons)
         names << text(person.Name);
     QCOMPARE(names, QStringList({QStringLiteral("Блохин Николай Григорьевич"), QStringLiteral("Грищенко Владимир Станиславович")}));
+}
+
+QStringList personNames(const std::vector<PersonInfo>& persons, bool withJob)
+{
+    QStringList names;
+    for (const PersonInfo& person : persons)
+        names << (withJob ? text(person.Name) + QStringLiteral(" | ") + text(person.Description) : text(person.Name));
+    return names;
+}
+
+void TestDocumentParser::nameWithEmptyJob()
+{
+    // указ 217/1999: после тире пусто
+    parse({kUkazRu, QStringLiteral("15 апреля 1999 г.№ 217"),
+           QStringLiteral("За особые заслуги в защите Отечества наградить:"),
+           QStringLiteral("орденом «За службу Родине» ІІ степени"),
+           QStringLiteral("Барданова Александра Ивановича –"),
+           QStringLiteral("Горбанева Николая Кузьмича – "),
+           QStringLiteral("Президент Республики Беларусь")});
+    QCOMPARE(personNames(m_parser->m_Persons, true),
+             QStringList({QStringLiteral("Барданов Александр Иванович | "), QStringLiteral("Горбанев Николай Кузьмич | ")}));
+}
+
+void TestDocumentParser::sentencesAfterTheActionLine()
+{
+    // указы 639/2008 и 262/2002: «1. Узнагародзіць:», дальше предложение на награду
+    parse({kUkazBy, QStringLiteral("24 лістапада 2008 г.№ 639"),
+           QStringLiteral("1. Узнагародзіць:"),
+           QStringLiteral("ордэнам Пашаны – спартсменаў-інструктараў нацыянальнай каманды Рэспублікі Беларусь па інваспорту "
+                          "Пунько Сяргея Вячаслававіча, Сівакову Тамару Васільеўну і Фядотаву Ірыну Аляксандраўну;"),
+           QStringLiteral("галоўнага трэнера нацыянальнай каманды Рэспублікі Беларусь па фрыстайлу Казеку Мікалая Іванавіча ордэнам Айчыны III ступені."),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QStringList names = personNames(m_parser->m_Persons, true);
+    names.sort();
+    const QString job = QStringLiteral(" | спартсмен-інструктар нацыянальнай каманды Рэспублікі Беларусь па інваспорту");
+    QCOMPARE(names, QStringList({QStringLiteral("Казека Мікалай Іванавіч | галоўны трэнер нацыянальнай каманды Рэспублікі Беларусь па фрыстайлу"),
+                                 QStringLiteral("Пунько Сяргей Вячаслававіч") + job,
+                                 QStringLiteral("Сівакова Тамара Васільеўна") + job,
+                                 QStringLiteral("Фядотава Ірына Аляксандраўна") + job}));
+}
+
+void TestDocumentParser::namesAloneOnTheirLines()
+{
+    // указ 569/2011: имена без тире, а за ним список нового формата с тире на своей строке
+    parse({kUkazBy, QStringLiteral("6 снежня 2011 г.№ 569"),
+           QStringLiteral("1. За плённую дзейнасць дэпутатаў Палаты прадстаўнікоў узнагародзіць:"),
+           QStringLiteral("медалём «За працоўныя заслугі»"),
+           QStringLiteral("Вялічку Алега Іванавіча"),
+           QStringLiteral("Карпенку Ігара Васільевіча"),
+           QStringLiteral("2. За шматгадовую працу ўзнагародзіць медалём «За працоўныя заслугі» работнікаў Сакратарыята:"),
+           QStringLiteral("ДзямідавуІнесу Яўгеньеўну"), QStringLiteral("–"),
+           QStringLiteral("начальніка ўпраўлення"),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QCOMPARE(personNames(m_parser->m_Persons, false),
+             QStringList({QStringLiteral("Вялічка Алег Іванавіч"), QStringLiteral("Карпенка Ігар Васільевіч"),
+                          QStringLiteral("Дзямідава Інеса Яўгеньеўна")}));
+}
+
+void TestDocumentParser::honoraryTitleInCapitals()
+{
+    // указ 2515/1993: звание прописными
+    parse({kUkazRu, QStringLiteral("29 сентября 1993 г. № 2515"),
+           QStringLiteral("Присвоить почетные звания Республики Беларусь:"),
+           QStringLiteral("«ЗАСЛУЖЕННЫЙ СТРОИТЕЛЬ РЕСПУБЛИКИ БЕЛАРУСЬ»"),
+           QStringLiteral("Печко Константину Михайловичу – генеральному директору объединения «Брестжилстрой»."),
+           QStringLiteral("Президент Республики Беларусь")});
+    QCOMPARE(personNames(m_parser->m_Persons, false), QStringList({QStringLiteral("Печко Константин Михайлович")}));
+    QVERIFY(m_parser->m_Persons.front().AwardId > 0);
+}
+
+void TestDocumentParser::listOfNamesWithoutDash()
+{
+    // указ 262/2002: под званием должность и имена через запятую, без тире
+    parse({kUkazBy, QStringLiteral("24 мая 2002 г.№ 262"),
+           QStringLiteral("2. Прысвоіць ганаровыя званні Рэспублікі Беларусь:"),
+           QStringLiteral("«Заслужаны майстар спорту Рэспублікі Беларусь»"),
+           QStringLiteral("спартсменам-інструктарам нацыянальнай зборнай каманды Рэспублікі Беларусь па хакею з шайбай "
+                          "Андрыеўскаму Аляксандру Леанідавічу, Антоненку Алегу Уладзіміравічу, Шабанаву Сяргею Рудольфавічу."),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QStringList names = personNames(m_parser->m_Persons, true);
+    names.sort();
+    const QString job = QStringLiteral(" | спартсмен-інструктар нацыянальнай зборнай каманды Рэспублікі Беларусь па хакею з шайбай");
+    QCOMPARE(names, QStringList({QStringLiteral("Андрыеўскі Аляксандр Леанідавіч") + job,
+                                 QStringLiteral("Антоненка Алег Уладзіміравіч") + job,
+                                 QStringLiteral("Шабанаў Сяргей Рудольфавіч") + job}));
+}
+
+void TestDocumentParser::severalNamesBeforeDash()
+{
+    // указ 10/2014: строка награды без двоеточия, несколько имён перед тире
+    parse({kUkazBy, QStringLiteral("10 студзеня 2014 г.№ 10"),
+           QStringLiteral("1. Узнагародзіць:"),
+           QStringLiteral("медалём «За працоўныя заслугі»"),
+           QStringLiteral("Антоненку Алега Уладзіміравіча, Панамарова Сцяпана Анатольевіча – членаў каманды Прэзідэнта Рэспублікі Беларусь па хакеі;"),
+           QStringLiteral("Грышукевіча Леаніда Іванавіча – спартсмена-інструктара хакейнага клуба;"),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QCOMPARE(personNames(m_parser->m_Persons, true),
+             QStringList({QStringLiteral("Антоненка Алег Уладзіміравіч | член каманды Прэзідэнта Рэспублікі Беларусь па хакеі"),
+                          QStringLiteral("Панамароў Сцяпан Анатольевіч | член каманды Прэзідэнта Рэспублікі Беларусь па хакеі"),
+                          QStringLiteral("Грышукевіч Леанід Іванавіч | спартсмен-інструктар хакейнага клуба")}));
 }
 
 void TestDocumentParser::resetClearsEverything()

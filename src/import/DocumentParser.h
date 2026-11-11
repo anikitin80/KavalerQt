@@ -74,7 +74,7 @@ protected:
 	bool ParseGroupInfo(const std::wstring& strLine);
 	void ParseSection(const std::wstring& strLine);
 	void UpdateAwardStat(int id, std::wstring& award, int nCount);
-	void ExtractPersonInfo(std::wstring& curAward, std::wstring& strAwardedInfo);
+	void ExtractPersonInfo(std::wstring& curAward, std::wstring& strAwardedInfo, int knownAwardId = 0);
 	void NormalizePersonInfo(PersonInfo& person);
 	// «художникам Аракчееву …, Порожняку … и Шутову …»: имя предыдущего человека
 	// не должность. Запятая или союз в конце отделяют его в свою запись.
