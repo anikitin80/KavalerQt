@@ -1,6 +1,7 @@
 #include "Models.h"
 
 #include <QBrush>
+#include <QFont>
 #include <QSet>
 #include <algorithm>
 
@@ -220,9 +221,8 @@ PersonModel::Mark PersonModel::translationMark(const Person& person) const
         mark.errors = true;
         mark.text = QStringLiteral("Ошибки");
     }
-    if (!m_checkQuotes)
-        return mark;
-
+    // тире и кавычки сверяются всегда: облачный перевод их путает
+    // («приемно»аппаратного», "Савушкин продукт" при «Савушкін прадукт»)
     const auto isDash = [](char16_t c) { return c == u'-' || c == u'\u2013'; };
     const auto isQuote = [](char16_t c) {
         return c == u'\u00AB' || c == u'\u00BB' || c == u'"' || c == u'\u201C' || c == u'\u201D' || c == u'\u201E';
@@ -278,8 +278,24 @@ QVariant PersonModel::data(const QModelIndex& index, int role) const
         return {};
     if (role == Qt::UserRole)
         return person.id;
-    if (role == Qt::DisplayRole)
+    // перевод имени по словарю с несколькими вариантами ждёт выбора:
+    // в столбце имени лучший вариант, фон строки розовый
+    const QStringList variants = person.name.isEmpty() ? m_suggestions.value(person.id) : QStringList();
+    if (role == Qt::DisplayRole) {
+        if (index.column() == 1 && !variants.isEmpty())
+            return variants.first();
         return columnText(person, index.column());
+    }
+    if (role == Qt::ToolTipRole && !variants.isEmpty()) {
+        return QStringLiteral("Перевод не сохранён: вариантов несколько, выберите нужный\n"
+                              "(контекстное меню «Варианты перевода» или «Подтвердить перевод»).\n\n%1\n\n%2")
+            .arg(person.nameBy, variants.join(QLatin1Char('\n')));
+    }
+    if (role == Qt::FontRole && person.posthumous) {
+        QFont font;
+        font.setBold(true);
+        return font;
+    }
 
     if (role == Qt::BackgroundRole) {
         QColor color;
@@ -291,7 +307,7 @@ QVariant PersonModel::data(const QModelIndex& index, int role) const
             else
                 color = QColor(220, 255, 220);
         }
-        if (person.posthumous)
+        if (!variants.isEmpty())
             color = QColor(255, 200, 200);
         if (color.isValid())
             return QBrush(color);
@@ -305,14 +321,15 @@ QVariant PersonModel::data(const QModelIndex& index, int role) const
         if (mark.errors)
             return QBrush(QColor(196, 0, 0));
         if (mark.need) {
-            if (index.column() == 1 && person.name.isEmpty()) {
-                const bool suggested = !m_suggestions.value(person.id).isEmpty();
-                return QBrush(suggested ? QColor(0, 196, 0) : QColor(128, 128, 128));
-            }
+            if (index.column() == 1 && person.name.isEmpty())
+                return QBrush(QColor(128, 128, 128));
             if (index.column() == 2 && person.personal.isEmpty())
                 return QBrush(QColor(128, 128, 128));
         }
     }
+    // посмертно: бордовый жирный шрифт, фон остаётся за званием
+    if (role == Qt::ForegroundRole && person.posthumous)
+        return QBrush(QColor(128, 0, 32));
 
     if (role == Qt::TextAlignmentRole && (index.column() == 3 || index.column() == 4 || index.column() == 5))
         return int(Qt::AlignCenter);
@@ -505,12 +522,11 @@ void PersonModel::sort(int column, Qt::SortOrder order)
 }
 
 void PersonModel::apply(int awardId, int year, const QString& name, const QString& quick,
-                        bool needTranslationOnly, bool checkQuotes, bool groupByAward)
+                        bool needTranslationOnly, bool groupByAward)
 {
     // модель должна выглядеть прежней до beginResetModel(): виды и
     // модель выделения ещё читают её, обрабатывая modelAboutToBeReset
     beginResetModel();
-    m_checkQuotes = checkQuotes;
     m_grouped = groupByAward && awardId == -1;
     m_rows.clear();
     m_groups.clear();
@@ -554,31 +570,6 @@ void PersonModel::apply(int awardId, int year, const QString& name, const QStrin
     }
     sortRows();
     endResetModel();
-}
-
-void PersonModel::setCheckQuotes(bool check)
-{
-    if (m_checkQuotes == check)
-        return;
-    m_checkQuotes = check;
-    if (m_sortColumn == 5) {
-        sort(5, m_sortOrder);
-        return;
-    }
-    const QList<int> roles = {Qt::DisplayRole, Qt::ForegroundRole};
-    if (m_grouped) {
-        for (int group = 0; group < m_groups.size(); ++group) {
-            const int count = m_groups.at(group).people.size();
-            if (count == 0)
-                continue;
-            const QModelIndex parent = index(group, 0);
-            emit dataChanged(index(0, 1, parent), index(count - 1, 5, parent), roles);
-        }
-        return;
-    }
-    if (m_rows.isEmpty())
-        return;
-    emit dataChanged(index(0, 1), index(m_rows.size() - 1, 5), roles);
 }
 
 const Person* PersonModel::personAt(const QModelIndex& index) const
@@ -643,22 +634,41 @@ void PersonModel::setSuggestions(const QHash<int, QStringList>& suggestions)
     if (suggestions.isEmpty())
         return;
     m_suggestions.insert(suggestions);
+    refreshAllRows();
+}
+
+void PersonModel::clearSuggestions(int personId)
+{
+    if (m_suggestions.remove(personId))
+        refreshAllRows();
+}
+
+int PersonModel::pendingSuggestions() const
+{
+    int pending = 0;
+    for (auto it = m_suggestions.cbegin(); it != m_suggestions.cend(); ++it) {
+        const Person* person = m_catalog->person(it.key());
+        if (person && person->name.isEmpty() && !it.value().isEmpty())
+            ++pending;
+    }
+    return pending;
+}
+
+// цвет предложения — у всей строки
+void PersonModel::refreshAllRows()
+{
+    const int last = columnCount() - 1;
     if (!m_grouped) {
         if (!m_rows.isEmpty())
-            emit dataChanged(index(0, 1), index(m_rows.size() - 1, 1));
+            emit dataChanged(index(0, 0), index(m_rows.size() - 1, last));
         return;
     }
     for (int group = 0; group < m_groups.size(); ++group) {
         const QModelIndex parent = index(group, 0);
         const int count = m_groups.at(group).people.size();
         if (count > 0)
-            emit dataChanged(index(0, 1, parent), index(count - 1, 1, parent));
+            emit dataChanged(index(0, 0, parent), index(count - 1, last, parent));
     }
-}
-
-void PersonModel::clearSuggestions(int personId)
-{
-    m_suggestions.remove(personId);
 }
 
 StatsModel::StatsModel(Catalog* catalog, QObject* parent)

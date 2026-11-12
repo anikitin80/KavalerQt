@@ -56,6 +56,19 @@ void addDict(QHash<QString, QStringList>& dict, const QString& by, const QString
         it->push_back(ru);
 }
 
+// написания части имени: самое частое первым, при равенстве — встреченное раньше
+void rankDict(QHash<QString, QStringList>& dict, const QHash<QString, QHash<QString, int>>& counts)
+{
+    for (auto it = dict.begin(); it != dict.end(); ++it) {
+        if (it->size() < 2)
+            continue;
+        const QHash<QString, int> seen = counts.value(it.key());
+        std::stable_sort(it->begin(), it->end(), [&seen](const QString& a, const QString& b) {
+            return seen.value(a) > seen.value(b);
+        });
+    }
+}
+
 QString joinAlt(const QStringList& values)
 {
     if (values.size() <= 1)
@@ -458,6 +471,7 @@ void Catalog::rebuildDerived() const
         int sortPos = 0;
     };
     QHash<QString, QHash<QString, RankSpelling>> ranks;
+    QHash<QString, QHash<QString, int>> firstCounts, lastCounts, middleCounts;
     for (int order = 0; order < byName.size(); ++order) {
         const Person& person = m_people.at(byName.at(order));
         if (!person.rankBy.isEmpty() && !person.rank.isEmpty()) {
@@ -475,10 +489,18 @@ void Catalog::rebuildDerived() const
         const int by2 = person.nameBy.indexOf(QLatin1Char(' '), by1 + 1);
         const int ru1 = person.name.indexOf(QLatin1Char(' '));
         const int ru2 = person.name.indexOf(QLatin1Char(' '), ru1 + 1);
-        addDict(m_first, belarusianNameKey(person.nameBy.mid(by1 + 1, by2 - by1 - 1)), person.name.mid(ru1 + 1, ru2 - ru1 - 1));
-        addDict(m_last, belarusianNameKey(person.nameBy.left(by1)), person.name.left(ru1));
-        addDict(m_middle, belarusianNameKey(person.nameBy.mid(by2 + 1)), person.name.mid(ru2 + 1));
+        const auto addPart = [](QHash<QString, QStringList>& dict, QHash<QString, QHash<QString, int>>& counts,
+                                 const QString& by, const QString& ru) {
+            addDict(dict, by, ru);
+            ++counts[by][ru];
+        };
+        addPart(m_first, firstCounts, belarusianNameKey(person.nameBy.mid(by1 + 1, by2 - by1 - 1)), person.name.mid(ru1 + 1, ru2 - ru1 - 1));
+        addPart(m_last, lastCounts, belarusianNameKey(person.nameBy.left(by1)), person.name.left(ru1));
+        addPart(m_middle, middleCounts, belarusianNameKey(person.nameBy.mid(by2 + 1)), person.name.mid(ru2 + 1));
     }
+    rankDict(m_first, firstCounts);
+    rankDict(m_last, lastCounts);
+    rankDict(m_middle, middleCounts);
     for (auto group = ranks.cbegin(); group != ranks.cend(); ++group) {
         QString bestRu;
         RankSpelling best;
@@ -848,16 +870,32 @@ QStringList Catalog::translateName(const QString& nameBy) const
     if (exact != m_nameRu.cend())
         return exact.value();
 
-    // новое полное имя: составляем его, только когда каждая часть однозначна
+    // новое полное имя составляется из частей; у части может быть несколько
+    // написаний, тогда вариантов несколько: первым — из самых частых написаний
     const QStringList parts = key.split(QLatin1Char(' '), Qt::SkipEmptyParts);
     if (parts.size() != 3)
         return {};
-    const QStringList first = m_first.value(parts.at(1));
-    const QStringList last = m_last.value(parts.at(0));
-    const QStringList middle = m_middle.value(parts.at(2));
-    if (first.size() != 1 || last.size() != 1 || middle.size() != 1)
+    const QStringList last = m_last.value(parts.at(0)).mid(0, kNameVariantsPerPart);
+    const QStringList first = m_first.value(parts.at(1)).mid(0, kNameVariantsPerPart);
+    const QStringList middle = m_middle.value(parts.at(2)).mid(0, kNameVariantsPerPart);
+    if (first.isEmpty() || last.isEmpty() || middle.isEmpty())
         return {};
-    return {last.at(0) + QLatin1Char(' ') + first.at(0) + QLatin1Char(' ') + middle.at(0)};
+    struct Variant {
+        int score;
+        QString name;
+    };
+    QVector<Variant> variants;
+    for (int l = 0; l < last.size(); ++l) {
+        for (int f = 0; f < first.size(); ++f) {
+            for (int m = 0; m < middle.size(); ++m)
+                variants.push_back({l + f + m, last.at(l) + QLatin1Char(' ') + first.at(f) + QLatin1Char(' ') + middle.at(m)});
+        }
+    }
+    std::stable_sort(variants.begin(), variants.end(), [](const Variant& a, const Variant& b) { return a.score < b.score; });
+    QStringList names;
+    for (const Variant& variant : variants.mid(0, kNameVariants))
+        names.push_back(variant.name);
+    return names;
 }
 
 QVector<Catalog::NameConflict> Catalog::russianNameConflicts() const

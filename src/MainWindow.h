@@ -41,6 +41,8 @@ private:
     void translateSelectedByDictionary();
     void translateSelectedProfession();
     void applySuggestion(int personId, const QString& name);
+    void confirmSelectedSuggestions();
+    void closeEvent(QCloseEvent* event) override;
     void fixSelectedQuotes();
     void exportCsv();
     void replaceText();
@@ -85,9 +87,8 @@ private:
     QComboBox* m_year = nullptr;
     QLineEdit* m_name = nullptr;
     QLineEdit* m_quick = nullptr;
-    QCheckBox* m_quotes = nullptr;
     QCheckBox* m_needTranslation = nullptr;
-    QCheckBox* m_group = nullptr;
+    QAction* m_groupAction = nullptr; // «Вид → Группировать по награде»
     QTreeView* m_peopleView = nullptr;
 
     QCheckBox* m_statsByMonth = nullptr;

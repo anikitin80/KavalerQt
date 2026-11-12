@@ -35,7 +35,9 @@ struct PersonInfo
     {
         NF_NAME = 1,
         NF_PROFESSION = 2,
-        NF_RANK = 4
+        NF_RANK = 4,
+        // именительный фамилии угадан: перед импортом его подтверждает пользователь
+        NF_SURNAME_UNSURE = 8
     };
 
     int AwardId = 0;
@@ -56,6 +58,8 @@ struct PersonInfo
     // должность из строки пункта («Узнагародзіць спартсменаў-інструктараў …:»),
     // если своей в списке нет; в Description попадает в конце разбора
     std::wstring PointJob;
+    // пользователь проверил угаданную фамилию (галочка или правка имени в окне импорта)
+    bool SurnameConfirmed = false;
 };
 
 struct DecreeAward

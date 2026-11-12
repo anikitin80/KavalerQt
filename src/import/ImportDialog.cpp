@@ -246,9 +246,17 @@ ImportDialog::ImportDialog(Catalog* catalog, QWidget* parent)
         const int index = item->data(Qt::UserRole).toInt();
         if (index < 0 || index >= int(m_parser.m_Persons.size()))
             return;
-        m_parser.m_Persons[size_t(index)].Name = toWide(item->text());
-        // исправленное имя может теперь совпасть с каталогом или другим человеком
+        PersonInfo& person = m_parser.m_Persons[size_t(index)];
         m_filling = true;
+        if (person.Flags & PersonInfo::NF_SURNAME_UNSURE) {
+            // исправленное вручную имя проверено пользователем
+            const bool edited = toWide(item->text()) != person.Name;
+            person.SurnameConfirmed = edited || item->checkState() == Qt::Checked;
+            if (edited)
+                item->setCheckState(Qt::Checked);
+        }
+        person.Name = toWide(item->text());
+        // исправленное имя может теперь совпасть с каталогом или другим человеком
         markKnown();
         m_filling = false;
     });
@@ -258,8 +266,15 @@ ImportDialog::ImportDialog(Catalog* catalog, QWidget* parent)
         if (row < 0)
             return;
         QMenu menu(this);
+        QAction* confirm = menu.addAction(QStringLiteral("Подтвердить фамилию"));
+        menu.addSeparator();
         QAction* split = menu.addAction(QStringLiteral("Разделить награждения"));
-        if (menu.exec(m_persons->viewport()->mapToGlobal(pos)) != split)
+        QAction* chosen = menu.exec(m_persons->viewport()->mapToGlobal(pos));
+        if (chosen == confirm) {
+            confirmSelectedSurnames();
+            return;
+        }
+        if (chosen != split)
             return;
         const int index = m_persons->item(row, 0)->data(Qt::UserRole).toInt();
         if (index < 0 || index >= int(m_parser.m_Persons.size()))
@@ -550,8 +565,9 @@ void ImportDialog::showPersons()
         const QString nameText = person.Name.empty() ? QStringLiteral("Организация") : fromWide(person.Name);
         auto* name = new QTableWidgetItem(nameText);
         name->setData(Qt::UserRole, index);
-        if ((person.Flags & PersonInfo::NF_NAME) == 0)
-            name->setForeground(QColor(200, 0, 0));
+        if (!person.Organization && (person.Flags & PersonInfo::NF_SURNAME_UNSURE))
+            name->setCheckState(person.SurnameConfirmed ? Qt::Checked : Qt::Unchecked);
+        paintName(name, person);
         m_persons->setItem(row, 0, name);
 
         const QString jobText = person.Organization
@@ -599,7 +615,92 @@ void ImportDialog::markKnown()
             item->setBackground(background);
             item->setToolTip(tip);
         }
+        paintName(name, m_parser.m_Persons[size_t(index)]);
     }
+}
+
+bool ImportDialog::needsSurnameCheck(const PersonInfo& person) const
+{
+    return !person.Organization && (person.Flags & PersonInfo::NF_SURNAME_UNSURE) && !person.SurnameConfirmed;
+}
+
+// красный: имя не разобрано или фамилия угадана и не подтверждена;
+// подтверждённая фамилия красной больше не считается
+void ImportDialog::paintName(QTableWidgetItem* name, const PersonInfo& person) const
+{
+    const bool confirmed = !person.Organization && (person.Flags & PersonInfo::NF_SURNAME_UNSURE) && person.SurnameConfirmed;
+    const bool red = needsSurnameCheck(person) || (!confirmed && (person.Flags & PersonInfo::NF_NAME) == 0);
+    name->setForeground(red ? QBrush(QColor(200, 0, 0)) : QBrush());
+    if (needsSurnameCheck(person)) {
+        QString tip = name->toolTip();
+        if (!tip.isEmpty())
+            tip += QLatin1Char('\n');
+        tip += QStringLiteral("Фамилия в именительном падеже определена неточно. "
+                              "Проверьте её, исправьте при необходимости и поставьте галочку.");
+        name->setToolTip(tip);
+    }
+}
+
+void ImportDialog::confirmSelectedSurnames()
+{
+    m_filling = true;
+    for (QTableWidgetItem* item : m_persons->selectedItems()) {
+        if (item->column() != 0)
+            continue;
+        const int index = item->data(Qt::UserRole).toInt();
+        if (index < 0 || index >= int(m_parser.m_Persons.size()))
+            continue;
+        PersonInfo& person = m_parser.m_Persons[size_t(index)];
+        if (!needsSurnameCheck(person))
+            continue;
+        person.SurnameConfirmed = true;
+        item->setCheckState(Qt::Checked);
+    }
+    markKnown();
+    m_filling = false;
+}
+
+bool ImportDialog::warnUnconfirmed(const QVector<int>& indices, const QString& action)
+{
+    QStringList names;
+    int first = -1;
+    for (int index : indices) {
+        const PersonInfo& person = m_parser.m_Persons[size_t(index)];
+        if (!needsSurnameCheck(person))
+            continue;
+        if (first < 0)
+            first = index;
+        names.push_back(fromWide(person.Name));
+    }
+    if (names.isEmpty())
+        return false;
+
+    for (int row = 0; row < m_persons->rowCount(); ++row) {
+        QTableWidgetItem* name = m_persons->item(row, 0);
+        if (name && name->data(Qt::UserRole).toInt() == first) {
+            m_persons->setCurrentItem(name);
+            m_persons->scrollToItem(name);
+            break;
+        }
+    }
+    QStringList shown = names.mid(0, 10);
+    if (names.size() > shown.size())
+        shown.push_back(QStringLiteral("…"));
+    QMessageBox::warning(this, windowTitle(),
+        QStringLiteral("%1: не подтверждены фамилии (%2), их именительный падеж определён неточно:\n\n%3\n\n"
+                       "Проверьте фамилии, выделенные красным, исправьте при необходимости и поставьте галочку "
+                       "(или «Подтвердить фамилию» в контекстном меню).")
+            .arg(action).arg(names.size()).arg(shown.join(QLatin1Char('\n'))));
+    return true;
+}
+
+// окно закрывается, только когда у всех, кого ещё нет в каталоге, фамилия проверена
+void ImportDialog::reject()
+{
+    const QVector<bool> all(int(m_parser.m_Persons.size()), true);
+    if (warnUnconfirmed(personsToImport(m_parser.m_Persons, all, *m_catalog), QStringLiteral("Окно не закрыто")))
+        return;
+    QDialog::reject();
 }
 
 Person ImportDialog::personFromInfo(const PersonInfo& info)
@@ -638,8 +739,11 @@ void ImportDialog::importRows(bool all)
                 && (m_fileName.isEmpty() || m_fileName == fromWide(info.FileName));
         }
     }
+    const QVector<int> indices = personsToImport(persons, wanted, *m_catalog);
+    if (warnUnconfirmed(indices, QStringLiteral("Импорт не выполнен")))
+        return;
     QVector<Person> batch;
-    for (int index : personsToImport(persons, wanted, *m_catalog))
+    for (int index : indices)
         batch.push_back(personFromInfo(persons[size_t(index)]));
 
     if (QMessageBox::question(this, windowTitle(),

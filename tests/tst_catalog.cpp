@@ -461,7 +461,7 @@ void TestCatalog::derivedDataFollowsChanges()
 }
 
 // сохранённое полное имя побеждает фамилию, которую другие пишут иначе;
-// невиданное имя составляется, только когда у каждой части одно написание
+// невиданное имя составляется из частей; варианты — от самых частых написаний
 void TestCatalog::translateNamePrefersTheWholeName()
 {
     QString error;
@@ -492,7 +492,9 @@ void TestCatalog::translateNamePrefersTheWholeName()
     QVERIFY(m_catalog->save(other, &error));
     QCOMPARE(m_catalog->translateName(QStringLiteral("Бобр Адам Рыгоравіч")),
              QStringList({QStringLiteral("Бобер Адам Григорьевич")}));
-    QVERIFY(m_catalog->translateName(QStringLiteral("Бобр Марк Рыгоравіч")).isEmpty());
+    // у фамилии два написания поровну: первым то, что встретилось раньше, выбор за пользователем
+    QCOMPARE(m_catalog->translateName(QStringLiteral("Бобр Марк Рыгоравіч")),
+             QStringList({QStringLiteral("Бобер Марк Григорьевич"), QStringLiteral("Бобров Марк Григорьевич")}));
 
     Person repeat = bobr;
     repeat.id = 0;
@@ -507,6 +509,21 @@ void TestCatalog::translateNamePrefersTheWholeName()
     QVERIFY(m_catalog->save(alt, &error));
     QCOMPARE(m_catalog->translateName(QStringLiteral("Бобр Адам Рыгоравіч")),
              QStringList({QStringLiteral("Бобер Адам Григорьевич"), QStringLiteral("Бобров Адам Григорьевич")}));
+
+    // частое написание фамилии побеждает: «Бобер» трижды, «Бобров» дважды
+    QCOMPARE(m_catalog->translateName(QStringLiteral("Бобр Марк Рыгоравіч")),
+             QStringList({QStringLiteral("Бобер Марк Григорьевич"), QStringLiteral("Бобров Марк Григорьевич")}));
+    Person rival = other;
+    rival.id = 0;
+    rival.ukaseNo = 6;
+    rival.ukaseDate = QDate(2020, 3, 1);
+    QVERIFY(m_catalog->save(rival, &error));
+    Person rival2 = rival;
+    rival2.id = 0;
+    rival2.ukaseNo = 7;
+    QVERIFY(m_catalog->save(rival2, &error));
+    QCOMPARE(m_catalog->translateName(QStringLiteral("Бобр Марк Рыгоравіч")),
+             QStringList({QStringLiteral("Бобров Марк Григорьевич"), QStringLiteral("Бобер Марк Григорьевич")}));
 }
 
 // «Iгар» и «Ігар» — одно имя, в том числе когда полное имя составлено из частей

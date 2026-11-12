@@ -89,7 +89,9 @@ typedef std::vector<Rule> RulesList;
 class CNameConverter
 {
 public:
-	bool NormalizeName(std::wstring& fullName, LangType lang, NounCase nounCase);
+	// surnameSure: именительный фамилии дали правила или его знает каталог;
+	// ложь, если правила его угадали («?» в таблице) или правила нет
+	bool NormalizeName(std::wstring& fullName, LangType lang, NounCase nounCase, bool* surnameSure = nullptr);
 	SexType GetSex(std::wstring& middleName, NounCase nounCase);
 	// косвенная фамилия-прилагательное: «Быкоўскую» — женская, «Сычэўскага» — мужская.
 	// SexAny, если это не прилагательное.

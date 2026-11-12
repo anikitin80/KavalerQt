@@ -25,6 +25,7 @@
 #include <QScrollBar>
 #include <QPixmap>
 #include <QEvent>
+#include <QCloseEvent>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
@@ -209,14 +210,10 @@ MainWindow::MainWindow(QWidget* parent)
         printButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
 
     auto* viewMenu = menuBar()->addMenu(QStringLiteral("Вид"));
-    auto* groupAction = viewMenu->addAction(QStringLiteral("Группировать по награде"));
-    groupAction->setCheckable(true);
-    groupAction->setChecked(true);
-    // только держит пункт меню и флажок в одном состоянии
-    connect(groupAction, &QAction::toggled, this, [this](bool checked) {
-        if (m_group && m_group->isChecked() != checked)
-            m_group->setChecked(checked);
-    });
+    m_groupAction = viewMenu->addAction(QStringLiteral("Группировать по награде"));
+    m_groupAction->setCheckable(true);
+    m_groupAction->setChecked(true);
+    m_groupAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_G));
 
     auto* helpMenu = menuBar()->addMenu(QStringLiteral("Справка"));
     helpMenu->addAction(QStringLiteral("О программе..."), this, [this] {
@@ -226,30 +223,29 @@ MainWindow::MainWindow(QWidget* parent)
                            "Импорт указов из Word (docx), перевод через Яндекс."));
     });
 
+    // длинные названия наград не растягивают строку фильтров: поле узкое,
+    // раскрытый список — во всю ширину названий, полное название в подсказке
     m_award = new QComboBox;
+    m_award->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    m_award->setMinimumContentsLength(28);
+    m_award->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     m_year = new QComboBox;
     m_name = new QLineEdit;
     m_name->setPlaceholderText(QStringLiteral("от 3 букв"));
     m_quick = new QLineEdit;
     m_quick->setPlaceholderText(QStringLiteral("по видимым полям"));
-    m_quotes = new QCheckBox(QStringLiteral("Проверка кавычек"));
     m_needTranslation = new QCheckBox(QStringLiteral("Требующие перевода"));
-    m_group = new QCheckBox(QStringLiteral("Группировать"));
-    m_group->setChecked(true);
-    connect(m_group, &QCheckBox::toggled, groupAction, &QAction::setChecked);
 
     auto* filters = new QHBoxLayout;
     filters->addWidget(new QLabel(QStringLiteral("Награда:")));
-    filters->addWidget(m_award, 2);
+    filters->addWidget(m_award);
     filters->addWidget(new QLabel(QStringLiteral("Год:")));
     filters->addWidget(m_year);
     filters->addWidget(new QLabel(QStringLiteral("Имя:")));
     filters->addWidget(m_name);
     filters->addWidget(new QLabel(QStringLiteral("Фильтр:")));
-    filters->addWidget(m_quick);
-    filters->addWidget(m_quotes);
+    filters->addWidget(m_quick, 1);
     filters->addWidget(m_needTranslation);
-    filters->addWidget(m_group);
 
     m_peopleView = new PeopleTree;
     m_peopleView->setModel(m_people);
@@ -344,9 +340,9 @@ MainWindow::MainWindow(QWidget* parent)
     const auto refresh = [this] { refreshPeople(); };
     connect(m_award, &QComboBox::currentIndexChanged, this, refresh);
     connect(m_year, &QComboBox::currentIndexChanged, this, refresh);
-    connect(m_quotes, &QCheckBox::toggled, this, [this](bool checked) { m_people->setCheckQuotes(checked); });
     connect(m_needTranslation, &QCheckBox::toggled, this, refresh);
-    connect(m_group, &QCheckBox::toggled, this, refresh);
+    connect(m_groupAction, &QAction::toggled, this, refresh);
+    connect(m_award, &QComboBox::currentIndexChanged, this, [this] { m_award->setToolTip(m_award->currentText()); });
     // оба текстовых фильтра ждут паузы в наборе
     auto* quickTimer = new QTimer(this);
     quickTimer->setSingleShot(true);
@@ -440,6 +436,8 @@ void MainWindow::fillFilters()
     });
     for (const Award& award : awards)
         m_award->addItem(award.name, award.id);
+    m_award->view()->setMinimumWidth(m_award->view()->sizeHintForColumn(0)
+        + m_award->view()->verticalScrollBar()->sizeHint().width() + 8);
 
     m_year->clear();
     m_year->addItem(QStringLiteral("<Все>"), -1);
@@ -466,8 +464,7 @@ void MainWindow::refreshPeople()
         name.size() >= 3 ? name : QString(),
         m_quick->text().trimmed(),
         m_needTranslation->isChecked(),
-        m_quotes->isChecked(),
-        m_group->isChecked());
+        m_groupAction->isChecked());
     updateStatus();
 }
 
@@ -723,14 +720,19 @@ void MainWindow::showContextMenu(const QPoint& pos)
     QAction* quotes = menu.addAction(QStringLiteral("Исправить кавычки"));
     menu.addSeparator();
     QMenu* variants = menu.addMenu(QStringLiteral("Варианты перевода"));
-    const QStringList suggestions = m_people->suggestions(person->id);
+    const QStringList suggestions = person->name.isEmpty() ? m_people->suggestions(person->id) : QStringList();
     variants->setEnabled(!suggestions.isEmpty());
-    for (const QString& suggestion : suggestions) {
-        QAction* action = variants->addAction(suggestion);
+    for (int i = 0; i < suggestions.size(); ++i) {
+        const QString suggestion = suggestions.at(i);
+        QAction* action = variants->addAction(i == 0 ? suggestion + QStringLiteral("  (предложен)") : suggestion);
         connect(action, &QAction::triggered, this, [this, id = person->id, suggestion] {
             applySuggestion(id, suggestion);
         });
     }
+    QAction* confirm = menu.addAction(QStringLiteral("Подтвердить перевод"));
+    confirm->setToolTip(QStringLiteral("Сохранить предложенный вариант имени у выделенных строк"));
+    connect(confirm, &QAction::triggered, this, [this] { confirmSelectedSuggestions(); });
+    menu.setToolTipsVisible(true);
 
     QAction* chosen = menu.exec(m_peopleView->viewport()->mapToGlobal(pos));
     if (chosen == cloudAll)
@@ -831,6 +833,39 @@ void MainWindow::translateSelectedProfession()
         }
         return true;
     });
+}
+
+// у выделенных строк сохраняется предложенный (первый) вариант перевода имени
+void MainWindow::confirmSelectedSuggestions()
+{
+    QVector<Person> changed;
+    const bool saved = modifySelected([&](Person& person) {
+        const QStringList variants = person.name.isEmpty() ? m_people->suggestions(person.id) : QStringList();
+        if (variants.isEmpty())
+            return false;
+        person.name = variants.first();
+        return true;
+    }, &changed);
+    if (saved) {
+        for (const Person& person : changed)
+            m_people->clearSuggestions(person.id);
+    }
+}
+
+void MainWindow::closeEvent(QCloseEvent* event)
+{
+    const int pending = m_people ? m_people->pendingSuggestions() : 0;
+    if (pending > 0) {
+        const auto answer = QMessageBox::warning(this, windowTitle(),
+            QStringLiteral("Перевод имени ждёт выбора варианта у %1 записей (выделены розовым) "
+                           "и не сохранён. Выйти без них?").arg(pending),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (answer != QMessageBox::Yes) {
+            event->ignore();
+            return;
+        }
+    }
+    QMainWindow::closeEvent(event);
 }
 
 void MainWindow::applySuggestion(int personId, const QString& name)

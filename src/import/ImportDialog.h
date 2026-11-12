@@ -10,6 +10,7 @@ class QLabel;
 class QLineEdit;
 class QRadioButton;
 class QTableWidget;
+class QTableWidgetItem;
 class QTreeWidget;
 
 class ImportDialog : public QDialog
@@ -28,6 +29,13 @@ private:
     void fillAwards();
     Person personFromInfo(const PersonInfo& info);
     void markKnown(); // см. ImportMatch.h
+    // фамилия угадана и ещё не подтверждена: такого человека импортировать нельзя
+    bool needsSurnameCheck(const PersonInfo& person) const;
+    void paintName(QTableWidgetItem* name, const PersonInfo& person) const;
+    void confirmSelectedSurnames();
+    // неподтверждённые среди indices; первого показывает в таблице, если он там есть
+    bool warnUnconfirmed(const QVector<int>& indices, const QString& action);
+    void reject() override;
 
     Catalog* m_catalog;
     CDocumentParser m_parser;

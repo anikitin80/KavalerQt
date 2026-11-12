@@ -249,8 +249,10 @@ bool CNameConverter::IsMiddleName(const std::wstring& name, LangType lang, NounC
 	return false;
 }
 
-bool CNameConverter::NormalizeName(std::wstring& fullName, LangType lang, NounCase nounCase)
+bool CNameConverter::NormalizeName(std::wstring& fullName, LangType lang, NounCase nounCase, bool* surnameSure)
 {
+	if (surnameSure)
+		*surnameSure = true;
 	// псевдоним в скобках
 	std::wstring strAlias;
 	size_t posBracket2 = fullName.rfind(L')');
@@ -331,6 +333,11 @@ bool CNameConverter::NormalizeName(std::wstring& fullName, LangType lang, NounCa
 	if (!middleName.empty() && nounCase != Nominative && lastName.find(L'-') == std::wstring::npos
 		&& ChooseKnownSurname(lastName, obliqueLastName, sex, lang))
 		bResLN = true;
+	if (surnameSure)
+	{
+		const auto& known = lang == LangRU ? m_KnownSurnamesRU : m_KnownSurnamesBY;
+		*surnameSure = bResLN || known.count(ToLower(lastName)) > 0;
+	}
 
 	if (surnameFirst)
 		fullName = lastName + L' ' + firstName;

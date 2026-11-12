@@ -25,8 +25,7 @@ public:
     void sort(int column, Qt::SortOrder order = Qt::AscendingOrder) override;
 
     void apply(int awardId, int year, const QString& name, const QString& quick,
-               bool needTranslationOnly, bool checkQuotes, bool groupByAward);
-    void setCheckQuotes(bool check);
+               bool needTranslationOnly, bool groupByAward);
 
     bool isGrouped() const { return m_grouped; }
     int shownCount() const;
@@ -40,6 +39,8 @@ public:
     // имена на выбор, по номеру человека; столбец имени перерисовывается один раз
     void setSuggestions(const QHash<int, QStringList>& suggestions);
     void clearSuggestions(int personId);
+    // люди без русского имени, чей перевод ждёт выбора варианта
+    int pendingSuggestions() const;
 
 private:
     struct Mark
@@ -57,6 +58,7 @@ private:
     Mark translationMark(const Person& person) const;
     QString columnText(const Person& person, int column) const;
     bool less(int left, int right) const;
+    void refreshAllRows();
     // то, что не зависит от человека, решается один раз на фильтр
     struct QuickFilter
     {
@@ -91,7 +93,6 @@ private:
     QHash<int, int> m_groupOfPerson;
     int m_sortColumn = 3;
     Qt::SortOrder m_sortOrder = Qt::AscendingOrder;
-    bool m_checkQuotes = false;
     bool m_grouped = false;
     // русская сортировка: «Ё» после «Е», белорусские «і»/«ў» рядом с «и»/«у»,
     // числа по значению («5-й» раньше «12-й»)

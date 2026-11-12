@@ -216,8 +216,21 @@ void TestNameConverter::uncertainSurnameIsReported()
 {
     CNameConverter converter;
     std::wstring name = L"Толстому Ивану Петровичу";
-    QVERIFY(!converter.NormalizeName(name, LangRU, Dative));
+    bool surnameSure = true;
+    QVERIFY(!converter.NormalizeName(name, LangRU, Dative, &surnameSure));
     QCOMPARE(QString::fromStdWString(name), QStringLiteral("Толстый Иван Петрович"));
+    QVERIFY(!surnameSure);
+
+    // фамилию правило знает точно, неразобранное отчество её не касается
+    name = L"Иванову Ивану оглы";
+    QVERIFY(!converter.NormalizeName(name, LangRU, Dative, &surnameSure));
+    QVERIFY(surnameSure);
+
+    // угаданную фамилию знает каталог: проверять её не нужно
+    converter.SetKnownSurnames(LangRU, {{L"толстый", 1}});
+    name = L"Толстому Ивану Петровичу";
+    converter.NormalizeName(name, LangRU, Dative, &surnameSure);
+    QVERIFY(surnameSure);
 }
 
 // «оглы» — не отчество, которое знают правила; имя остаётся на проверку
