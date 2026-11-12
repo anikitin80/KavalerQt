@@ -100,42 +100,73 @@ private:
     QHash<int, QStringList> m_suggestions;
 };
 
-class StatsModel : public QAbstractTableModel
+// статистика. По месяцам — дерево: группа (награда или год) с суммами, под ней
+// строки другого ключа (годы награды или награды года). Без месяцев — таблица
+// награда × год без групп.
+class StatsModel : public QAbstractItemModel
 {
     Q_OBJECT
 public:
+    enum Grouping { ByAward, ByYear };
+
     explicit StatsModel(Catalog* catalog, QObject* parent = nullptr);
 
+    QModelIndex index(int row, int column, const QModelIndex& parent = QModelIndex()) const override;
+    QModelIndex parent(const QModelIndex& child) const override;
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
     int columnCount(const QModelIndex& parent = QModelIndex()) const override;
     QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
     QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
 
-    void reload(bool byMonth);
+    void reload(bool byMonth, Grouping grouping = ByAward);
 
 private:
+    struct Line
+    {
+        QString label;
+        int total = 0;
+        int month[12] = {};
+    };
+    struct Group
+    {
+        Line line;
+        QVector<Line> rows;
+    };
+
     Catalog* m_catalog;
     bool m_byMonth = true;
-    QVector<StatMonth> m_months; // своя копия: каталог пересобирает статистику лениво
-    QVector<int> m_awardIds;
+    Grouping m_grouping = ByAward;
+    QVector<Group> m_groups;     // по месяцам
+    QVector<int> m_awardIds;     // без месяцев: строки
     QHash<QPair<int, int>, int> m_yearCount;
     QVector<int> m_years;
 };
 
-class DictionaryModel : public QAbstractTableModel
+// словарь имён деревом: группа на каждый тип (фамилия, имя, отчество), под ней части
+class DictionaryModel : public QAbstractItemModel
 {
     Q_OBJECT
 public:
     explicit DictionaryModel(Catalog* catalog, QObject* parent = nullptr);
 
+    QModelIndex index(int row, int column, const QModelIndex& parent = QModelIndex()) const override;
+    QModelIndex parent(const QModelIndex& child) const override;
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
     int columnCount(const QModelIndex& parent = QModelIndex()) const override;
     QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
     QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
 
-    void reload(const QString& filter);
+    // variantsOnly: только части, у которых больше одного русского написания
+    void reload(const QString& filter, bool variantsOnly);
+    static bool isGroup(const QModelIndex& index);
 
 private:
+    struct Group
+    {
+        QString type;
+        QVector<DictEntry> rows; // своя копия, см. StatsModel
+    };
+
     Catalog* m_catalog;
-    QVector<DictEntry> m_rows; // своя копия, см. StatsModel
+    QVector<Group> m_groups;
 };

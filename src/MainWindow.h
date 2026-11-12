@@ -16,6 +16,7 @@ class QLineEdit;
 class QCheckBox;
 class QTableView;
 class QTreeView;
+class QRadioButton;
 class QTabWidget;
 class QLabel;
 
@@ -92,9 +93,12 @@ private:
     QTreeView* m_peopleView = nullptr;
 
     QCheckBox* m_statsByMonth = nullptr;
-    QTableView* m_statsView = nullptr;
+    QRadioButton* m_statsByAward = nullptr;
+    QRadioButton* m_statsByYear = nullptr;
+    QTreeView* m_statsView = nullptr;
     QLineEdit* m_dictFilter = nullptr;
-    QTableView* m_dictView = nullptr;
+    QCheckBox* m_dictVariantsOnly = nullptr;
+    QTreeView* m_dictView = nullptr;
     QTabWidget* m_tabs = nullptr;
     QLabel* m_count = nullptr;
     bool m_filling = false;

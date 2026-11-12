@@ -10,6 +10,6 @@ int main(int argc, char* argv[])
     QApplication::setApplicationDisplayName(QStringLiteral("Кавалер"));
 
     MainWindow window;
-    window.show();
+    window.showMaximized();
     return app.exec();
 }

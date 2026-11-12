@@ -85,6 +85,7 @@ protected:
     }
 };
 
+// строки на 6 пикселей выше обычных; у всех трёх вкладок
 class PeopleDelegate : public QStyledItemDelegate
 {
 public:
@@ -120,7 +121,7 @@ QIcon toolbarIcon(int index)
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
-    resize(1280, 800);
+    resize(1280, 800); // размер после выхода из развёрнутого окна
 
     m_people = new PersonModel(&m_catalog, this);
     m_stats = new StatsModel(&m_catalog, this);
@@ -299,33 +300,60 @@ MainWindow::MainWindow(QWidget* parent)
 
     m_statsByMonth = new QCheckBox(QStringLiteral("По месяцам"));
     m_statsByMonth->setChecked(true);
-    m_statsView = new QTableView;
+    // группировка — только у статистики по месяцам; без месяцев таблица награда × год
+    m_statsByAward = new QRadioButton(QStringLiteral("по награде"));
+    m_statsByYear = new QRadioButton(QStringLiteral("по году"));
+    if (QSettings().value(QStringLiteral("StatsByYear"), false).toBool())
+        m_statsByYear->setChecked(true);
+    else
+        m_statsByAward->setChecked(true);
+    m_statsView = new QTreeView;
     m_statsView->setModel(m_stats);
     m_statsView->setAlternatingRowColors(true);
+    m_statsView->setUniformRowHeights(true);
+    m_statsView->setItemDelegate(new PeopleDelegate(m_statsView)); // высота строк как в списке награждений
     m_statsView->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    m_statsView->verticalHeader()->setVisible(false);
-    m_statsView->horizontalHeader()->setStretchLastSection(true);
-    m_statsView->setColumnWidth(0, 280);
+    // декабрь (или последний год) шириной как остальные, справа пусто
+    m_statsView->header()->setStretchLastSection(false);
+    auto* statsGroupLabel = new QLabel(QStringLiteral("Группировать:"));
+    auto* statsRow = new QHBoxLayout;
+    statsRow->addWidget(m_statsByMonth);
+    statsRow->addSpacing(24);
+    statsRow->addWidget(statsGroupLabel);
+    statsRow->addWidget(m_statsByAward);
+    statsRow->addWidget(m_statsByYear);
+    statsRow->addStretch();
+    connect(m_statsByMonth, &QCheckBox::toggled, this, [=](bool checked) {
+        statsGroupLabel->setEnabled(checked);
+        m_statsByAward->setEnabled(checked);
+        m_statsByYear->setEnabled(checked);
+    });
     auto* statsPage = new QWidget;
     auto* statsLayout = new QVBoxLayout(statsPage);
-    statsLayout->addWidget(m_statsByMonth);
+    statsLayout->addLayout(statsRow);
     statsLayout->addWidget(m_statsView);
 
     m_dictFilter = new QLineEdit;
     m_dictFilter->setPlaceholderText(QStringLiteral("Фильтр словаря"));
-    m_dictView = new QTableView;
+    m_dictVariantsOnly = new QCheckBox(QStringLiteral("Только с вариантами перевода"));
+    m_dictVariantsOnly->setToolTip(QStringLiteral("Части имени, у которых в каталоге больше одного русского написания"));
+    m_dictVariantsOnly->setChecked(QSettings().value(QStringLiteral("DictVariantsOnly"), true).toBool());
+    m_dictView = new QTreeView;
     m_dictView->setModel(m_dictionary);
     m_dictView->setAlternatingRowColors(true);
     m_dictView->setSortingEnabled(false);
+    m_dictView->setUniformRowHeights(true);
+    m_dictView->setItemDelegate(new PeopleDelegate(m_dictView));
     m_dictView->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    m_dictView->verticalHeader()->setVisible(false);
-    m_dictView->horizontalHeader()->setStretchLastSection(true);
-    m_dictView->setColumnWidth(0, 110);
-    m_dictView->setColumnWidth(1, 180);
-    m_dictView->setColumnWidth(2, 180);
+    m_dictView->header()->setStretchLastSection(true);
+    m_dictView->setColumnWidth(0, 220);
+    m_dictView->setColumnWidth(1, 220);
+    auto* dictFilters = new QHBoxLayout;
+    dictFilters->addWidget(m_dictFilter, 1);
+    dictFilters->addWidget(m_dictVariantsOnly);
     auto* dictPage = new QWidget;
     auto* dictLayout = new QVBoxLayout(dictPage);
-    dictLayout->addWidget(m_dictFilter);
+    dictLayout->addLayout(dictFilters);
     dictLayout->addWidget(m_dictView);
 
     m_tabs = new QTabWidget;
@@ -354,7 +382,15 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_quick, &QLineEdit::textChanged, quickTimer, [quickTimer](const QString&) { quickTimer->start(); });
     connect(quickTimer, &QTimer::timeout, this, refresh);
     connect(m_statsByMonth, &QCheckBox::toggled, this, [this] { refreshStats(); });
+    connect(m_statsByYear, &QRadioButton::toggled, this, [this](bool checked) {
+        QSettings().setValue(QStringLiteral("StatsByYear"), checked);
+        refreshStats();
+    });
     connect(m_dictFilter, &QLineEdit::textChanged, this, [this] { refreshDictionary(); });
+    connect(m_dictVariantsOnly, &QCheckBox::toggled, this, [this](bool checked) {
+        QSettings().setValue(QStringLiteral("DictVariantsOnly"), checked);
+        refreshDictionary();
+    });
     connect(&m_catalog, &Catalog::aboutToChange, this, [this] {
         if (!m_openingDatabase)
             capturePeopleState();
@@ -472,7 +508,12 @@ void MainWindow::refreshStats()
 {
     if (!m_catalog.isOpen())
         return;
-    m_stats->reload(m_statsByMonth->isChecked());
+    const bool byMonth = m_statsByMonth->isChecked();
+    m_stats->reload(byMonth, m_statsByYear->isChecked() ? StatsModel::ByYear : StatsModel::ByAward);
+    m_statsView->setRootIsDecorated(byMonth);
+    m_statsView->setColumnWidth(0, 300);
+    for (int column = 1; column < m_stats->columnCount(); ++column)
+        m_statsView->setColumnWidth(column, 60);
     m_statsStale = false;
 }
 
@@ -480,7 +521,10 @@ void MainWindow::refreshDictionary()
 {
     if (!m_catalog.isOpen())
         return;
-    m_dictionary->reload(m_dictFilter->text().trimmed());
+    m_dictionary->reload(m_dictFilter->text().trimmed(), m_dictVariantsOnly->isChecked());
+    for (int group = 0; group < m_dictionary->rowCount(); ++group)
+        m_dictView->setFirstColumnSpanned(group, QModelIndex(), true);
+    m_dictView->expandAll();
     m_dictionaryStale = false;
 }
 

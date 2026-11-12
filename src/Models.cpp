@@ -671,46 +671,80 @@ void PersonModel::refreshAllRows()
     }
 }
 
+namespace {
+// внутренний номер у строки группы и у строки таблицы без месяцев; у строки внутри группы — номер группы
+constexpr quintptr kStatsTopId = ~quintptr(0);
+}
+
 StatsModel::StatsModel(Catalog* catalog, QObject* parent)
-    : QAbstractTableModel(parent)
+    : QAbstractItemModel(parent)
     , m_catalog(catalog)
 {
 }
 
-int StatsModel::rowCount(const QModelIndex& parent) const
+QModelIndex StatsModel::index(int row, int column, const QModelIndex& parent) const
 {
-    if (parent.isValid())
-        return 0;
-    return m_byMonth ? m_months.size() : m_awardIds.size();
+    if (row < 0 || column < 0 || column >= columnCount())
+        return {};
+    if (!parent.isValid()) {
+        const int rows = m_byMonth ? m_groups.size() : m_awardIds.size();
+        return row < rows ? createIndex(row, column, kStatsTopId) : QModelIndex();
+    }
+    if (!m_byMonth || parent.internalId() != kStatsTopId || parent.row() >= m_groups.size()
+        || row >= m_groups.at(parent.row()).rows.size())
+        return {};
+    return createIndex(row, column, quintptr(parent.row()));
 }
 
-int StatsModel::columnCount(const QModelIndex& parent) const
+QModelIndex StatsModel::parent(const QModelIndex& child) const
 {
-    if (parent.isValid())
-        return 0;
-    return m_byMonth ? 15 : 2 + m_years.size();
+    if (!child.isValid() || child.internalId() == kStatsTopId)
+        return {};
+    return createIndex(int(child.internalId()), 0, kStatsTopId);
+}
+
+int StatsModel::rowCount(const QModelIndex& parent) const
+{
+    if (!parent.isValid())
+        return m_byMonth ? m_groups.size() : m_awardIds.size();
+    if (m_byMonth && parent.internalId() == kStatsTopId && parent.column() == 0 && parent.row() < m_groups.size())
+        return m_groups.at(parent.row()).rows.size();
+    return 0;
+}
+
+int StatsModel::columnCount(const QModelIndex&) const
+{
+    return m_byMonth ? 14 : 2 + m_years.size();
 }
 
 QVariant StatsModel::data(const QModelIndex& index, int role) const
 {
-    if (!index.isValid() || role != Qt::DisplayRole)
+    if (!index.isValid())
         return {};
 
     if (m_byMonth) {
-        const StatMonth& row = m_months.at(index.row());
-        if (index.column() == 0) {
-            const Award* award = m_catalog->award(row.awardId);
-            return award ? award->name : QString::number(row.awardId);
+        const bool top = index.internalId() == kStatsTopId;
+        if (role == Qt::FontRole && top) {
+            QFont font;
+            font.setBold(true);
+            return font;
         }
+        if (role == Qt::TextAlignmentRole && index.column() > 0)
+            return int(Qt::AlignRight | Qt::AlignVCenter);
+        if (role != Qt::DisplayRole)
+            return {};
+        const Group& group = m_groups.at(top ? index.row() : int(index.internalId()));
+        const Line& line = top ? group.line : group.rows.at(index.row());
+        if (index.column() == 0)
+            return line.label;
         if (index.column() == 1)
-            return row.year;
-        if (index.column() == 2)
-            return row.total;
-        if (index.column() >= 3 && index.column() < 15)
-            return row.month[index.column() - 3];
-        return {};
+            return line.total;
+        const int count = line.month[index.column() - 2];
+        return count ? QVariant(count) : QVariant();
     }
 
+    if (role != Qt::DisplayRole)
+        return {};
     const int awardId = m_awardIds.at(index.row());
     if (index.column() == 0) {
         const Award* award = m_catalog->award(awardId);
@@ -731,15 +765,13 @@ QVariant StatsModel::headerData(int section, Qt::Orientation orientation, int ro
     if (orientation != Qt::Horizontal || role != Qt::DisplayRole)
         return {};
     if (m_byMonth) {
-        switch (section) {
-        case 0: return QStringLiteral("Награда");
-        case 1: return QStringLiteral("Год");
-        case 2: return QStringLiteral("Всего");
-        default:
-            if (section >= 3 && section < 15)
-                return kMonths.at(section - 3);
-            return {};
-        }
+        if (section == 0)
+            return m_grouping == ByAward ? QStringLiteral("Награда / год") : QStringLiteral("Год / награда");
+        if (section == 1)
+            return QStringLiteral("Всего");
+        if (section >= 2 && section < 14)
+            return kMonths.at(section - 2);
+        return {};
     }
     if (section == 0)
         return QStringLiteral("Награда");
@@ -748,19 +780,55 @@ QVariant StatsModel::headerData(int section, Qt::Orientation orientation, int ro
     return QString::number(m_years.at(section - 2));
 }
 
-void StatsModel::reload(bool byMonth)
+void StatsModel::reload(bool byMonth, Grouping grouping)
 {
     beginResetModel();
     m_byMonth = byMonth;
-    m_months = m_catalog->stats();
+    m_grouping = grouping;
+    m_groups.clear();
     m_awardIds.clear();
     m_yearCount.clear();
     m_years.clear();
-    if (!byMonth) {
+    // каталог отдаёт строки по наградам (в их порядке), внутри — по годам
+    const QVector<StatMonth> months = m_catalog->stats();
+    const auto awardName = [this](int awardId) {
+        const Award* award = m_catalog->award(awardId);
+        return award ? award->name : QString::number(awardId);
+    };
+    const auto add = [](Line& line, const StatMonth& row) {
+        line.total += row.total;
+        for (int month = 0; month < 12; ++month)
+            line.month[month] += row.month[month];
+    };
+    if (byMonth) {
+        QHash<int, int> groupOf;
+        QVector<StatMonth> ordered = months;
+        if (grouping == ByYear) {
+            std::stable_sort(ordered.begin(), ordered.end(),
+                [](const StatMonth& a, const StatMonth& b) { return a.year < b.year; });
+        }
+        for (const StatMonth& row : ordered) {
+            const int key = grouping == ByAward ? row.awardId : row.year;
+            int slot = groupOf.value(key, -1);
+            if (slot < 0) {
+                Group group;
+                group.line.label = grouping == ByAward ? awardName(row.awardId) : QString::number(row.year);
+                slot = m_groups.size();
+                m_groups.push_back(group);
+                groupOf.insert(key, slot);
+            }
+            Group& group = m_groups[slot];
+            add(group.line, row);
+            Line line;
+            line.label = grouping == ByAward ? QString::number(row.year) : awardName(row.awardId);
+            add(line, row);
+            group.rows.push_back(line);
+        }
+    } else {
         QSet<int> awards;
         for (int year = m_catalog->yearMin(); year <= m_catalog->yearMax(); ++year)
             m_years.push_back(year);
-        for (const StatMonth& row : m_months) {
+        for (const StatMonth& row : months) {
             awards.insert(row.awardId);
             m_yearCount.insert(qMakePair(row.awardId, row.year), row.total);
         }
@@ -772,32 +840,78 @@ void StatsModel::reload(bool byMonth)
     endResetModel();
 }
 
+namespace {
+// внутренний номер у строки группы; у части — номер её группы
+constexpr quintptr kDictGroupId = ~quintptr(0);
+}
+
 DictionaryModel::DictionaryModel(Catalog* catalog, QObject* parent)
-    : QAbstractTableModel(parent)
+    : QAbstractItemModel(parent)
     , m_catalog(catalog)
 {
 }
 
-int DictionaryModel::rowCount(const QModelIndex& parent) const
+bool DictionaryModel::isGroup(const QModelIndex& index)
 {
-    return parent.isValid() ? 0 : m_rows.size();
+    return index.isValid() && index.internalId() == kDictGroupId;
 }
 
-int DictionaryModel::columnCount(const QModelIndex& parent) const
+QModelIndex DictionaryModel::index(int row, int column, const QModelIndex& parent) const
 {
-    return parent.isValid() ? 0 : 4;
+    if (row < 0 || column < 0 || column >= columnCount(parent))
+        return {};
+    if (!parent.isValid())
+        return row < m_groups.size() ? createIndex(row, column, kDictGroupId) : QModelIndex();
+    if (!isGroup(parent) || parent.row() >= m_groups.size() || row >= m_groups.at(parent.row()).rows.size())
+        return {};
+    return createIndex(row, column, quintptr(parent.row()));
+}
+
+QModelIndex DictionaryModel::parent(const QModelIndex& child) const
+{
+    if (!child.isValid() || isGroup(child))
+        return {};
+    return createIndex(int(child.internalId()), 0, kDictGroupId);
+}
+
+int DictionaryModel::rowCount(const QModelIndex& parent) const
+{
+    if (!parent.isValid())
+        return m_groups.size();
+    if (isGroup(parent) && parent.column() == 0 && parent.row() < m_groups.size())
+        return m_groups.at(parent.row()).rows.size();
+    return 0;
+}
+
+int DictionaryModel::columnCount(const QModelIndex&) const
+{
+    return 3;
 }
 
 QVariant DictionaryModel::data(const QModelIndex& index, int role) const
 {
-    if (!index.isValid() || role != Qt::DisplayRole || index.row() >= m_rows.size())
+    if (!index.isValid())
         return {};
-    const DictEntry& entry = m_rows.at(index.row());
+    if (isGroup(index)) {
+        if (index.row() >= m_groups.size() || index.column() != 0)
+            return {};
+        const Group& group = m_groups.at(index.row());
+        if (role == Qt::DisplayRole)
+            return QStringLiteral("%1 (%2)").arg(group.type).arg(group.rows.size());
+        if (role == Qt::FontRole) {
+            QFont font;
+            font.setBold(true);
+            return font;
+        }
+        return {};
+    }
+    if (role != Qt::DisplayRole)
+        return {};
+    const DictEntry& entry = m_groups.at(int(index.internalId())).rows.at(index.row());
     switch (index.column()) {
-    case 0: return entry.type;
-    case 1: return entry.by;
-    case 2: return entry.ru;
-    case 3: return entry.alt;
+    case 0: return entry.by;
+    case 1: return entry.ru;
+    case 2: return entry.alt;
     default: return {};
     }
 }
@@ -807,25 +921,29 @@ QVariant DictionaryModel::headerData(int section, Qt::Orientation orientation, i
     if (orientation != Qt::Horizontal || role != Qt::DisplayRole)
         return {};
     switch (section) {
-    case 0: return QStringLiteral("Тип");
-    case 1: return QStringLiteral("Белорусский");
-    case 2: return QStringLiteral("Русский");
-    case 3: return QStringLiteral("Другие переводы");
+    case 0: return QStringLiteral("Белорусский");
+    case 1: return QStringLiteral("Русский");
+    case 2: return QStringLiteral("Другие переводы");
     default: return {};
     }
 }
 
-void DictionaryModel::reload(const QString& filter)
+void DictionaryModel::reload(const QString& filter, bool variantsOnly)
 {
     beginResetModel();
-    m_rows.clear();
+    m_groups.clear();
     for (const DictEntry& entry : m_catalog->dictionary()) {
+        if (variantsOnly && entry.alt.isEmpty())
+            continue;
         if (!filter.isEmpty()
             && !entry.by.contains(filter, Qt::CaseInsensitive)
             && !entry.ru.contains(filter, Qt::CaseInsensitive)
             && !entry.alt.contains(filter, Qt::CaseInsensitive))
             continue;
-        m_rows.push_back(entry);
+        // словарь идёт по типам подряд: фамилии, имена, отчества
+        if (m_groups.isEmpty() || m_groups.last().type != entry.type)
+            m_groups.push_back(Group{entry.type, {}});
+        m_groups.last().rows.push_back(entry);
     }
     endResetModel();
 }
