@@ -330,13 +330,19 @@ bool CNameConverter::NormalizeName(std::wstring& fullName, LangType lang, NounCa
 			|| ApplyRules(part, RulesLastName, sex, lang, nounCase, false);
 	});
 	// у имени с отчеством фамилия — первое слово; иностранные имена не трогаем
-	if (!middleName.empty() && nounCase != Nominative && lastName.find(L'-') == std::wstring::npos
-		&& ChooseKnownSurname(lastName, obliqueLastName, sex, lang))
-		bResLN = true;
+	bool ambiguous = false;
+	if (!middleName.empty() && nounCase != Nominative)
+	{
+		const bool chosen = lastName.find(L'-') == std::wstring::npos
+			? ChooseKnownSurname(lastName, obliqueLastName, sex, lang, &ambiguous)
+			: ChooseKnownDoubleSurname(lastName, obliqueLastName, sex, lang);
+		if (chosen)
+			bResLN = true;
+	}
 	if (surnameSure)
 	{
-		const auto& known = lang == LangRU ? m_KnownSurnamesRU : m_KnownSurnamesBY;
-		*surnameSure = bResLN || known.count(ToLower(lastName)) > 0;
+		const auto& known = KnownSurnames(lang, sex);
+		*surnameSure = (bResLN || known.count(ToLower(lastName)) > 0) && !ambiguous;
 	}
 
 	if (surnameFirst)
@@ -387,9 +393,17 @@ SexType CNameConverter::AdjectiveSurnameSex(const std::wstring& surname, NounCas
 	return SexAny;
 }
 
-void CNameConverter::SetKnownSurnames(LangType lang, std::unordered_map<std::wstring, int> counts)
+void CNameConverter::SetKnownSurnames(LangType lang, std::unordered_map<std::wstring, int> counts, SexType sex)
 {
-	(lang == LangRU ? m_KnownSurnamesRU : m_KnownSurnamesBY) = std::move(counts);
+	m_KnownSurnames[lang == LangRU ? 0 : 1][sex] = std::move(counts);
+}
+
+const std::unordered_map<std::wstring, int>& CNameConverter::KnownSurnames(LangType lang, SexType sex) const
+{
+	const auto& byLang = m_KnownSurnames[lang == LangRU ? 0 : 1];
+	if (sex != SexAny && !byLang[sex].empty())
+		return byLang[sex];
+	return byLang[SexAny];
 }
 
 namespace {
@@ -426,22 +440,44 @@ std::vector<std::wstring> CNameConverter::SurnameVariants(const std::wstring& ob
 			const std::wstring stem = oblique.substr(0, oblique.length() - 1);
 			bases.push_back(stem);
 			bases.push_back(stem + L"а");
+			// «Харунжу» — Харунжы
+			bases.push_back(stem + L"ы");
 			if (endsWith(L"ю") || endsWith(L"я"))
 			{
 				bases.push_back(stem + L"ь");
 				bases.push_back(stem + L"й"); // «Неглюя» — Неглюй
+				bases.push_back(stem + L"я"); // «Семяненю» — Семяненя
 			}
 			// «Ціву» — Ціў: в конце белорусского слова «в» становится «ў»
 			if (!stem.empty() && stem.back() == L'в')
 				bases.push_back(stem.substr(0, stem.length() - 1) + L"ў");
 		}
+		// дательный мужской фамилии на «-а/-я»: «Мисюле» — Мисюля или Мисюла
+		if (endsWith(L"е"))
+		{
+			const std::wstring stem = oblique.substr(0, oblique.length() - 1);
+			bases.push_back(stem + L"я");
+			bases.push_back(stem + L"а");
+		}
+		// русская фамилия-прилагательное с ударным окончанием: «Кутовому», «Рябого» — Кутовой, Рябой
+		if (endsWith(L"ому") || endsWith(L"ого") || endsWith(L"ему") || endsWith(L"его"))
+		{
+			const std::wstring stem = oblique.substr(0, oblique.length() - 3);
+			bases.push_back(stem + L"ой");
+			bases.push_back(stem + L"ий");
+		}
 	}
-	else if (endsWith(L"ой") || endsWith(L"ай") || endsWith(L"ей") || endsWith(L"ую"))
+	else
 	{
-		// «Гаявой» — Гаява или Гаявая
-		const std::wstring stem = oblique.substr(0, oblique.length() - 2);
-		bases.push_back(stem + L"а");
-		bases.push_back(stem + L"ая");
+		// женская фамилия на согласный не склоняется: «Сухавей», «Макей»
+		bases.push_back(oblique);
+		if (endsWith(L"ой") || endsWith(L"ай") || endsWith(L"ей") || endsWith(L"ую"))
+		{
+			// «Гаявой» — Гаява или Гаявая
+			const std::wstring stem = oblique.substr(0, oblique.length() - 2);
+			bases.push_back(stem + L"а");
+			bases.push_back(stem + L"ая");
+		}
 	}
 
 	std::vector<std::wstring> variants;
@@ -460,11 +496,26 @@ std::vector<std::wstring> CNameConverter::SurnameVariants(const std::wstring& ob
 			for (const wchar_t* vowel : { L"е", L"а", L"э", L"ё" })
 				add(base.substr(0, n - 2) + vowel + L"нь");
 		}
+		// «Жыўнь» — Жывень: «ў» перед беглой гласной снова «в»
+		else if (n >= 4 && base.compare(n - 2, 2, L"нь") == 0 && base[n - 3] == L'ў')
+		{
+			for (const wchar_t* vowel : { L"е", L"э", L"ё" })
+				add(base.substr(0, n - 3) + L"в" + vowel + L"нь");
+		}
 		else if (n >= 3 && isNameConsonant(base[n - 1]) && isNameConsonant(base[n - 2]))
 		{
 			for (const wchar_t* vowel : { L"о", L"е", L"а", L"э", L"ё" })
+			{
 				add(base.substr(0, n - 1) + vowel + base.substr(n - 1));
+				// белорусское «т» перед «е» — «ц»: «Катла» — Кацел, Кацёл
+				const std::wstring v(vowel);
+				if (base[n - 2] == L'т' && (v == L"е" || v == L"ё"))
+					add(base.substr(0, n - 2) + L"ц" + vowel + base.substr(n - 1));
+			}
 		}
+		// безударная «я» перед последней согласной: «Кузняц» — Кузнец
+		if (n >= 4 && base[n - 2] == L'я' && isNameConsonant(base[n - 1]))
+			add(base.substr(0, n - 2) + L"е" + base.substr(n - 1));
 		// одна гласная, безударная в косвенном падеже: «Валк» — Волк/Воўк, «Бабр» — Бобр, «Ярш» — Ёрш
 		size_t vowels = 0, at = 0;
 		for (size_t i = 0; i < n; ++i)
@@ -487,24 +538,93 @@ std::vector<std::wstring> CNameConverter::SurnameVariants(const std::wstring& ob
 	return variants;
 }
 
-bool CNameConverter::ChooseKnownSurname(std::wstring& surname, const std::wstring& oblique, SexType sex, LangType lang) const
+bool CNameConverter::ChooseKnownSurname(std::wstring& surname, const std::wstring& oblique, SexType sex, LangType lang,
+                                        bool* ambiguous) const
 {
-	const auto& known = lang == LangRU ? m_KnownSurnamesRU : m_KnownSurnamesBY;
-	if (known.empty() || surname.empty() || known.count(ToLower(surname)))
+	if (ambiguous)
+		*ambiguous = false;
+	const auto& known = KnownSurnames(lang, sex);
+	if (known.empty() || surname.empty())
 		return false;
 	std::wstring source = oblique;
 	if (lang == LangBY)
 		ToCyrillicI(source, true);
+	const bool ruleKnown = known.count(ToLower(surname)) > 0;
 	int best = 0;
+	int knownVariants = 0;
 	std::wstring chosen;
 	for (const std::wstring& variant : SurnameVariants(source, surname, sex))
 	{
 		const auto found = known.find(ToLower(variant));
-		if (found != known.end() && found->second > best)
+		if (found == known.end())
+			continue;
+		++knownVariants;
+		if (found->second > best)
 		{
 			best = found->second;
 			chosen = variant;
 		}
+	}
+	if (ambiguous)
+		*ambiguous = knownVariants + (ruleKnown ? 1 : 0) > 1;
+	// известная каталогу фамилия правила остаётся, даже если вариант встречается чаще
+	if (ruleKnown || chosen.empty())
+		return false;
+	surname = chosen;
+	return true;
+}
+
+bool CNameConverter::ChooseKnownDoubleSurname(std::wstring& surname, const std::wstring& oblique, SexType sex, LangType lang) const
+{
+	const auto& known = KnownSurnames(lang, sex);
+	if (known.empty() || known.count(ToLower(surname)))
+		return false;
+	std::wstring source = oblique;
+	if (lang == LangBY)
+		ToCyrillicI(source, true);
+	const std::vector<std::wstring> obliqueParts = SplitString(source, L'-');
+	const std::vector<std::wstring> ruleParts = SplitString(surname, L'-');
+	if (obliqueParts.size() != ruleParts.size() || obliqueParts.size() < 2 || obliqueParts.size() > 3)
+		return false;
+	// у каждой части: по правилу, как в указе (несклоняемая) и варианты
+	std::vector<std::vector<std::wstring>> options;
+	for (size_t i = 0; i < ruleParts.size(); ++i)
+	{
+		std::vector<std::wstring> part{ ruleParts[i] };
+		if (obliqueParts[i] != ruleParts[i])
+			part.push_back(obliqueParts[i]);
+		for (const std::wstring& variant : SurnameVariants(obliqueParts[i], ruleParts[i], sex))
+		{
+			if (part.size() >= 8)
+				break;
+			if (std::find(part.begin(), part.end(), variant) == part.end())
+				part.push_back(variant);
+		}
+		options.push_back(part);
+	}
+	int best = 0;
+	std::wstring chosen;
+	std::vector<size_t> at(options.size(), 0);
+	for (;;)
+	{
+		std::wstring candidate;
+		for (size_t i = 0; i < options.size(); ++i)
+		{
+			if (i > 0)
+				candidate += L'-';
+			candidate += options[i][at[i]];
+		}
+		const auto found = known.find(ToLower(candidate));
+		if (found != known.end() && found->second > best)
+		{
+			best = found->second;
+			chosen = candidate;
+		}
+		size_t i = 0;
+		while (i < at.size() && ++at[i] == options[i].size())
+			at[i++] = 0;
+		if (i == at.size())
+			break;
 	}
 	if (chosen.empty())
 		return false;

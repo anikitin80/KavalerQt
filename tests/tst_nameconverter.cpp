@@ -23,6 +23,9 @@ private slots:
     void isMiddleName();
     void sex();
     void catalogPicksTheSurname();
+    void catalogSurnameVariants_data();
+    void catalogSurnameVariants();
+    void twoKnownSpellingsAreUnsure();
 };
 
 void TestNameConverter::normalizeName_data()
@@ -340,6 +343,78 @@ void TestNameConverter::catalogPicksTheSurname()
     // неизвестная каталогу фамилия без известных вариантов остаётся по правилу
     QCOMPARE(convert(converter, QStringLiteral("Зайцаву Івану Іванавічу"), LangBY, Dative),
              convert(rulesOnly, QStringLiteral("Зайцаву Івану Іванавічу"), LangBY, Dative));
+}
+
+// формы, которые дают косвенные фамилии, если каталог их знает
+void TestNameConverter::catalogSurnameVariants_data()
+{
+    QTest::addColumn<QString>("known");
+    QTest::addColumn<QString>("decree");
+    QTest::addColumn<LangType>("lang");
+    QTest::addColumn<NounCase>("nounCase");
+    QTest::addColumn<QString>("expected");
+
+    QTest::newRow("dative -е") << QStringLiteral("мисюля") << QStringLiteral("Мисюле Евгению Николаевичу")
+                               << LangRU << Dative << QStringLiteral("Мисюля Евгений Николаевич");
+    QTest::newRow("adjective -ой") << QStringLiteral("кутовой") << QStringLiteral("Кутовому Борису Александровичу")
+                                   << LangRU << Dative << QStringLiteral("Кутовой Борис Александрович");
+    QTest::newRow("adjective -ого") << QStringLiteral("рябой") << QStringLiteral("Рябого Вячеслава Владимировича")
+                                    << LangRU << Accusative << QStringLiteral("Рябой Вячеслав Владимирович");
+    QTest::newRow("-ю to -я") << QStringLiteral("семяненя") << QStringLiteral("Семяненю Івану Георгіевічу")
+                              << LangBY << Dative << QStringLiteral("Семяненя Іван Георгіевіч");
+    QTest::newRow("-у to -ы") << QStringLiteral("харунжы") << QStringLiteral("Харунжу Аляксандра Аляксандравіча")
+                              << LangBY << Accusative << QStringLiteral("Харунжы Аляксандр Аляксандравіч");
+    QTest::newRow("т to ц") << QStringLiteral("кацел") << QStringLiteral("Катла Мікалая Яўгеньевіча")
+                            << LangBY << Accusative << QStringLiteral("Кацел Мікалай Яўгеньевіч");
+    QTest::newRow("ў to в") << QStringLiteral("жывень") << QStringLiteral("Жыўня Івана Адольфавіча")
+                            << LangBY << Accusative << QStringLiteral("Жывень Іван Адольфавіч");
+    QTest::newRow("я to е") << QStringLiteral("кузнец") << QStringLiteral("Кузняца Аляксандра Аляксандравіча")
+                            << LangBY << Accusative << QStringLiteral("Кузнец Аляксандр Аляксандравіч");
+    QTest::newRow("female indeclinable") << QStringLiteral("сухавей") << QStringLiteral("Сухавей Святлане Іванаўне")
+                                         << LangBY << Dative << QStringLiteral("Сухавей Святлана Іванаўна");
+    QTest::newRow("double surname") << QStringLiteral("окала-кулак") << QStringLiteral("Окала-Кулака Юрыя Міхайлавіча")
+                                    << LangBY << Accusative << QStringLiteral("Окала-Кулак Юрый Міхайлавіч");
+    QTest::newRow("double female") << QStringLiteral("палякова-макей") << QStringLiteral("Паляковай-Макей Веры Аляксандраўне")
+                                   << LangBY << Dative << QStringLiteral("Палякова-Макей Вера Аляксандраўна");
+}
+
+void TestNameConverter::catalogSurnameVariants()
+{
+    QFETCH(QString, known);
+    QFETCH(QString, decree);
+    QFETCH(LangType, lang);
+    QFETCH(NounCase, nounCase);
+    QFETCH(QString, expected);
+
+    CNameConverter converter;
+    converter.SetKnownSurnames(lang, {{known.toStdWString(), 1}});
+    std::wstring name = decree.toStdWString();
+    bool surnameSure = false;
+    converter.NormalizeName(name, lang, nounCase, &surnameSure);
+    QCOMPARE(QString::fromStdWString(name), expected);
+    QVERIFY(surnameSure);
+}
+
+// каталог знает два написания — выбрать по указу нельзя, фамилию проверяет пользователь;
+// написания другого пола не мешают
+void TestNameConverter::twoKnownSpellingsAreUnsure()
+{
+    CNameConverter converter;
+    converter.SetKnownSurnames(LangBY, {{L"заяц", 45}, {L"заец", 4}, {L"іванова", 9}, {L"іваноў", 9}});
+    converter.SetKnownSurnames(LangBY, {{L"заяц", 40}, {L"заец", 4}, {L"іваноў", 9}}, SexMale);
+    converter.SetKnownSurnames(LangBY, {{L"заяц", 5}, {L"іванова", 9}}, SexFemale);
+
+    std::wstring name = L"Зайца Аляксандра Аляксандравіча";
+    bool surnameSure = true;
+    converter.NormalizeName(name, LangBY, Accusative, &surnameSure);
+    QCOMPARE(QString::fromStdWString(name), QStringLiteral("Заяц Аляксандр Аляксандравіч"));
+    QVERIFY(!surnameSure);
+
+    // «Іванова» — фамилия женщин, у мужчины «Іванову» одно известное написание
+    name = L"Іванову Івану Іванавічу";
+    converter.NormalizeName(name, LangBY, Dative, &surnameSure);
+    QCOMPARE(QString::fromStdWString(name), QStringLiteral("Іваноў Іван Іванавіч"));
+    QVERIFY(surnameSure);
 }
 
 QTEST_GUILESS_MAIN(TestNameConverter)

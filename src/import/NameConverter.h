@@ -101,7 +101,10 @@ public:
 	// фамилии каталога (нижний регистр → сколько записей): косвенная форма часто
 	// даёт несколько именительных («Склюту» — Склют или Склюта, «Лобанку» —
 	// Лобанок), и тогда берётся тот, что каталог уже знает. Пусто — только правила.
-	void SetKnownSurnames(LangType lang, std::unordered_map<std::wstring, int> counts);
+	// sex: фамилии мужчин или женщин каталога (по отчеству); SexAny — все вместе.
+	// Если для пола фамилии заданы, сверка идёт с ними: «Иванова» женщин не делает
+	// фамилию «Иванову» мужчины неоднозначной.
+	void SetKnownSurnames(LangType lang, std::unordered_map<std::wstring, int> counts, SexType sex = SexAny);
 	// именительные, которые может дать косвенная фамилия oblique, кроме ruleResult
 	static std::vector<std::wstring> SurnameVariants(const std::wstring& oblique, const std::wstring& ruleResult, SexType sex);
 
@@ -113,10 +116,16 @@ public:
 protected:
 	static bool ForEachPart(std::wstring& word, const std::function<bool(std::wstring&)>& convert);
 	// фамилия правила неизвестна каталогу, а один из вариантов известен: берётся он
-	bool ChooseKnownSurname(std::wstring& surname, const std::wstring& oblique, SexType sex, LangType lang) const;
+	// (самый частый). ambiguous: каталог знает больше одного написания этой фамилии —
+	// результат правила и вариант или два варианта; выбрать из текста указа нельзя.
+	bool ChooseKnownSurname(std::wstring& surname, const std::wstring& oblique, SexType sex, LangType lang,
+	                        bool* ambiguous = nullptr) const;
+	// то же для двойной фамилии: каждая часть по своим вариантам, целиком сверяется с каталогом
+	bool ChooseKnownDoubleSurname(std::wstring& surname, const std::wstring& oblique, SexType sex, LangType lang) const;
+	const std::unordered_map<std::wstring, int>& KnownSurnames(LangType lang, SexType sex) const;
 
-	std::unordered_map<std::wstring, int> m_KnownSurnamesRU;
-	std::unordered_map<std::wstring, int> m_KnownSurnamesBY;
+	// [язык: 0 рус., 1 бел.][пол: SexAny, SexMale, SexFemale]
+	std::unordered_map<std::wstring, int> m_KnownSurnames[2][3];
 
 	static const RulesList ExceptionsFirstName;
 	static const RulesList ExceptionsLastName;

@@ -14,22 +14,32 @@
 
 inline void loadKnownSurnames(CNameConverter& converter, const Catalog& catalog)
 {
-    std::unordered_map<std::wstring, int> russian, belarusian;
-    const auto add = [](std::unordered_map<std::wstring, int>& counts, const QString& name, bool by) {
+    // [пол: SexAny, SexMale, SexFemale]
+    std::unordered_map<std::wstring, int> russian[3], belarusian[3];
+    const auto add = [](std::unordered_map<std::wstring, int>* counts, const QString& name, bool by) {
         const QStringList words = name.split(QLatin1Char(' '), Qt::SkipEmptyParts);
         if (words.size() < 3)
             return;
         std::wstring surname = words.front().toStdWString();
         if (by)
             ToCyrillicI(surname, true);
-        ++counts[ToLower(surname)];
+        surname = ToLower(surname);
+        ++counts[SexAny][surname];
+        // пол — по окончанию отчества: «-віч», «-вич», «-ич» / «-на»
+        const QString patronymic = words.at(2).toLower();
+        if (patronymic.endsWith(QStringLiteral("ич")) || patronymic.endsWith(QStringLiteral("іч")))
+            ++counts[SexMale][surname];
+        else if (patronymic.endsWith(QStringLiteral("на")))
+            ++counts[SexFemale][surname];
     };
     for (const Person& person : catalog.people()) {
         add(russian, person.name, false);
         add(belarusian, person.nameBy, true);
     }
-    converter.SetKnownSurnames(LangRU, std::move(russian));
-    converter.SetKnownSurnames(LangBY, std::move(belarusian));
+    for (SexType sex : {SexAny, SexMale, SexFemale}) {
+        converter.SetKnownSurnames(LangRU, std::move(russian[sex]), sex);
+        converter.SetKnownSurnames(LangBY, std::move(belarusian[sex]), sex);
+    }
 }
 
 inline void loadKnownWords(CDocumentParser& parser, const Catalog& catalog)

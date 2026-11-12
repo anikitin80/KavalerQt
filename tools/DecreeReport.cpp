@@ -183,6 +183,7 @@ struct Row
     QString dbRank;
     bool dbPosthumous = false;
     QString diffFields;
+    bool surnameUnsure = false; // окно импорта попросит подтвердить фамилию
 };
 
 // строка persons.tsv, отложенная до конца файла: ближайшую запись для NEW
@@ -453,11 +454,13 @@ int main(int argc, char** argv)
     filesOut.setEncoding(QStringConverter::Utf8);
     persons << "file\tyear\tindex\tstatus\taward\tdb_id\tname\tdescription\trank\tposthumous"
                "\tdb_description\tdb_rank\tdb_posthumous\tdiff_fields\tdecree_no\tdecree_date\tlanguage\tsource_name\tsource_case"
-               "\tnear_id\tnear_name\tnear_kind\n";
+               "\tnear_id\tnear_name\tnear_kind\tsurname_unsure\n";
     filesOut << "file\tyear\tpersons\texact\tdiff\tother_award\tnew\tbad_header\terror\texact_index\tgroup_used\tgroup_info\n";
     const bool allPersons = cli.isSet(allOption);
 
     QMap<QString, int> totals;
+    // фамилия, которую окно импорта попросит подтвердить: по статусу, всего и с 2020 года
+    QMap<QString, int> unsureSurnames, unsureRecent;
     QMap<int, QMap<QString, int>> perYear;
     QMap<QString, int> diffFields;
     QMap<QString, int> nearKinds;
@@ -533,6 +536,7 @@ int main(int argc, char** argv)
             row.description = QString::fromStdWString(parser.GetPersonDescription(info, false));
             row.rank = QString::fromStdWString(info.MilitaryRank);
             row.posthumous = info.Posthumous;
+            row.surnameUnsure = !info.Organization && (info.Flags & PersonInfo::NF_SURNAME_UNSURE);
 
             const QString matchName = row.name.isEmpty() ? row.description : row.name;
             const QString decree = decreeKey(info.Ukaz.Number, info.Ukaz.Date, matchName, belarusian);
@@ -565,6 +569,11 @@ int main(int argc, char** argv)
             }
 
             ++totals[row.status];
+            if (!info.Organization && (info.Flags & PersonInfo::NF_SURNAME_UNSURE)) {
+                ++unsureSurnames[row.status];
+                if (row.year >= 2020)
+                    ++unsureRecent[row.status];
+            }
             ++perYear[row.year][row.status];
             ++fileCounts[row.status];
             current.insert(rowKey(row.file, row.index), row);
@@ -618,7 +627,7 @@ int main(int argc, char** argv)
                     << (out.belarusian ? "by" : "ru") << '\t' << cell(out.sourceName) << '\t'
                     << (out.sourceCase == Dative ? "dat" : out.sourceCase == Accusative ? "acc" : "nom") << '\t'
                     << (out.nearId ? QString::number(out.nearId) : QString()) << '\t' << cell(out.nearName) << '\t'
-                    << out.nearKind << '\n';
+                    << out.nearKind << '\t' << (row.surnameUnsure ? 1 : 0) << '\n';
         }
         if (parser.m_Persons.empty())
             ++emptyFiles;
@@ -651,6 +660,13 @@ int main(int argc, char** argv)
     s << "\nРасхождения в найденных записях (DIFF), по полям:\n";
     for (auto it = diffFields.cbegin(); it != diffFields.cend(); ++it)
         s << "  " << it.key().leftJustified(12) << QString::number(it.value()).rightJustified(7) << "\n";
+    s << "\nФамилия требует подтверждения в окне импорта (EXACT — лишняя проверка, NEW — пойманная ошибка):\n";
+    for (const QString& status : kStatuses) {
+        if (unsureSurnames.value(status) == 0)
+            continue;
+        s << "  " << status.leftJustified(12) << QString::number(unsureSurnames.value(status)).rightJustified(7)
+          << "   с 2020 г.: " << unsureRecent.value(status) << "\n";
+    }
     if (!nearKinds.isEmpty()) {
         s << "\nНе найденные (NEW) по ближайшей записи указа (near_kind в persons.tsv):\n";
         for (auto it = nearKinds.cbegin(); it != nearKinds.cend(); ++it)
