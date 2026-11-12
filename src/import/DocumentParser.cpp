@@ -1837,7 +1837,7 @@ void CDocumentParser::NormalizePersonInfo(PersonInfo& person)
 	}
 	splitGluedPatronymic(m_NameConverter, person.Name, lang, nounCase);
 	bool surnameSure = true;
-	if (m_NameConverter.NormalizeName(person.Name, lang, nounCase, &surnameSure))
+	if (m_NameConverter.NormalizeName(person.Name, lang, nounCase, &surnameSure, &person.SurnameSpellings))
 		person.Flags |= PersonInfo::NF_NAME;
 	if (!surnameSure)
 		person.Flags |= PersonInfo::NF_SURNAME_UNSURE;

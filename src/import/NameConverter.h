@@ -86,12 +86,18 @@ struct Rule
 
 typedef std::vector<Rule> RulesList;
 
+// написание фамилии и сколько раз его знает каталог
+using SurnameSpellings = std::vector<std::pair<std::wstring, int>>;
+
 class CNameConverter
 {
 public:
 	// surnameSure: именительный фамилии дали правила или его знает каталог;
 	// ложь, если правила его угадали («?» в таблице) или правила нет
-	bool NormalizeName(std::wstring& fullName, LangType lang, NounCase nounCase, bool* surnameSure = nullptr);
+	// spellings: написания этой фамилии, которые знает каталог (с числом записей,
+	// частые первыми), когда их больше одного; иначе пусто
+	bool NormalizeName(std::wstring& fullName, LangType lang, NounCase nounCase, bool* surnameSure = nullptr,
+	                   SurnameSpellings* spellings = nullptr);
 	SexType GetSex(std::wstring& middleName, NounCase nounCase);
 	// косвенная фамилия-прилагательное: «Быкоўскую» — женская, «Сычэўскага» — мужская.
 	// SexAny, если это не прилагательное.
@@ -119,7 +125,7 @@ protected:
 	// (самый частый). ambiguous: каталог знает больше одного написания этой фамилии —
 	// результат правила и вариант или два варианта; выбрать из текста указа нельзя.
 	bool ChooseKnownSurname(std::wstring& surname, const std::wstring& oblique, SexType sex, LangType lang,
-	                        bool* ambiguous = nullptr) const;
+	                        bool* ambiguous = nullptr, SurnameSpellings* spellings = nullptr) const;
 	// то же для двойной фамилии: каждая часть по своим вариантам, целиком сверяется с каталогом
 	bool ChooseKnownDoubleSurname(std::wstring& surname, const std::wstring& oblique, SexType sex, LangType lang) const;
 	const std::unordered_map<std::wstring, int>& KnownSurnames(LangType lang, SexType sex) const;

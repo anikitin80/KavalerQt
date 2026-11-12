@@ -249,10 +249,13 @@ bool CNameConverter::IsMiddleName(const std::wstring& name, LangType lang, NounC
 	return false;
 }
 
-bool CNameConverter::NormalizeName(std::wstring& fullName, LangType lang, NounCase nounCase, bool* surnameSure)
+bool CNameConverter::NormalizeName(std::wstring& fullName, LangType lang, NounCase nounCase, bool* surnameSure,
+                                   SurnameSpellings* spellings)
 {
 	if (surnameSure)
 		*surnameSure = true;
+	if (spellings)
+		spellings->clear();
 	// псевдоним в скобках
 	std::wstring strAlias;
 	size_t posBracket2 = fullName.rfind(L')');
@@ -334,7 +337,7 @@ bool CNameConverter::NormalizeName(std::wstring& fullName, LangType lang, NounCa
 	if (!middleName.empty() && nounCase != Nominative)
 	{
 		const bool chosen = lastName.find(L'-') == std::wstring::npos
-			? ChooseKnownSurname(lastName, obliqueLastName, sex, lang, &ambiguous)
+			? ChooseKnownSurname(lastName, obliqueLastName, sex, lang, &ambiguous, spellings)
 			: ChooseKnownDoubleSurname(lastName, obliqueLastName, sex, lang);
 		if (chosen)
 			bResLN = true;
@@ -539,7 +542,7 @@ std::vector<std::wstring> CNameConverter::SurnameVariants(const std::wstring& ob
 }
 
 bool CNameConverter::ChooseKnownSurname(std::wstring& surname, const std::wstring& oblique, SexType sex, LangType lang,
-                                        bool* ambiguous) const
+                                        bool* ambiguous, SurnameSpellings* spellings) const
 {
 	if (ambiguous)
 		*ambiguous = false;
@@ -549,24 +552,34 @@ bool CNameConverter::ChooseKnownSurname(std::wstring& surname, const std::wstrin
 	std::wstring source = oblique;
 	if (lang == LangBY)
 		ToCyrillicI(source, true);
-	const bool ruleKnown = known.count(ToLower(surname)) > 0;
+	const auto ruleFound = known.find(ToLower(surname));
+	const bool ruleKnown = ruleFound != known.end();
+	SurnameSpellings found;
+	if (ruleKnown)
+		found.push_back({ surname, ruleFound->second });
 	int best = 0;
 	int knownVariants = 0;
 	std::wstring chosen;
 	for (const std::wstring& variant : SurnameVariants(source, surname, sex))
 	{
-		const auto found = known.find(ToLower(variant));
-		if (found == known.end())
+		const auto hit = known.find(ToLower(variant));
+		if (hit == known.end())
 			continue;
 		++knownVariants;
-		if (found->second > best)
+		found.push_back({ variant, hit->second });
+		if (hit->second > best)
 		{
-			best = found->second;
+			best = hit->second;
 			chosen = variant;
 		}
 	}
 	if (ambiguous)
 		*ambiguous = knownVariants + (ruleKnown ? 1 : 0) > 1;
+	if (spellings && found.size() > 1)
+	{
+		std::stable_sort(found.begin(), found.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
+		*spellings = std::move(found);
+	}
 	// известная каталогу фамилия правила остаётся, даже если вариант встречается чаще
 	if (ruleKnown || chosen.empty())
 		return false;

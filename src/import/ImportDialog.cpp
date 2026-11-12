@@ -631,14 +631,23 @@ void ImportDialog::paintName(QTableWidgetItem* name, const PersonInfo& person) c
     const bool confirmed = !person.Organization && (person.Flags & PersonInfo::NF_SURNAME_UNSURE) && person.SurnameConfirmed;
     const bool red = needsSurnameCheck(person) || (!confirmed && (person.Flags & PersonInfo::NF_NAME) == 0);
     name->setForeground(red ? QBrush(QColor(200, 0, 0)) : QBrush());
-    if (needsSurnameCheck(person)) {
-        QString tip = name->toolTip();
+    QString tip = name->toolTip();
+    const auto addLine = [&tip](const QString& line) {
         if (!tip.isEmpty())
             tip += QLatin1Char('\n');
-        tip += QStringLiteral("Фамилия в именительном падеже определена неточно. "
-                              "Проверьте её, исправьте при необходимости и поставьте галочку.");
-        name->setToolTip(tip);
+        tip += line;
+    };
+    if (needsSurnameCheck(person))
+        addLine(QStringLiteral("Фамилия в именительном падеже определена неточно. "
+                               "Проверьте её, исправьте при необходимости и поставьте галочку."));
+    // «В каталоге: Заяц — 45 записей, Заец — 4»
+    if (!person.Organization && person.SurnameSpellings.size() > 1) {
+        QStringList spellings;
+        for (const auto& spelling : person.SurnameSpellings)
+            spellings.push_back(QStringLiteral("%1 — %2").arg(fromWide(spelling.first)).arg(spelling.second));
+        addLine(QStringLiteral("В каталоге эта фамилия пишется: %1 (число записей).").arg(spellings.join(QStringLiteral(", "))));
     }
+    name->setToolTip(tip);
 }
 
 void ImportDialog::confirmSelectedSurnames()

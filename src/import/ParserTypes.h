@@ -3,6 +3,8 @@
 #include <QDate>
 #include <map>
 #include <string>
+#include <utility>
+#include <vector>
 
 constexpr unsigned kFlagNeedReview = 0x8000000;
 
@@ -60,6 +62,8 @@ struct PersonInfo
     std::wstring PointJob;
     // пользователь проверил угаданную фамилию (галочка или правка имени в окне импорта)
     bool SurnameConfirmed = false;
+    // написания фамилии в каталоге с числом записей, когда их больше одного (для подсказки)
+    std::vector<std::pair<std::wstring, int>> SurnameSpellings;
 };
 
 struct DecreeAward

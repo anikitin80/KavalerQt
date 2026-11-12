@@ -406,9 +406,12 @@ void TestNameConverter::twoKnownSpellingsAreUnsure()
 
     std::wstring name = L"Зайца Аляксандра Аляксандравіча";
     bool surnameSure = true;
-    converter.NormalizeName(name, LangBY, Accusative, &surnameSure);
+    SurnameSpellings spellings;
+    converter.NormalizeName(name, LangBY, Accusative, &surnameSure, &spellings);
     QCOMPARE(QString::fromStdWString(name), QStringLiteral("Заяц Аляксандр Аляксандравіч"));
     QVERIFY(!surnameSure);
+    // для подсказки окна импорта: оба написания, частое первым
+    QCOMPARE(spellings, SurnameSpellings({{L"Заяц", 40}, {L"Заец", 4}}));
 
     // «Іванова» — фамилия женщин, у мужчины «Іванову» одно известное написание
     name = L"Іванову Івану Іванавічу";
