@@ -1,5 +1,6 @@
 <RCC>
     <qresource prefix="/">
+        <file alias="kavaler.png">res/kavaler.png</file>
     </qresource>
     <!-- значки тулбара: Flaticon UIcons, Regular Rounded (https://www.flaticon.com/uicons) -->
     <qresource prefix="/icons">

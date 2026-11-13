@@ -46,6 +46,7 @@ add_executable(Kavaler WIN32
     src/import/KnownSurnames.h
     src/import/ImportMatch.cpp
     resources.qrc
+    kavaler.rc
 )
 
 target_include_directories(Kavaler PRIVATE
