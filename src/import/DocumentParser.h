@@ -1,5 +1,6 @@
 #pragma once
 
+#include "AwardDetector.h"
 #include "ParserTypes.h"
 #include "NameConverter.h"
 #include "ProfessionConverter.h"
@@ -58,14 +59,7 @@ public:
 
 	std::map<long, DecreeAward> m_Awards;
 
-	typedef std::vector<std::pair<std::wstring, int>> AwardDetector;
-	AwardDetector m_MedalDetector;
-	AwardDetector m_OrdenDetector;
-	AwardDetector m_PochetDetector;
-
-	AwardDetector m_MedalDetectorBY;
-	AwardDetector m_OrdenDetectorBY;
-	AwardDetector m_PochetDetectorBY;
+	CAwardDetector m_AwardDetector;
 
 protected:
 	// читаемая награда указа: что за награда и сколько у неё людей (см. ProcessFile)

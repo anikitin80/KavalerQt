@@ -23,6 +23,14 @@ add_library(KavalerParser STATIC
     src/import/ProfessionConverter.cpp
     src/import/DocumentParser.h
     src/import/DocumentParser.cpp
+    src/import/AwardDetector.h
+    src/import/AwardDetector.cpp
+    src/import/DecreeLines.h
+    src/import/DecreeLines.cpp
+    src/import/GroupText.h
+    src/import/GroupText.cpp
+    src/import/PersonText.h
+    src/import/PersonText.cpp
     src/import/DocxText.h
     src/import/DocxText.cpp
 )
