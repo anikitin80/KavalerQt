@@ -901,7 +901,7 @@ void MainWindow::closeEvent(QCloseEvent* event)
     const int pending = m_people ? m_people->pendingSuggestions() : 0;
     if (pending > 0) {
         const auto answer = QMessageBox::warning(this, windowTitle(),
-            QStringLiteral("Перевод имени ждёт выбора варианта у %1 записей (выделены розовым) "
+            QStringLiteral("Перевод имени ждёт выбора варианта у %1 записей (выделены голубым) "
                            "и не сохранён. Выйти без них?").arg(pending),
             QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
         if (answer != QMessageBox::Yes) {

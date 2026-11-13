@@ -104,6 +104,13 @@ public:
     // русские написания белорусского ФИО, лучшее первым: целое имя из каталога
     // или составленное из частей. Больше одного — выбор подтверждает пользователь.
     QStringList translateName(const QString& nameBy) const;
+    // Белорусские слова, оставшиеся непереведёнными в русских должности и звании
+    // («подполковник медыцынскай службы», «постмытнага контроля»): слово часто стоит
+    // в белорусских текстах каталога, в русских переводах — в 20 с лишним раз реже,
+    // а в указах на русском языке его нет. Текст в кавычках не проверяется.
+    QStringList untranslatedWords(const Person& person) const;
+    static constexpr int kBelarusianWordMinCount = 10;
+    static constexpr int kBelarusianWordRatio = 20;
     static constexpr int kNameVariantsPerPart = 4;
     static constexpr int kNameVariants = 10;
     // одно белорусское полное имя, сохранённое больше чем с одним русским написанием.
@@ -209,6 +216,9 @@ private:
     IdentityCount m_identityNameBy;
 
     mutable bool m_derivedDirty = true;
+    // слова для untranslatedWords: собираются отдельно и лениво, при первой отрисовке пометок
+    mutable QSet<QString> m_belarusianWords;
+    mutable bool m_belarusianWordsDirty = true;
     mutable QVector<StatMonth> m_stats;
     mutable QVector<DictEntry> m_dictionary;
     mutable QHash<QString, QStringList> m_first;

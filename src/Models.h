@@ -49,6 +49,7 @@ private:
         bool need = false;
         bool errors = false;
         bool quotes = false;
+        QStringList words; // непереведённые белорусские слова (для подсказки)
     };
 
     QString displayName(const Person& person) const;

@@ -132,6 +132,7 @@ private slots:
     void derivedDataFollowsChanges();
     void translateNamePrefersTheWholeName();
     void translateNameMatchesIdentityKey();
+    void untranslatedWordsInTranslation();
     void professionRuPrefersTheFrequentSpelling();
     void rankRuPrefersTheFrequentSpelling();
     void fixQuotesFollowsTheDecree();
@@ -818,6 +819,43 @@ void TestCatalog::organizationFlagIsStored()
     QVERIFY(saved->name.isEmpty());
     QVERIFY(saved->nameBy.isEmpty());
     QCOMPARE(saved->personalBy, titleBy);
+}
+
+// белорусское слово, которое в каталоге почти всегда переводят, а здесь оставили:
+// «подполковник медыцынскай службы». Названия в кавычках не в счёт.
+void TestCatalog::untranslatedWordsInTranslation()
+{
+    QString error;
+    Person base;
+    base.awardId = 14;
+    base.language = kLangBelarusian;
+    base.ukaseNo = 100;
+    for (int i = 0; i < Catalog::kBelarusianWordMinCount * 2; ++i) {
+        Person person = base;
+        person.ukaseDate = QDate(2019, 1, 1).addDays(i);
+        person.nameBy = QStringLiteral("Іваноў Іван Іванавіч %1").arg(i);
+        person.name = QStringLiteral("Иванов Иван Иванович %1").arg(i);
+        person.personalBy = QStringLiteral("урач медыцынскай службы «Медыцынскай»");
+        person.personal = QStringLiteral("врач медицинской службы «Медыцынскай»");
+        QVERIFY2(m_catalog->save(person, &error), qPrintable(error));
+    }
+    Person bad = base;
+    bad.ukaseDate = QDate(2020, 1, 1);
+    bad.nameBy = QStringLiteral("Пятроў Пётр Пятровіч");
+    bad.name = QStringLiteral("Петров Петр Петрович");
+    bad.personalBy = QStringLiteral("урач");
+    bad.personal = QStringLiteral("врач");
+    bad.rankBy = QStringLiteral("падпалкоўнік медыцынскай службы");
+    bad.rank = QStringLiteral("подполковник медыцынскай службы");
+    QVERIFY2(m_catalog->save(bad, &error), qPrintable(error));
+
+    QCOMPARE(m_catalog->untranslatedWords(bad), QStringList({QStringLiteral("медыцынскай")}));
+    Person good = bad;
+    good.rank = QStringLiteral("подполковник медицинской службы");
+    QVERIFY(m_catalog->untranslatedWords(good).isEmpty());
+    // в кавычках белорусское название законно
+    good.personal = QStringLiteral("врач клиники «Медыцынскай»");
+    QVERIFY(m_catalog->untranslatedWords(good).isEmpty());
 }
 
 QTEST_GUILESS_MAIN(TestCatalog)

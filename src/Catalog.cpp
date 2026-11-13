@@ -155,11 +155,83 @@ void Catalog::clear()
     m_profRu.clear();
     m_rankRu.clear();
     m_derivedDirty = true;
+    m_belarusianWords.clear();
+    m_belarusianWordsDirty = true;
 }
 
 void Catalog::invalidateDerived()
 {
     m_derivedDirty = true;
+    m_belarusianWordsDirty = true;
+}
+
+namespace {
+
+// слова текста в нижнем регистре, без названий в кавычках: «Мінскі трактарны завод»
+// в русском переводе законно остаётся белорусским
+QSet<QString> textWords(const QString& text)
+{
+    QSet<QString> words;
+    QString word;
+    int quoteDepth = 0;
+    bool straightQuote = false;
+    const auto flush = [&] {
+        if (word.size() >= 3 && quoteDepth == 0 && !straightQuote)
+            words.insert(word.toLower());
+        word.clear();
+    };
+    for (const QChar c : text) {
+        if (c.isLetter() || c == QLatin1Char('\'') || c == QChar(0x2019) || c == QChar(0x02BC)
+            || (c == QLatin1Char('-') && !word.isEmpty())) {
+            word += c;
+            continue;
+        }
+        flush();
+        if (c == QChar(0x00AB))
+            ++quoteDepth;
+        else if (c == QChar(0x00BB) && quoteDepth > 0)
+            --quoteDepth;
+        else if (c == QLatin1Char('"'))
+            straightQuote = !straightQuote;
+    }
+    flush();
+    return words;
+}
+
+} // namespace
+
+QStringList Catalog::untranslatedWords(const Person& person) const
+{
+    if (m_belarusianWordsDirty) {
+        QHash<QString, int> belarusian, russian, original;
+        for (const Person& item : m_people) {
+            for (const QString& word : textWords(item.personalBy) | textWords(item.rankBy))
+                ++belarusian[word];
+            const QSet<QString> words = textWords(item.personal) | textWords(item.rank);
+            for (const QString& word : words) {
+                ++russian[word];
+                if (item.language == kLangRussian)
+                    ++original[word];
+            }
+        }
+        m_belarusianWords.clear();
+        for (auto it = russian.cbegin(); it != russian.cend(); ++it) {
+            const int count = belarusian.value(it.key());
+            if (count >= kBelarusianWordMinCount && it.value() * kBelarusianWordRatio <= count
+                && !original.contains(it.key()))
+                m_belarusianWords.insert(it.key());
+        }
+        m_belarusianWordsDirty = false;
+    }
+    if (m_belarusianWords.isEmpty())
+        return {};
+    QStringList found;
+    for (const QString& word : textWords(person.personal) | textWords(person.rank)) {
+        if (m_belarusianWords.contains(word))
+            found.push_back(word);
+    }
+    found.sort();
+    return found;
 }
 
 void Catalog::ensureDerived() const

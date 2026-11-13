@@ -13,9 +13,33 @@ constexpr quintptr kGroupFlag = quintptr(1) << (sizeof(quintptr) * 8 - 1);
 
 namespace {
 
+// «і», «ў», «шч» вне кавычек: белорусское название («Світанак») в переводе законно
 bool hasBelarusianLetters(const QString& text)
 {
-    return text.contains(QChar(0x0406)) || text.contains(QChar(0x045E)) || text.contains(QStringLiteral("шч"));
+    int quoteDepth = 0;
+    bool straightQuote = false;
+    for (qsizetype i = 0; i < text.size(); ++i) {
+        const QChar c = text.at(i);
+        if (c == QChar(0x00AB)) {
+            ++quoteDepth;
+            continue;
+        }
+        if (c == QChar(0x00BB) && quoteDepth > 0) {
+            --quoteDepth;
+            continue;
+        }
+        if (c == QLatin1Char('"')) {
+            straightQuote = !straightQuote;
+            continue;
+        }
+        if (quoteDepth > 0 || straightQuote)
+            continue;
+        if (c == QChar(0x0406) || c == QChar(0x0456) || c == QChar(0x040E) || c == QChar(0x045E))
+            return true;
+        if (c == QChar(0x0448) && i + 1 < text.size() && text.at(i + 1) == QChar(0x0447))
+            return true;
+    }
+    return false;
 }
 
 // одна и та же последовательность этих знаков в обоих текстах ("«»" и "«»" — да,
@@ -42,7 +66,8 @@ bool markCanContain(const QString& quick)
 {
     static const QStringList marks = {
         QStringLiteral("Есть"), QStringLiteral("Нет"), QStringLiteral("Имя"),
-        QStringLiteral("Ошибки"), QStringLiteral("Тире"), QStringLiteral("Кавычки")
+        QStringLiteral("Ошибки"), QStringLiteral("Тире"), QStringLiteral("Кавычки"),
+        QStringLiteral("Не переведено")
     };
     for (const QString& mark : marks) {
         if (mark.contains(quick, Qt::CaseInsensitive))
@@ -220,6 +245,13 @@ PersonModel::Mark PersonModel::translationMark(const Person& person) const
     if (hasBelarusianLetters(person.name) || hasBelarusianLetters(person.personal) || hasBelarusianLetters(person.rank)) {
         mark.errors = true;
         mark.text = QStringLiteral("Ошибки");
+    } else {
+        // белорусское слово без «і» и «ў»: «медыцынскай», «постмытнага»
+        mark.words = m_catalog->untranslatedWords(person);
+        if (!mark.words.isEmpty()) {
+            mark.errors = true;
+            mark.text = QStringLiteral("Не переведено");
+        }
     }
     // тире и кавычки сверяются всегда: облачный перевод их путает
     // («приемно»аппаратного», "Савушкин продукт" при «Савушкін прадукт»)
@@ -279,12 +311,20 @@ QVariant PersonModel::data(const QModelIndex& index, int role) const
     if (role == Qt::UserRole)
         return person.id;
     // перевод имени по словарю с несколькими вариантами ждёт выбора:
-    // в столбце имени лучший вариант, фон строки розовый
+    // в столбце имени лучший вариант, фон строки голубой
     const QStringList variants = person.name.isEmpty() ? m_suggestions.value(person.id) : QStringList();
     if (role == Qt::DisplayRole) {
         if (index.column() == 1 && !variants.isEmpty())
             return variants.first();
         return columnText(person, index.column());
+    }
+    if (role == Qt::ToolTipRole && variants.isEmpty() && person.language == kLangBelarusian) {
+        const Mark mark = translationMark(person);
+        if (mark.errors) {
+            return mark.words.isEmpty()
+                ? QStringLiteral("В русском тексте остались белорусские буквы (і, ў, шч).")
+                : QStringLiteral("В русском тексте остались белорусские слова: %1.").arg(mark.words.join(QStringLiteral(", ")));
+        }
     }
     if (role == Qt::ToolTipRole && !variants.isEmpty()) {
         return QStringLiteral("Перевод не сохранён: вариантов несколько, выберите нужный\n"
@@ -307,8 +347,11 @@ QVariant PersonModel::data(const QModelIndex& index, int role) const
             else
                 color = QColor(220, 255, 220);
         }
-        if (!variants.isEmpty())
+        // ошибка перевода — розовая строка; перевод имени ждёт выбора — голубая
+        if (person.language == kLangBelarusian && translationMark(person).errors)
             color = QColor(255, 200, 200);
+        if (!variants.isEmpty())
+            color = QColor(185, 225, 250);
         if (color.isValid())
             return QBrush(color);
         return {};
@@ -318,8 +361,6 @@ QVariant PersonModel::data(const QModelIndex& index, int role) const
         const Mark mark = translationMark(person);
         if (mark.quotes)
             return QBrush(QColor(0, 0, 196));
-        if (mark.errors)
-            return QBrush(QColor(196, 0, 0));
         if (mark.need) {
             if (index.column() == 1 && person.name.isEmpty())
                 return QBrush(QColor(128, 128, 128));
