@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="ribbon" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8E1520"/>
+      <stop offset="0.5" stop-color="#C8303A"/>
+      <stop offset="1" stop-color="#8E1520"/>
+    </linearGradient>
+    <radialGradient id="gold" cx="0.38" cy="0.32" r="0.8">
+      <stop offset="0" stop-color="#FFF1A8"/>
+      <stop offset="0.45" stop-color="#F2C24A"/>
+      <stop offset="1" stop-color="#B07A1C"/>
+    </radialGradient>
+    <linearGradient id="star" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#E5404A"/>
+      <stop offset="1" stop-color="#A8121E"/>
+    </linearGradient>
+  </defs>
+
+  <!-- лента: пятиугольная колодка -->
+  <path d="M70 8 H186 V74 L128 104 L70 74 Z" fill="url(#ribbon)" stroke="#5E0E15" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M94 8 V86 M162 8 V86" stroke="#F2C24A" stroke-width="10"/>
+
+  <!-- ушко -->
+  <rect x="116" y="88" width="24" height="22" rx="6" fill="#D9A43A" stroke="#7A5010" stroke-width="5"/>
+
+  <!-- медаль -->
+  <circle cx="128" cy="172" r="78" fill="url(#gold)" stroke="#7A5010" stroke-width="7"/>
+  <circle cx="128" cy="172" r="62" fill="none" stroke="#A8761C" stroke-width="3" opacity="0.8"/>
+
+  <!-- звезда -->
+  <polygon points="128.0,122.0 139.8,155.8 175.6,156.5 147.0,178.2 157.4,212.5 128.0,192.0 98.6,212.5 109.0,178.2 80.4,156.5 116.2,155.8"
+           fill="url(#star)" stroke="#5E0E15" stroke-width="4" stroke-linejoin="round"/>
+</svg>
