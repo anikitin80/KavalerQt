@@ -1010,23 +1010,291 @@ bool CDocumentParser::ParseGroupInfo(const std::wstring& strLine)
 	return !groupInfo.empty();
 }
 
+LangType CDocumentParser::lang() const
+{
+	return m_UkazInfo.RussianLang ? LangRU : LangBY;
+}
+
+// человек текущего файла и указа
+PersonInfo CDocumentParser::newPerson(int awardId) const
+{
+	PersonInfo person;
+	person.FileName = m_FileName;
+	person.Ukaz = m_UkazInfo;
+	person.AwardId = awardId;
+	return person;
+}
+
+// второй человек той же строки: файл, указ, награда, группа и должность пункта — те же
+PersonInfo CDocumentParser::samePlace(const PersonInfo& person)
+{
+	PersonInfo other;
+	other.AwardId = person.AwardId;
+	other.FileName = person.FileName;
+	other.Ukaz = person.Ukaz;
+	other.InGroup = person.InGroup;
+	other.PointJob = person.PointJob;
+	return other;
+}
+
+void CDocumentParser::addPerson(PersonInfo person, AwardState& award)
+{
+	award.count++;
+	NormalizePersonInfo(person);
+	m_Persons.push_back(std::move(person));
+}
+
+// читаемая награда кончилась: считаем её людей
+void CDocumentParser::finishAward(AwardState& award)
+{
+	UpdateAwardStat(award.id, award.text, award.count);
+	award.text.clear();
+	award.id = award.count = 0;
+}
+
+// Строка с видом награды. После «узнагародзіць» в той же строке может стоять
+// и сам человек («…Кашкана … ордэнам «…» (пасмяротна).»), а в пункте «1. Узнагародзіць:» —
+// по предложению на награду. Истина, если строка целиком разобрана таким предложением.
+bool CDocumentParser::readAwardLine(const std::wstring& strLine, size_t posTargetStart, bool actionLine,
+	size_t posActionEnd, AwardState& award)
+{
+	finishAward(award);
+	award.text = strLine.substr(posTargetStart);
+	award.text.erase(award.text.find_last_not_of(L" :\t\n\r.") + 1);
+	// длина фразы в указе, а не названия в каталоге:
+	// «медалью «За отвагу»» длиннее, чем «Медаль "За отвагу"»
+	size_t awardPhrase = 0;
+	award.id = GetAwardId(award.text, m_UkazInfo.RussianLang, false, &awardPhrase);
+
+	// пункт «1. Узнагародзіць:», а дальше по предложению на награду:
+	// «ордэнам Пашаны – спартсменаў ... Пунько С.В. і Фядотаву І.А.;»,
+	// «трэнера ... Казеку Мікалая Іванавіча ордэнам Айчыны III ступені;»
+	const bool sentenceAfterAction = posActionEnd == 0 && !actionLine && award.id > 0
+		&& (strLine.back() == L';' || strLine.back() == L'.');
+
+	// одно награждение в строке
+	if ((posActionEnd > 0 || sentenceAfterAction) && strLine.back() != L':')
+	{
+		std::wstring strAwardedInfo;
+		// человек и звание до награды («...Кашкана ... орденом «...» (посмертно).»)
+		const bool personBeforeAward = posTargetStart - posActionEnd > 10;
+		if (personBeforeAward)
+			strAwardedInfo = strLine.substr(posActionEnd, posTargetStart - posActionEnd);
+		else if (award.id > 0 && awardPhrase > 0 && posTargetStart + awardPhrase < strLine.length())
+			strAwardedInfo = strLine.substr(posTargetStart + awardPhrase);
+
+		if (sentenceAfterAction)
+		{
+			const size_t first = strAwardedInfo.find_first_not_of(L"  –-");
+			strAwardedInfo.erase(0, first == std::wstring::npos ? strAwardedInfo.size() : first);
+			const size_t last = strAwardedInfo.find_last_not_of(L"  ;.");
+			strAwardedInfo.erase(last == std::wstring::npos ? 0 : last + 1);
+		}
+
+		if (!strAwardedInfo.empty())
+		{
+			const size_t addedFrom = m_Persons.size();
+			ExtractPersonInfo(award.text, strAwardedInfo);
+			// награждённый одной строкой тоже человек награды: иначе она
+			// считается пустой и в окне импорта горит красным
+			award.count += int(m_Persons.size() - addedFrom);
+			if (sentenceAfterAction && m_Persons.size() > addedFrom)
+				return true;
+			// пометка может стоять после названия награды, вне strAwardedInfo
+			if (personBeforeAward && award.id > 0 && awardPhrase > 0 && m_Persons.size() > addedFrom
+				&& posTargetStart + awardPhrase < strLine.length())
+			{
+				const std::wstring tail = strLine.substr(posTargetStart + awardPhrase);
+				if (tail.find(posthumousMark(m_UkazInfo.RussianLang)) != std::wstring::npos)
+				{
+					for (size_t i = addedFrom; i < m_Persons.size(); ++i)
+						m_Persons[i].Posthumous = true;
+				}
+			}
+		}
+	}
+
+	if (strLine.back() == L':')
+	{
+		if (award.id)
+			award.listAfterColon = true;
+		else if (strLine.find(m_UkazInfo.RussianLang ? searchTargetsRU[2] : searchTargetsBY[2]) != std::wstring::npos ||
+			     strLine.find(m_UkazInfo.RussianLang ? searchTargetsRU[3] : searchTargetsBY[3]) != std::wstring::npos)
+			award.honoraryList = true;
+	}
+	return false;
+}
+
+// в списке почётных званий строка звания («ЗАСЛУЖЕННЫЙ СТРОИТЕЛЬ РЕСПУБЛИКИ БЕЛАРУСЬ»,
+// указ 2515/1993) начинает следующее звание. Истина, если это была строка звания.
+bool CDocumentParser::switchHonoraryTitle(std::wstring& strLine, AwardState& award)
+{
+	const std::wstring titleLine = sentenceCaseIfUpper(strLine);
+	if (award.id <= 0)
+	{
+		award.id = GetAwardId(titleLine.c_str(), m_UkazInfo.RussianLang, true);
+		return award.id > 0;
+	}
+	if (titleLine.find(L"Заслуж") == std::wstring::npos && titleLine.find(L"Народны") == std::wstring::npos)
+		return false;
+	const int newAwardId = GetAwardId(titleLine.c_str(), m_UkazInfo.RussianLang, true);
+	if (newAwardId <= 0)
+		return false;
+	UpdateAwardStat(award.id, strLine, award.count);
+	award.id = newAwardId;
+	award.count = 0;
+	return true;
+}
+
+// организация отдельной строкой списка, в том числе с тире в названии
+// («ІНТЭГРАЛ» – кіруючая кампанія ...): это не человек и должность
+bool CDocumentParser::readOrganisationLine(const std::wstring& strLine, AwardState& award)
+{
+	std::wstring orgLine = strLine;
+	std::wstring orgName;
+	if (!takeOrganisation(orgLine, orgName))
+		return false;
+	PersonInfo info = newPerson(award.id);
+	assignOrganisation(info, std::move(orgName), orgLine);
+	addPerson(std::move(info), award);
+	return true;
+}
+
+// должность и список имён без тире под званием: «спартсменам-інструктарам …
+// Андрыеўскаму Аляксандру Леанідавічу, Антоненку … і …;» (указы 262/2002, 494/2004)
+bool CDocumentParser::readListWithoutDash(const std::wstring& strLine, bool actionLine, AwardState& award)
+{
+	std::wstring listLine = strLine;
+	std::replace(listLine.begin(), listLine.end(), L' ', L' ');
+	// StrTrim срезал бы и точку в конце, а по ней узнаётся предложение
+	listLine.erase(0, listLine.find_first_not_of(L' '));
+	listLine.erase(listLine.find_last_not_of(L' ') + 1);
+	if (actionLine || listLine.empty() || (listLine.back() != L';' && listLine.back() != L'.')
+		|| listLine.find(L", ") == std::wstring::npos || listLine.find(L'–') != std::wstring::npos)
+		return false;
+
+	while (!listLine.empty() && (listLine.back() == L';' || listLine.back() == L'.'))
+		listLine.pop_back();
+	const size_t addedFrom = m_Persons.size();
+	std::wstring awardText = award.text;
+	ExtractPersonInfo(awardText, listLine, award.id);
+	if (m_Persons.size() == addedFrom)
+		return false;
+	// без списка в остатке это не перечень людей, а чья-то фраза
+	const std::wstring& rest = m_Persons.back().Description;
+	const std::wstring conjunction = m_UkazInfo.RussianLang ? L" и" : L" і";
+	const bool listed = !rest.empty() && (rest.back() == L','
+		|| (rest.size() > conjunction.size()
+			&& rest.compare(rest.size() - conjunction.size(), conjunction.size(), conjunction) == 0));
+	if (!listed)
+	{
+		m_Persons.resize(addedFrom);
+		return false;
+	}
+	award.count += int(m_Persons.size() - addedFrom);
+	return true;
+}
+
+// имя одно в строке, должность общая в пункте указа
+// («…дэпутатаў Палаты прадстаўнікоў… ўзнагародзіць:», указ 569/2011);
+// в новом формате за именем идёт строка с тире
+void CDocumentParser::readBareName(const std::wstring& strLine, bool actionLine,
+	const std::vector<std::wstring>& lines, size_t index, AwardState& award)
+{
+	std::wstring next = index + 1 < lines.size() ? lines[index + 1] : std::wstring();
+	StrTrim(next);
+	std::wstring bare = strLine;
+	std::replace(bare.begin(), bare.end(), L' ', L' ');
+	StrTrim(bare);
+	if (actionLine || bare.empty() || (!next.empty() && (next[0] == L'–' || next[0] == L'-'))
+		|| !nameWithoutJob(bare + L" –", bare.size() + 1)
+		|| !m_NameConverter.IsMiddleName(bare.substr(bare.rfind(L' ') + 1), lang(), GetNounCaseByAwardId(award.id)))
+		return;
+	PersonInfo info = newPerson(award.id);
+	info.Name = bare;
+	addPerson(std::move(info), award);
+}
+
+// новый формат списка в docx: имя на предыдущей строке, должность на следующей
+// (сама строка — тире); index переходит на строку должности
+void CDocumentParser::readNameAndJobLines(const std::vector<std::wstring>& lines, size_t& index, AwardState& award)
+{
+	if (index == 0 || index + 1 == lines.size())
+		return;
+	PersonInfo info = newPerson(award.id);
+	info.Name = lines[index - 1];
+	std::replace(info.Name.begin(), info.Name.end(), L'\v', L' ');
+	info.Description = lines[++index];
+	addPerson(std::move(info), award);
+}
+
+// одно или несколько имён перед тире, строка награды без двоеточия
+// («Антоненку А.У., Панамарова С.А. – членаў каманды …», указ 10/2014)
+bool CDocumentParser::readNamesBeforeDash(const std::wstring& strLine, size_t dash, bool actionLine, AwardState& award)
+{
+	if (strLine[dash] != L'–' || actionLine)
+		return false;
+	const std::vector<std::wstring> names = namesBeforeDash(strLine.substr(0, dash), lang());
+	if (names.empty())
+		return false;
+	std::wstring job = strLine.substr(dash + 1);
+	std::replace(job.begin(), job.end(), L' ', L' ');
+	StrTrim(job);
+	while (!job.empty() && (job.back() == L';' || job.back() == L'.'))
+		job.pop_back();
+	if (names.size() > 1)
+		singularFirstWord(job, lang());
+	for (const std::wstring& name : names)
+	{
+		PersonInfo person = newPerson(award.id);
+		person.Name = name;
+		person.Description = job;
+		addPerson(std::move(person), award);
+	}
+	return true;
+}
+
+// строка списка под наградой: организация, перечень без тире, одно имя,
+// имя и должность через тире (в одной строке или на соседних)
+void CDocumentParser::readListLine(const std::wstring& strLine, bool actionLine,
+	const std::vector<std::wstring>& lines, size_t& index, AwardState& award)
+{
+	if (readOrganisationLine(strLine, award) || readListWithoutDash(strLine, actionLine, award))
+		return;
+
+	const size_t dash = strLine.find_first_of(L"–-", 0);
+	if (dash == std::wstring::npos)
+	{
+		readBareName(strLine, actionLine, lines, index, award);
+		return;
+	}
+	if (dash == 0)
+	{
+		readNameAndJobLines(lines, index, award);
+		return;
+	}
+	if (readNamesBeforeDash(strLine, dash, actionLine, award))
+		return;
+	// старый формат списка в docx: «имя – должность». Строка с «узнагародзіць» /
+	// «прысвоіць» уже разобрана как одно награждение: тире в ней — внутри должности
+	if ((award.listAfterColon || award.honoraryList || nameWithoutJob(strLine, dash)) && strLine[dash] == L'–' && !actionLine)
+	{
+		PersonInfo info = newPerson(award.id);
+		info.Name = strLine.substr(0, dash);
+		info.Description = strLine.substr(dash + 1);
+		addPerson(std::move(info), award);
+	}
+}
+
 bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vector<std::wstring>& arrLines)
 {
 	bool bResult = false;
 
 	m_FileName = fileName;
 
-	bool bUkazStarted = false, bAwardStarted = false, bAwardTypeFound = false, bPossibleGroupStart = false, bMultiplePochet = false;
-	std::wstring curAward;
-	int awardId = 0;
-	int nAwardedCount = 0;
+	bool bUkazStarted = false, bAwardStarted = false, bAwardTypeFound = false;
+	AwardState award;
 	size_t posStart = 0, posEnd = 0;
-	// читаемая награда кончилась: считаем её людей
-	const auto finishAward = [&] {
-		UpdateAwardStat(awardId, curAward, nAwardedCount);
-		curAward.clear();
-		awardId = nAwardedCount = 0;
-	};
 
 	// люди, добавленные прошлыми строками, получают сведения о группе, действовавшие
 	// на их строке: состояние меняется только в начале разбора строки
@@ -1042,18 +1310,19 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 		}
 	};
 
-	for (auto itrLine = arrLines.begin(); itrLine != arrLines.end(); itrLine++)
+	for (size_t index = 0; index < arrLines.size(); ++index)
 	{
 		markGroup();
 		// найден новый указ президента
-		if (FindTokens(*itrLine, searchUkazStart, posStart, posEnd))
+		if (FindTokens(arrLines[index], searchUkazStart, posStart, posEnd))
 		{
-			finishAward();
+			finishAward(award);
 			m_GroupActive = m_GroupWholeDecree = false;
 			bUkazStarted = true;
-			bAwardStarted = bAwardTypeFound = bPossibleGroupStart = bMultiplePochet = false;
+			bAwardStarted = bAwardTypeFound = false;
+			award.listAfterColon = award.honoraryList = false;
 			m_UkazInfo.Clear();
-			m_UkazInfo.RussianLang = ((*itrLine)[posEnd] == L'Е');
+			m_UkazInfo.RussianLang = (arrLines[index][posEnd] == L'Е');
 			m_SectionCity.clear();
 			pointJob.clear();
 			continue;
@@ -1062,9 +1331,9 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 		if (!bUkazStarted)
 			continue;
 
-		std::wstring strLine = *itrLine;
+		std::wstring strLine = arrLines[index];
 		collapseRepeatedSpaces(strLine);
-		size_t posActionEnd = 0, posTargetStart = 0;
+		size_t posActionEnd = 0;
 
 		if (0 == m_UkazInfo.Number)
 			ParseDecreeHeader(strLine);
@@ -1080,7 +1349,7 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 		{
 			bAwardStarted = true;
 			bAwardTypeFound = false;
-			finishAward();
+			finishAward(award);
 			posActionEnd = posEnd;
 		}
 
@@ -1097,273 +1366,44 @@ bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vecto
 		ParseSection(strLine);
 
 		// новый пункт указа («2.») сбрасывает должность, подпункт («1.1.») — только если даёт свою
+		const int level = pointLevel(strLine);
+		if (level > 0 || actionLine)
 		{
-			const int level = pointLevel(strLine);
-			if (level > 0 || actionLine)
-			{
-				const std::wstring job = jobFromPointLine(strLine, actionLine ? posActionEnd : std::wstring::npos,
-					m_UkazInfo.RussianLang ? LangRU : LangBY);
-				if (!job.empty() || level == 1)
-					pointJob = job;
-			}
+			const std::wstring job = jobFromPointLine(strLine, actionLine ? posActionEnd : std::wstring::npos, lang());
+			if (!job.empty() || level == 1)
+				pointJob = job;
 		}
 
-		if (bAwardStarted)
+		if (!bAwardStarted)
+			continue;
+
+		// дальше орденов и медалей нет
+		if (bAwardTypeFound && FindTokens(strLine, m_UkazInfo.RussianLang ? searchFinishRU : searchFinishBY, posStart, posEnd))
 		{
-			// дальше орденов и медалей нет
-			if (bAwardTypeFound && FindTokens(strLine, m_UkazInfo.RussianLang ? searchFinishRU : searchFinishBY, posStart, posEnd))
-			{
-				bUkazStarted = bAwardStarted = bAwardTypeFound = false;
-				finishAward();
+			bUkazStarted = bAwardStarted = bAwardTypeFound = false;
+			finishAward(award);
+			continue;
+		}
+
+		// вид награды
+		if (FindTokens(strLine, m_UkazInfo.RussianLang ? searchTargetsRU : searchTargetsBY, posStart, posEnd))
+		{
+			bAwardTypeFound = true;
+			if (readAwardLine(strLine, posStart, actionLine, posActionEnd, award))
 				continue;
-			}
-
-			// вид награды
-			if (FindTokens(strLine, m_UkazInfo.RussianLang ? searchTargetsRU : searchTargetsBY, posStart, posEnd))
-			{
-				bAwardTypeFound = true;
-				posTargetStart = posStart;
-				finishAward();
-				curAward = strLine.substr(posTargetStart);
-				curAward.erase(curAward.find_last_not_of(L" :\t\n\r.") + 1);
-				// длина фразы в указе, а не названия в каталоге:
-				// «медалью «За отвагу»» длиннее, чем «Медаль "За отвагу"»
-				size_t awardPhrase = 0;
-				awardId = GetAwardId(curAward, m_UkazInfo.RussianLang, false, &awardPhrase);
-
-				// пункт «1. Узнагародзіць:», а дальше по предложению на награду:
-				// «ордэнам Пашаны – спартсменаў ... Пунько С.В. і Фядотаву І.А.;»,
-				// «трэнера ... Казеку Мікалая Іванавіча ордэнам Айчыны III ступені;»
-				const bool sentenceAfterAction = posActionEnd == 0 && !actionLine && awardId > 0
-					&& (strLine.back() == L';' || strLine.back() == L'.');
-
-				// одно награждение в строке
-				if ((posActionEnd > 0 || sentenceAfterAction) && strLine.back() != L':')
-				{
-					std::wstring strAwardedInfo;
-					// человек и звание до награды («...Кашкана ... орденом «...» (посмертно).»)
-					const bool personBeforeAward = posTargetStart - posActionEnd > 10;
-					if (personBeforeAward)
-						strAwardedInfo = strLine.substr(posActionEnd, posTargetStart - posActionEnd);
-					else if (awardId > 0 && awardPhrase > 0 && posTargetStart + awardPhrase < strLine.length())
-						strAwardedInfo = strLine.substr(posTargetStart + awardPhrase);
-
-					if (sentenceAfterAction)
-					{
-						const size_t first = strAwardedInfo.find_first_not_of(L"  –-");
-						strAwardedInfo.erase(0, first == std::wstring::npos ? strAwardedInfo.size() : first);
-						const size_t last = strAwardedInfo.find_last_not_of(L"  ;.");
-						strAwardedInfo.erase(last == std::wstring::npos ? 0 : last + 1);
-					}
-
-					if(!strAwardedInfo.empty())
-					{
-						const size_t addedFrom = m_Persons.size();
-						ExtractPersonInfo(curAward, strAwardedInfo);
-						if (sentenceAfterAction && m_Persons.size() > addedFrom)
-						{
-							nAwardedCount += int(m_Persons.size() - addedFrom);
-							continue;
-						}
-						// награждённый одной строкой тоже человек награды: иначе она
-						// считается пустой и в окне импорта горит красным
-						nAwardedCount += int(m_Persons.size() - addedFrom);
-						// пометка может стоять после названия награды, вне strAwardedInfo
-						if (personBeforeAward && awardId > 0 && awardPhrase > 0 && m_Persons.size() > addedFrom
-							&& posTargetStart + awardPhrase < strLine.length())
-						{
-							const std::wstring tail = strLine.substr(posTargetStart + awardPhrase);
-							if (tail.find(posthumousMark(m_UkazInfo.RussianLang)) != std::wstring::npos)
-							{
-								for (size_t i = addedFrom; i < m_Persons.size(); ++i)
-									m_Persons[i].Posthumous = true;
-							}
-						}
-					}
-				}
-
-				if (strLine.back() == L':')
-				{
-					if (awardId)
-						bPossibleGroupStart = true;
-					else if (strLine.find(m_UkazInfo.RussianLang ? searchTargetsRU[2] : searchTargetsBY[2]) != std::wstring::npos ||
-						     strLine.find(m_UkazInfo.RussianLang ? searchTargetsRU[3] : searchTargetsBY[3]) != std::wstring::npos )
-					{
-						bMultiplePochet = true;
-					}
-				}
-			}
-
-			if (bAwardTypeFound)
-			{
-				if (bMultiplePochet)
-				{
-					// «ЗАСЛУЖЕННЫЙ СТРОИТЕЛЬ РЕСПУБЛИКИ БЕЛАРУСЬ» (указ 2515/1993)
-					const std::wstring titleLine = sentenceCaseIfUpper(strLine);
-					if (awardId <= 0)
-					{
-						awardId = GetAwardId(titleLine.c_str(), m_UkazInfo.RussianLang, true);
-						if (awardId > 0)
-							continue;
-					}
-					else if (titleLine.find(L"Заслуж") != std::wstring::npos || titleLine.find(L"Народны") != std::wstring::npos)
-					{
-						int newAwardId = GetAwardId(titleLine.c_str(), m_UkazInfo.RussianLang, true);
-						if (newAwardId > 0)
-						{
-							UpdateAwardStat(awardId, strLine, nAwardedCount);
-							awardId = newAwardId;
-							nAwardedCount = 0;
-							continue;
-						}
-					}
-				}
-				bResult = true;
-				if (awardId > 0)
-				{
-					// организация отдельной строкой списка, в том числе с тире в названии
-					// («ІНТЭГРАЛ» – кіруючая кампанія ...): это не человек и должность
-					std::wstring orgLine = strLine;
-					std::wstring orgName;
-					if (takeOrganisation(orgLine, orgName))
-					{
-						PersonInfo info;
-						info.FileName = m_FileName;
-						info.Ukaz = m_UkazInfo;
-						info.AwardId = awardId;
-						assignOrganisation(info, std::move(orgName), orgLine);
-						nAwardedCount++;
-						NormalizePersonInfo(info);
-						m_Persons.push_back(info);
-						continue;
-					}
-
-					// должность и список имён без тире под званием: «спартсменам-інструктарам …
-					// Андрыеўскаму Аляксандру Леанідавічу, Антоненку … і …;» (указы 262/2002, 494/2004)
-					{
-						std::wstring listLine = strLine;
-						std::replace(listLine.begin(), listLine.end(), L'\u00A0', L' ');
-						// StrTrim \u0441\u0440\u0435\u0437\u0430\u043B \u0431\u044B \u0438 \u0442\u043E\u0447\u043A\u0443 \u0432 \u043A\u043E\u043D\u0446\u0435, \u0430 \u043F\u043E \u043D\u0435\u0439 \u0443\u0437\u043D\u0430\u0451\u0442\u0441\u044F \u043F\u0440\u0435\u0434\u043B\u043E\u0436\u0435\u043D\u0438\u0435
-						listLine.erase(0, listLine.find_first_not_of(L' '));
-						listLine.erase(listLine.find_last_not_of(L' ') + 1);
-						if (!actionLine && !listLine.empty() && (listLine.back() == L';' || listLine.back() == L'.')
-							&& listLine.find(L", ") != std::wstring::npos && listLine.find(L'–') == std::wstring::npos)
-						{
-							while (!listLine.empty() && (listLine.back() == L';' || listLine.back() == L'.'))
-								listLine.pop_back();
-							const size_t addedFrom = m_Persons.size();
-							std::wstring awardText = curAward;
-							ExtractPersonInfo(awardText, listLine, awardId);
-							if (m_Persons.size() > addedFrom)
-							{
-								// без списка в остатке это не перечень людей, а чья-то фраза
-								const std::wstring& rest = m_Persons.back().Description;
-								const std::wstring conjunction = m_UkazInfo.RussianLang ? L" и" : L" і";
-								const bool listed = !rest.empty() && (rest.back() == L','
-									|| (rest.size() > conjunction.size()
-										&& rest.compare(rest.size() - conjunction.size(), conjunction.size(), conjunction) == 0));
-								if (listed)
-								{
-									nAwardedCount += int(m_Persons.size() - addedFrom);
-									continue;
-								}
-								m_Persons.resize(addedFrom);
-							}
-						}
-					}
-
-					// список награждённых
-					size_t pos = strLine.find_first_of(L"–-", 0);
-					if (pos == std::wstring::npos)
-					{
-						// имя одно в строке, должность общая в пункте указа
-						// («…дэпутатаў Палаты прадстаўнікоў… ўзнагародзіць:», указ 569/2011);
-						// в новом формате за именем идёт строка с тире
-						std::wstring next = itrLine + 1 == arrLines.end() ? std::wstring() : *(itrLine + 1);
-						StrTrim(next);
-						const LangType lang = m_UkazInfo.RussianLang ? LangRU : LangBY;
-						std::wstring bare = strLine;
-						std::replace(bare.begin(), bare.end(), L'\u00A0', L' ');
-						StrTrim(bare);
-						if (!actionLine && !bare.empty() && (next.empty() || (next[0] != L'–' && next[0] != L'-'))
-							&& nameWithoutJob(bare + L" –", bare.size() + 1)
-							&& m_NameConverter.IsMiddleName(bare.substr(bare.rfind(L' ') + 1), lang, GetNounCaseByAwardId(awardId)))
-						{
-							PersonInfo info;
-							info.FileName = m_FileName;
-							info.Ukaz = m_UkazInfo;
-							info.AwardId = awardId;
-							info.Name = bare;
-							nAwardedCount++;
-							NormalizePersonInfo(info);
-							m_Persons.push_back(info);
-						}
-						continue;
-					}
-
-					PersonInfo info;
-					info.FileName = m_FileName;
-					info.Ukaz = m_UkazInfo;
-					info.AwardId = awardId;
-
-					if(pos == 0)
-					{
-						// новый формат списка в docx:
-						// имя на предыдущей строке, должность на следующей
-						if (itrLine == arrLines.begin() || itrLine + 1 == arrLines.end())
-							continue;
-						nAwardedCount++;
-
-						info.Name = *(itrLine - 1);
-						std::replace(info.Name.begin(), info.Name.end(), L'\v', L' ');
-						info.Description = *(++itrLine);
-
-						NormalizePersonInfo(info);
-						m_Persons.push_back(info);
-					}
-					// одно или несколько имён перед тире, строка награды без двоеточия
-					// («Антоненку А.У., Панамарова С.А. – членаў каманды …», указ 10/2014)
-					else if (strLine[pos] == L'–' && !actionLine
-						&& !namesBeforeDash(strLine.substr(0, pos), m_UkazInfo.RussianLang ? LangRU : LangBY).empty())
-					{
-						const std::vector<std::wstring> names = namesBeforeDash(strLine.substr(0, pos), m_UkazInfo.RussianLang ? LangRU : LangBY);
-						std::wstring job = strLine.substr(pos + 1);
-						std::replace(job.begin(), job.end(), L'\u00A0', L' ');
-						StrTrim(job);
-						while (!job.empty() && (job.back() == L';' || job.back() == L'.'))
-							job.pop_back();
-						if (names.size() > 1)
-							singularFirstWord(job, m_UkazInfo.RussianLang ? LangRU : LangBY);
-						for (const std::wstring& name : names)
-						{
-							PersonInfo person = info;
-							person.Name = name;
-							person.Description = job;
-							nAwardedCount++;
-							NormalizePersonInfo(person);
-							m_Persons.push_back(person);
-						}
-					}
-					// строка с «узнагародзіць» / «прысвоіць» уже разобрана как одно
-					// награждение: тире в ней — внутри должности, а не список
-					else if ((bPossibleGroupStart || bMultiplePochet || nameWithoutJob(strLine, pos)) && strLine[pos] == L'–' && !actionLine)
-					{
-						// старый формат списка в docx
-						nAwardedCount++;
-
-						info.Name = strLine.substr(0, pos);
-						info.Description = strLine.substr(pos + 1);
-
-						NormalizePersonInfo(info);
-						m_Persons.push_back(info);
-					}
-				}
-			}
 		}
+
+		if (!bAwardTypeFound)
+			continue;
+		if (award.honoraryList && switchHonoraryTitle(strLine, award))
+			continue;
+		bResult = true;
+		if (award.id > 0)
+			readListLine(strLine, actionLine, arrLines, index, award);
 	}
 	markGroup();
 
-	UpdateAwardStat(awardId, curAward, nAwardedCount);
+	finishAward(award);
 
 	// «Матусевичу ... и директору совхоза»: второй человек в той же строке.
 	// «Минского и Слуцкого» не режется: перед «и» нет имени.
@@ -1453,10 +1493,7 @@ void CDocumentParser::ExtractPersonInfo(std::wstring& curAward, std::wstring& st
 	if (!organisation)
 		singularSharedJob(strAwardedInfo, lang);
 
-	PersonInfo info;
-	info.Ukaz = m_UkazInfo;
-	info.FileName = m_FileName;
-	info.AwardId = awardId;
+	PersonInfo info = newPerson(awardId);
 	info.Posthumous = bPosthumous;
 	if (organisation)
 		assignOrganisation(info, std::move(name), strAwardedInfo);
@@ -1471,13 +1508,7 @@ void CDocumentParser::ExtractPersonInfo(std::wstring& curAward, std::wstring& st
 
 bool CDocumentParser::SpltPersonInfo(PersonInfo& person, bool requirePatronymic)
 {
-	PersonInfo person2;
-
-	person2.AwardId = person.AwardId;
-	person2.FileName = person.FileName;
-	person2.Ukaz = person.Ukaz;
-	person2.InGroup = person.InGroup;
-	person2.PointJob = person.PointJob;
+	PersonInfo person2 = samePlace(person);
 
 	bool bSameProfession = false;
 	NounCase nounCase = GetNounCaseByAwardId(person.AwardId);
@@ -1604,12 +1635,7 @@ bool CDocumentParser::peelListedPeople(PersonInfo& person)
 	std::vector<PersonInfo> added;
 	for (const std::wstring& name : names)
 	{
-		PersonInfo extra;
-		extra.AwardId = person.AwardId;
-		extra.FileName = person.FileName;
-		extra.Ukaz = person.Ukaz;
-		extra.InGroup = person.InGroup;
-		extra.PointJob = person.PointJob;
+		PersonInfo extra = samePlace(person);
 		extra.Name = name;
 		extra.Description = text;
 		NormalizePersonInfo(extra);

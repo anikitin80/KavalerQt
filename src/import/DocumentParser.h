@@ -68,6 +68,30 @@ public:
 	AwardDetector m_PochetDetectorBY;
 
 protected:
+	// читаемая награда указа: что за награда и сколько у неё людей (см. ProcessFile)
+	struct AwardState
+	{
+		std::wstring text; // вид награды, как в строке указа
+		int id = 0;
+		int count = 0;
+		bool listAfterColon = false; // «ордэнам …:», дальше список «имя – должность»
+		bool honoraryList = false;   // «ганаровыя званні:», дальше звания и люди под ними
+	};
+
+	LangType lang() const;
+	PersonInfo newPerson(int awardId) const;
+	static PersonInfo samePlace(const PersonInfo& person);
+	void addPerson(PersonInfo person, AwardState& award);
+	void finishAward(AwardState& award);
+	// строки указа под наградой (см. ProcessFile)
+	bool readAwardLine(const std::wstring& strLine, size_t posTargetStart, bool actionLine, size_t posActionEnd, AwardState& award);
+	bool switchHonoraryTitle(std::wstring& strLine, AwardState& award);
+	void readListLine(const std::wstring& strLine, bool actionLine, const std::vector<std::wstring>& lines, size_t& index, AwardState& award);
+	bool readOrganisationLine(const std::wstring& strLine, AwardState& award);
+	bool readListWithoutDash(const std::wstring& strLine, bool actionLine, AwardState& award);
+	void readBareName(const std::wstring& strLine, bool actionLine, const std::vector<std::wstring>& lines, size_t index, AwardState& award);
+	void readNameAndJobLines(const std::vector<std::wstring>& lines, size_t& index, AwardState& award);
+	bool readNamesBeforeDash(const std::wstring& strLine, size_t dash, bool actionLine, AwardState& award);
 
 	void ParseDecreeHeader(const std::wstring& strLine);
 	// истина, если в строке есть сведения о группе
