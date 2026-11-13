@@ -31,6 +31,7 @@ private slots:
     void adjectiveChainIsNotANewWord();
     void neuterGenitiveIsNotAProfession();
     void secondJobAfterUnknownFirst();
+    void unknownFirstPartOfCompound();
 };
 
 void TestProfessionConverter::initTestCase()
@@ -453,6 +454,29 @@ void TestProfessionConverter::neuterGenitiveIsNotAProfession()
     QVERIFY(!converter.ConvertProfession(text, LangBY, Accusative));
     QCOMPARE(QString::fromStdWString(text), QStringLiteral("адасобленага падраздзялення"));
     QCOMPARE(int(converter.newWords().size()), 0);
+}
+
+// «оптыка-механіка»: «механіка» в словаре есть, «оптыка» нет. Первая часть
+// раньше оставалась в винительном и не попадала в новые слова; «ваенна-» — часть
+// прилагательного, её не трогаем
+void TestProfessionConverter::unknownFirstPartOfCompound()
+{
+    CProfessionConverter converter;
+    TestData::useTestDictionaries(converter);
+    std::wstring text = L"оптыка-механіка адкрытага акцыянернага таварыства «Пеленг»";
+    QVERIFY(converter.ConvertProfession(text, LangBY, Accusative));
+    QCOMPARE(QString::fromStdWString(text), QStringLiteral("оптык-механік адкрытага акцыянернага таварыства «Пеленг»"));
+    QCOMPARE(int(converter.newWords().size()), 1);
+    QCOMPARE(QString::fromStdWString(converter.newWords().front().Original), QStringLiteral("оптыка"));
+    QCOMPARE(QString::fromStdWString(converter.newWords().front().Word), QStringLiteral("оптык"));
+
+    // первая часть из словаря: «слесара-механіка» — обе части по словарю
+    CProfessionConverter known;
+    TestData::useTestDictionaries(known);
+    std::wstring both = L"слесара-механіка цэха";
+    QVERIFY(known.ConvertProfession(both, LangBY, Accusative));
+    QCOMPARE(QString::fromStdWString(both), QStringLiteral("слесар-механік цэха"));
+    QVERIFY(known.newWords().empty());
 }
 
 QTEST_GUILESS_MAIN(TestProfessionConverter)

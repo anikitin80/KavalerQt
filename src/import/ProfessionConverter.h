@@ -66,6 +66,7 @@ protected:
 		size_t declinedLength = 0;
 	};
 	WordForm findForm(const std::wstring& word, LangType lang, NounCase nounCase) const;
+	size_t ConvertHyphenPrefix(std::wstring& strSource, size_t posStart, LangType lang, NounCase nounCase);
 	size_t ConvertWordChain(std::wstring& strSource, size_t posStart, size_t declinedLength, std::wstring nominative, LangType lang, NounCase nounCase);
 	// слово сразу за должностью: «сястру (палатную)», «урача анестэзіёлага-рэаніматолага»
 	size_t ConvertTrailingWord(std::wstring& strSource, size_t posStart, LangType lang, NounCase nounCase);

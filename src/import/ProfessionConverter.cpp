@@ -293,6 +293,58 @@ void CProfessionConverter::ReplaceKeepingFirstLetter(std::wstring& text, size_t 
 	text.replace(pos + 1, oldLength - 1, replacement, 1, std::wstring::npos);
 }
 
+// части перед словарным словом в posStart, присоединённые дефисом без пробела
+// («оптыка-» в «оптыка-механіка»): словарная часть приводится по словарю, незнакомая —
+// по правилам и предлагается как новое слово. Прилагательное («ваенна-») не трогается.
+// Возвращает новую позицию словарного слова.
+size_t CProfessionConverter::ConvertHyphenPrefix(std::wstring& strSource, size_t posStart, LangType lang, NounCase nounCase)
+{
+	if (posStart < 2 || strSource[posStart - 1] != L'-')
+		return posStart;
+	size_t begin = posStart - 1;
+	while (begin > 0 && strSource[begin - 1] != L' ' && strSource[begin - 1] != L',')
+		--begin;
+	size_t pos = begin;
+	while (pos < posStart - 1)
+	{
+		size_t end = strSource.find(L'-', pos);
+		if (end == std::wstring::npos || end > posStart - 1)
+			break;
+		const std::wstring original = strSource.substr(pos, end - pos);
+		std::wstring word = ToLower(original);
+		const bool letters = !word.empty() && std::all_of(word.begin(), word.end(), [](wchar_t c) { return c >= 0x0400 && c <= 0x04FF; });
+		// «ваенна-», «судова-», «пажарна-» — части прилагательного, не должности
+		const bool adverbStem = word.size() > 3 && (word.compare(word.size() - 2, 2, L"на") == 0 || word.compare(word.size() - 2, 2, L"ва") == 0);
+		// незнакомая часть меняется, только если оканчивается как косвенный падеж
+		// должности («оптыка», «бойцу»): «вице-», «экс-», «штаб-» остаются
+		const wchar_t last = word.empty() ? L'\0' : word.back();
+		// винительный: «оптыка», «старшину», «няню»; дательный: «бойцу», «няні».
+		// «-е» не берём: «вице-президенту»
+		const bool obliqueEnding = word.size() >= 4 && (last == L'у' || last == L'ю'
+			|| (nounCase == Dative
+				? (last == L'і' || last == L'и')
+				: (last == L'а' || last == L'я')));
+		std::wstring nominative;
+		if (letters && !IsAdjective(word) && !adverbStem)
+		{
+			const WordForm part = findForm(word, lang, nounCase);
+			if (part.inDictionary && part.declinedLength == word.length())
+				nominative = part.nominative;
+			else if (!part.inDictionary && obliqueEnding && AddNewWord(word, lang, nounCase))
+				nominative = word;
+		}
+		if (!nominative.empty() && nominative != ToLower(original))
+		{
+			ReplaceKeepingFirstLetter(strSource, pos, original.length(), nominative);
+			const long delta = long(nominative.length()) - long(original.length());
+			posStart = size_t(long(posStart) + delta);
+			end = size_t(long(end) + delta);
+		}
+		pos = end + 1;
+	}
+	return posStart;
+}
+
 // приводит словарное слово в posStart и то, что к нему относится:
 // остальные части составного («урача-анестэзіёлага-рэаніматолага») и, после
 // прилагательного, следующие слова должности («дзяжурнага памочніка», «вядучага
@@ -904,6 +956,9 @@ bool CProfessionConverter::ConvertProfession(std::wstring& strSource, LangType l
 		const WordForm form = findForm(word, lang, nounCase);
 		if (form.found)
 		{
+			// незнакомая первая часть составной должности: «оптыка-механіка»,
+			// «свінара-аператара». Раньше она оставалась в косвенном падеже молча.
+			posStart = ConvertHyphenPrefix(strSource, posStart, lang, nounCase);
 			bResult = true;
 			posMainWord = posStart;
 			posStart = ConvertWordChain(strSource, posStart, form.declinedLength, form.nominative, lang, nounCase);
