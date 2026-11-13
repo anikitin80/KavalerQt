@@ -99,21 +99,14 @@ public:
     }
 };
 
-QIcon toolbarIcon(int index)
+// значок из :/icons/<name>-<размер>.png; несколько размеров, чтобы при
+// масштабе экрана выше 100% Qt брал готовую картинку, а не растягивал 16px
+QIcon toolbarIcon(const QString& name)
 {
-    static QPixmap sheet;
-    if (sheet.isNull()) {
-        QImage image(QStringLiteral(":/Toolbar.bmp"));
-        image = image.convertToFormat(QImage::Format_ARGB32);
-        for (int y = 0; y < image.height(); ++y) {
-            for (int x = 0; x < image.width(); ++x) {
-                if (image.pixelColor(x, y) == QColor(0, 0, 0))
-                    image.setPixelColor(x, y, Qt::transparent);
-            }
-        }
-        sheet = QPixmap::fromImage(image);
-    }
-    return QIcon(sheet.copy(index * 16, 0, 16, 16));
+    QIcon icon;
+    for (int size : {16, 24, 32, 64})
+        icon.addFile(QStringLiteral(":/icons/%1-%2.png").arg(name).arg(size), QSize(size, size));
+    return icon;
 }
 
 } // namespace
@@ -127,9 +120,9 @@ MainWindow::MainWindow(QWidget* parent)
     m_stats = new StatsModel(&m_catalog, this);
     m_dictionary = new DictionaryModel(&m_catalog, this);
 
-    // действие панели и меню: значок из полосы, текст меню, короткий текст
+    // действие панели и меню: имя значка, текст меню, короткий текст
     // под значком (текст меню, если пусто), подсказка
-    const auto makeAction = [this](int icon, const QString& text, const QString& iconText, const QString& toolTip,
+    const auto makeAction = [this](const QString& icon, const QString& text, const QString& iconText, const QString& toolTip,
                                    auto&& slot) {
         auto* action = new QAction(toolbarIcon(icon), text, this);
         if (!iconText.isEmpty())
@@ -138,29 +131,29 @@ MainWindow::MainWindow(QWidget* parent)
         connect(action, &QAction::triggered, this, std::forward<decltype(slot)>(slot));
         return action;
     };
-    auto* openDb = makeAction(0, QStringLiteral("Открыть базу..."), QStringLiteral("База данных"),
+    auto* openDb = makeAction(QStringLiteral("database"), QStringLiteral("Открыть базу..."), QStringLiteral("База данных"),
                               QStringLiteral("Сменить базу данных"), &MainWindow::chooseDatabase);
-    auto* importDecrees = makeAction(1, QStringLiteral("Импорт указов..."), QStringLiteral("Импорт указов"),
+    auto* importDecrees = makeAction(QStringLiteral("file-import"), QStringLiteral("Импорт указов..."), QStringLiteral("Импорт указов"),
                                      QStringLiteral("Импорт указов из файлов Word (docx)"), [this] {
         if (!m_catalog.isOpen())
             return;
         ImportDialog dialog(&m_catalog, this);
         dialog.exec();
     });
-    auto* exportCsv = makeAction(2, QStringLiteral("Экспорт награждений..."), QStringLiteral("Экспорт награждений"),
+    auto* exportCsv = makeAction(QStringLiteral("file-csv"), QStringLiteral("Экспорт награждений..."), QStringLiteral("Экспорт награждений"),
                                  QStringLiteral("Экспорт награждений в csv файл"), &MainWindow::exportCsv);
-    auto* addRecord = makeAction(3, QStringLiteral("Добавить запись"), QStringLiteral("Добавить"),
+    auto* addRecord = makeAction(QStringLiteral("user-add"), QStringLiteral("Добавить запись"), QStringLiteral("Добавить"),
                                  QStringLiteral("Добавить запись"), [this] { addPerson(nullptr); });
-    auto* deleteRecord = makeAction(4, QStringLiteral("Удалить запись"), QStringLiteral("Удалить"),
+    auto* deleteRecord = makeAction(QStringLiteral("trash"), QStringLiteral("Удалить запись"), QStringLiteral("Удалить"),
                                     QStringLiteral("Удалить запись"), &MainWindow::deleteSelected);
-    auto* editRecord = makeAction(5, QStringLiteral("Редактировать запись"), QStringLiteral("Редактировать"),
+    auto* editRecord = makeAction(QStringLiteral("edit"), QStringLiteral("Редактировать запись"), QStringLiteral("Редактировать"),
                                   QStringLiteral("Редактировать запись"), &MainWindow::editCurrent);
-    auto* copyUkase = makeAction(6, QStringLiteral("Копия указа"), QString(),
+    auto* copyUkase = makeAction(QStringLiteral("duplicate"), QStringLiteral("Копия указа"), QString(),
                                  QStringLiteral("Создать копию указа о награждении"), [this] {
         const auto index = m_peopleView->currentIndex();
         addPerson(index.isValid() ? m_people->personAt(index) : nullptr);
     });
-    auto* printAction = makeAction(7, QStringLiteral("Печать..."), QString(), QStringLiteral("Печать"),
+    auto* printAction = makeAction(QStringLiteral("print"), QStringLiteral("Печать..."), QString(), QStringLiteral("Печать"),
                                    &MainWindow::printCurrent);
 
     auto* fileMenu = menuBar()->addMenu(QStringLiteral("Файл"));
@@ -221,7 +214,8 @@ MainWindow::MainWindow(QWidget* parent)
         QMessageBox::about(this, QStringLiteral("Кавалер"),
             QStringLiteral("Каталог государственных наград Беларуси.\n"
                            "База SQLite, интерфейс Qt.\n\n"
-                           "Импорт указов из Word (docx), перевод через Яндекс."));
+                           "Импорт указов из Word (docx), перевод через Яндекс.\n\n"
+                           "Значки: UIcons by Flaticon (flaticon.com)."));
     });
 
     // длинные названия наград не растягивают строку фильтров: поле узкое,

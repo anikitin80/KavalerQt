@@ -1,5 +1,39 @@
 <RCC>
     <qresource prefix="/">
-        <file alias="Toolbar.bmp">res/Toolbar.bmp</file>
+    </qresource>
+    <!-- значки тулбара: Flaticon UIcons, Regular Rounded (https://www.flaticon.com/uicons) -->
+    <qresource prefix="/icons">
+        <file alias="database-16.png">res/icons/database-16.png</file>
+        <file alias="database-24.png">res/icons/database-24.png</file>
+        <file alias="database-32.png">res/icons/database-32.png</file>
+        <file alias="database-64.png">res/icons/database-64.png</file>
+        <file alias="file-import-16.png">res/icons/file-import-16.png</file>
+        <file alias="file-import-24.png">res/icons/file-import-24.png</file>
+        <file alias="file-import-32.png">res/icons/file-import-32.png</file>
+        <file alias="file-import-64.png">res/icons/file-import-64.png</file>
+        <file alias="file-csv-16.png">res/icons/file-csv-16.png</file>
+        <file alias="file-csv-24.png">res/icons/file-csv-24.png</file>
+        <file alias="file-csv-32.png">res/icons/file-csv-32.png</file>
+        <file alias="file-csv-64.png">res/icons/file-csv-64.png</file>
+        <file alias="user-add-16.png">res/icons/user-add-16.png</file>
+        <file alias="user-add-24.png">res/icons/user-add-24.png</file>
+        <file alias="user-add-32.png">res/icons/user-add-32.png</file>
+        <file alias="user-add-64.png">res/icons/user-add-64.png</file>
+        <file alias="trash-16.png">res/icons/trash-16.png</file>
+        <file alias="trash-24.png">res/icons/trash-24.png</file>
+        <file alias="trash-32.png">res/icons/trash-32.png</file>
+        <file alias="trash-64.png">res/icons/trash-64.png</file>
+        <file alias="edit-16.png">res/icons/edit-16.png</file>
+        <file alias="edit-24.png">res/icons/edit-24.png</file>
+        <file alias="edit-32.png">res/icons/edit-32.png</file>
+        <file alias="edit-64.png">res/icons/edit-64.png</file>
+        <file alias="duplicate-16.png">res/icons/duplicate-16.png</file>
+        <file alias="duplicate-24.png">res/icons/duplicate-24.png</file>
+        <file alias="duplicate-32.png">res/icons/duplicate-32.png</file>
+        <file alias="duplicate-64.png">res/icons/duplicate-64.png</file>
+        <file alias="print-16.png">res/icons/print-16.png</file>
+        <file alias="print-24.png">res/icons/print-24.png</file>
+        <file alias="print-32.png">res/icons/print-32.png</file>
+        <file alias="print-64.png">res/icons/print-64.png</file>
     </qresource>
 </RCC>
