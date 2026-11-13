@@ -42,6 +42,51 @@ bool hasBelarusianLetters(const QString& text)
     return false;
 }
 
+// Фамилия, переведённая как слово: «Сівы» → «Седой», «Цецерук» → «Тетерев».
+// Обе фамилии сводятся к общему виду (белорусские буквы — русскими, гласные
+// «о/а/е/я», «ы/и», «в/л/ў», «шч/щ/сч» — одинаковыми), и если общая
+// подпоследовательность букв меньше 80% их средней длины, фамилия не транслитерирована.
+QString surnameKey(QString word, bool belarusian)
+{
+    word = word.toLower();
+    const auto apply = [&word](std::initializer_list<std::pair<const char16_t*, const char16_t*>> pairs) {
+        for (const auto& pair : pairs)
+            word.replace(QString::fromUtf16(pair.first), QString::fromUtf16(pair.second));
+    };
+    if (belarusian)
+        apply({{u"дз", u"д"}, {u"і", u"и"}, {u"ў", u"в"}, {u"'", u""}, {u"\u2019", u""}, {u"\u02BC", u""}, {u"шч", u"щ"}});
+    else
+        apply({{u"сч", u"щ"}, {u"л", u"в"}});
+    apply({{u"ё", u"е"}, {u"э", u"е"}, {u"ы", u"и"}, {u"о", u"а"}, {u"я", u"а"}, {u"е", u"а"}, {u"ю", u"у"},
+           {u"щ", u"шч"}, {u"ц", u"т"}, {u"ъ", u""}, {u"ь", u""}, {u"й", u"и"}, {u"л", u"в"}});
+    return word;
+}
+
+int commonSubsequence(const QString& a, const QString& b)
+{
+    QVector<int> previous(b.size() + 1, 0), current(b.size() + 1, 0);
+    for (const QChar x : a) {
+        current[0] = 0;
+        for (qsizetype j = 0; j < b.size(); ++j)
+            current[j + 1] = x == b.at(j) ? previous[j] + 1 : qMax(previous[j + 1], current[j]);
+        previous.swap(current);
+    }
+    return previous[b.size()];
+}
+
+bool surnameTranslatedAsWord(const QString& name, const QString& nameBy)
+{
+    const QStringList ru = name.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    const QStringList by = nameBy.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    if (ru.size() < 3 || by.size() < 3)
+        return false;
+    const QString a = surnameKey(ru.first(), false);
+    const QString b = surnameKey(by.first(), true);
+    if (a.isEmpty() || b.isEmpty())
+        return false;
+    return 2.0 * commonSubsequence(a, b) / double(a.size() + b.size()) < 0.8;
+}
+
 // одна и та же последовательность этих знаков в обоих текстах ("«»" и "«»" — да,
 // "«»" и "" — нет), без сборки самих последовательностей
 template <typename IsChar>
@@ -67,7 +112,7 @@ bool markCanContain(const QString& quick)
     static const QStringList marks = {
         QStringLiteral("Есть"), QStringLiteral("Нет"), QStringLiteral("Имя"),
         QStringLiteral("Ошибки"), QStringLiteral("Тире"), QStringLiteral("Кавычки"),
-        QStringLiteral("Не переведено")
+        QStringLiteral("Не переведено"), QStringLiteral("Фамилия")
     };
     for (const QString& mark : marks) {
         if (mark.contains(quick, Qt::CaseInsensitive))
@@ -192,6 +237,16 @@ QString PersonModel::displayAward(const Person& person) const
     return award ? award->name : QString();
 }
 
+bool PersonModel::hasTranslationErrors(const Person& person) const
+{
+    return person.language == kLangBelarusian && translationMark(person).errors;
+}
+
+bool PersonModel::hasNameVariants(const Person& person) const
+{
+    return person.name.isEmpty() && !m_suggestions.value(person.id).isEmpty();
+}
+
 QString PersonModel::displayName(const Person& person) const
 {
     if (!person.name.isEmpty())
@@ -251,6 +306,11 @@ PersonModel::Mark PersonModel::translationMark(const Person& person) const
         if (!mark.words.isEmpty()) {
             mark.errors = true;
             mark.text = QStringLiteral("Не переведено");
+        } else if (surnameTranslatedAsWord(person.name, person.nameBy)) {
+            mark.errors = true;
+            mark.text = QStringLiteral("Фамилия");
+            mark.surnameBy = person.nameBy.section(QLatin1Char(' '), 0, 0, QString::SectionSkipEmpty);
+            mark.surnameRu = person.name.section(QLatin1Char(' '), 0, 0, QString::SectionSkipEmpty);
         }
     }
     // тире и кавычки сверяются всегда: облачный перевод их путает
@@ -320,6 +380,10 @@ QVariant PersonModel::data(const QModelIndex& index, int role) const
     }
     if (role == Qt::ToolTipRole && variants.isEmpty() && person.language == kLangBelarusian) {
         const Mark mark = translationMark(person);
+        if (mark.errors && !mark.surnameBy.isEmpty()) {
+            return QStringLiteral("Фамилия, похоже, переведена как слово: %1 → %2.")
+                .arg(mark.surnameBy, mark.surnameRu);
+        }
         if (mark.errors) {
             return mark.words.isEmpty()
                 ? QStringLiteral("В русском тексте остались белорусские буквы (і, ў, шч).")
@@ -348,7 +412,7 @@ QVariant PersonModel::data(const QModelIndex& index, int role) const
                 color = QColor(220, 255, 220);
         }
         // ошибка перевода — розовая строка; перевод имени ждёт выбора — голубая
-        if (person.language == kLangBelarusian && translationMark(person).errors)
+        if (hasTranslationErrors(person))
             color = QColor(255, 200, 200);
         if (!variants.isEmpty())
             color = QColor(185, 225, 250);
@@ -563,7 +627,8 @@ void PersonModel::sort(int column, Qt::SortOrder order)
 }
 
 void PersonModel::apply(int awardId, int year, const QString& name, const QString& quick,
-                        bool needTranslationOnly, bool groupByAward)
+                        bool needTranslationOnly, bool groupByAward,
+                        bool translationErrorsOnly, bool nameVariantsOnly)
 {
     // модель должна выглядеть прежней до beginResetModel(): виды и
     // модель выделения ещё читают её, обрабатывая modelAboutToBeReset
@@ -583,6 +648,11 @@ void PersonModel::apply(int awardId, int year, const QString& name, const QStrin
         if (year != -1 && (!person.ukaseDate.isValid() || person.ukaseDate.year() != year))
             continue;
         if (needTranslationOnly && !person.needTranslation())
+            continue;
+        // оба флажка — строки любого из двух цветов
+        if ((translationErrorsOnly || nameVariantsOnly)
+            && !(translationErrorsOnly && hasTranslationErrors(person))
+            && !(nameVariantsOnly && hasNameVariants(person)))
             continue;
         if (!name.isEmpty() && !person.name.contains(name, Qt::CaseInsensitive)
             && !person.nameBy.contains(name, Qt::CaseInsensitive))

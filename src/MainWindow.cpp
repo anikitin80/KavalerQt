@@ -230,6 +230,10 @@ MainWindow::MainWindow(QWidget* parent)
     m_quick = new QLineEdit;
     m_quick->setPlaceholderText(QStringLiteral("по видимым полям"));
     m_needTranslation = new QCheckBox(QStringLiteral("Требующие перевода"));
+    m_translationErrors = new QCheckBox(QStringLiteral("Ошибки перевода"));
+    m_translationErrors->setToolTip(QStringLiteral("Только розовые строки: в русском тексте остались белорусские буквы или слова"));
+    m_nameVariants = new QCheckBox(QStringLiteral("Варианты перевода"));
+    m_nameVariants->setToolTip(QStringLiteral("Только голубые строки: перевод имени по словарю ждёт выбора варианта"));
 
     auto* filters = new QHBoxLayout;
     filters->addWidget(new QLabel(QStringLiteral("Награда:")));
@@ -241,6 +245,8 @@ MainWindow::MainWindow(QWidget* parent)
     filters->addWidget(new QLabel(QStringLiteral("Фильтр:")));
     filters->addWidget(m_quick, 1);
     filters->addWidget(m_needTranslation);
+    filters->addWidget(m_translationErrors);
+    filters->addWidget(m_nameVariants);
 
     m_peopleView = new PeopleTree;
     m_peopleView->setModel(m_people);
@@ -363,6 +369,8 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_award, &QComboBox::currentIndexChanged, this, refresh);
     connect(m_year, &QComboBox::currentIndexChanged, this, refresh);
     connect(m_needTranslation, &QCheckBox::toggled, this, refresh);
+    connect(m_translationErrors, &QCheckBox::toggled, this, refresh);
+    connect(m_nameVariants, &QCheckBox::toggled, this, refresh);
     connect(m_groupAction, &QAction::toggled, this, refresh);
     connect(m_award, &QComboBox::currentIndexChanged, this, [this] { m_award->setToolTip(m_award->currentText()); });
     // оба текстовых фильтра ждут паузы в наборе
@@ -494,7 +502,9 @@ void MainWindow::refreshPeople()
         name.size() >= 3 ? name : QString(),
         m_quick->text().trimmed(),
         m_needTranslation->isChecked(),
-        m_groupAction->isChecked());
+        m_groupAction->isChecked(),
+        m_translationErrors->isChecked(),
+        m_nameVariants->isChecked());
     updateStatus();
 }
 

@@ -89,6 +89,8 @@ private:
     QLineEdit* m_name = nullptr;
     QLineEdit* m_quick = nullptr;
     QCheckBox* m_needTranslation = nullptr;
+    QCheckBox* m_translationErrors = nullptr; // только розовые строки
+    QCheckBox* m_nameVariants = nullptr;      // только голубые строки
     QAction* m_groupAction = nullptr; // «Вид → Группировать по награде»
     QTreeView* m_peopleView = nullptr;
 

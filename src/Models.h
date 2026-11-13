@@ -25,7 +25,8 @@ public:
     void sort(int column, Qt::SortOrder order = Qt::AscendingOrder) override;
 
     void apply(int awardId, int year, const QString& name, const QString& quick,
-               bool needTranslationOnly, bool groupByAward);
+               bool needTranslationOnly, bool groupByAward,
+               bool translationErrorsOnly = false, bool nameVariantsOnly = false);
 
     bool isGrouped() const { return m_grouped; }
     int shownCount() const;
@@ -50,9 +51,15 @@ private:
         bool errors = false;
         bool quotes = false;
         QStringList words; // непереведённые белорусские слова (для подсказки)
+        QString surnameBy; // фамилия переведена как слово: «Сівы» → «Седой»
+        QString surnameRu;
     };
 
     QString displayName(const Person& person) const;
+    // строка розовая: в переводе белорусские буквы или слова
+    bool hasTranslationErrors(const Person& person) const;
+    // строка голубая: перевод имени ждёт выбора варианта
+    bool hasNameVariants(const Person& person) const;
     QString displayPersonal(const Person& person) const;
     QString displayUkase(const Person& person) const;
     QString displayAward(const Person& person) const;
