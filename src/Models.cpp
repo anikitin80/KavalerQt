@@ -1,4 +1,5 @@
 #include "Models.h"
+#include "TextUtil.h"
 
 #include <QBrush>
 #include <QFont>
@@ -161,6 +162,18 @@ void PersonModel::rebuildGroupLookup()
 
 void PersonModel::sortGroups()
 {
+    if (m_byPerson) {
+        // больше наград — выше, при равенстве по ФИО
+        std::stable_sort(m_groups.begin(), m_groups.end(), [this](const Group& a, const Group& b) {
+            if (a.people.size() != b.people.size())
+                return a.people.size() > b.people.size();
+            return m_collator.compare(a.title, b.title) < 0;
+        });
+        for (Group& group : m_groups)
+            sortPeople(group.people);
+        rebuildGroupLookup();
+        return;
+    }
     const bool descending = m_sortColumn == 0 && m_sortOrder == Qt::DescendingOrder;
     std::stable_sort(m_groups.begin(), m_groups.end(), [this, descending](const Group& a, const Group& b) {
         const int cmp = m_catalog->compareAwards(a.awardId, b.awardId);
@@ -366,7 +379,8 @@ QVariant PersonModel::data(const QModelIndex& index, int role) const
         return {};
 
     const Person& person = m_catalog->people().at(personIndex);
-    if (m_grouped && role == Qt::DisplayRole && index.column() == 0)
+    // в группе по награде её название в строке группы; в группе по человеку — у каждой награды
+    if (m_grouped && !m_byPerson && role == Qt::DisplayRole && index.column() == 0)
         return {};
     if (role == Qt::UserRole)
         return person.id;
@@ -634,6 +648,7 @@ void PersonModel::apply(int awardId, int year, const QString& name, const QStrin
     // модель выделения ещё читают её, обрабатывая modelAboutToBeReset
     beginResetModel();
     m_grouped = groupByAward && awardId == -1;
+    m_byPerson = false;
     m_rows.clear();
     m_groups.clear();
     m_groupOfPerson.clear();
@@ -678,6 +693,57 @@ void PersonModel::apply(int awardId, int year, const QString& name, const QStrin
             groupByAwardId.insert(person.awardId, slot);
         }
         m_groups[slot].people.push_back(i);
+    }
+    sortRows();
+    endResetModel();
+}
+
+QString PersonModel::personKey(const Person& person)
+{
+    const QString nameBy = person.nameBy.simplified();
+    if (!nameBy.isEmpty())
+        return QStringLiteral("by:") + NormalizeCyrillicText(nameBy, true).toLower();
+    const QString name = person.name.simplified();
+    if (!name.isEmpty())
+        return QStringLiteral("ru:") + NormalizeCyrillicText(name, false).toLower();
+    return {};
+}
+
+void PersonModel::applyTopAwarded(int minimumAwards)
+{
+    beginResetModel();
+    m_grouped = true;
+    m_byPerson = true;
+    m_rows.clear();
+    m_groups.clear();
+    m_groupOfPerson.clear();
+    const auto& people = m_catalog->people();
+    QHash<QString, int> slotOfKey;
+    QVector<Group> all;
+    for (int i = 0; i < people.size(); ++i) {
+        const QString key = personKey(people.at(i));
+        if (key.isEmpty())
+            continue;
+        int slot = slotOfKey.value(key, -1);
+        if (slot < 0) {
+            slot = all.size();
+            all.push_back(Group());
+            slotOfKey.insert(key, slot);
+        }
+        all[slot].people.push_back(i);
+    }
+    for (Group& group : all) {
+        if (group.people.size() < minimumAwards)
+            continue;
+        // ФИО из самого позднего указа: так человек записан сейчас
+        const Person* latest = nullptr;
+        for (int row : group.people) {
+            const Person& person = people.at(row);
+            if (!latest || latest->ukaseDate < person.ukaseDate)
+                latest = &person;
+        }
+        group.title = displayName(*latest);
+        m_groups.push_back(std::move(group));
     }
     sortRows();
     endResetModel();

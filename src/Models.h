@@ -28,6 +28,15 @@ public:
                bool needTranslationOnly, bool groupByAward,
                bool translationErrorsOnly = false, bool nameVariantsOnly = false);
 
+    // «Топ награжденных»: люди, награждённые не меньше minimumAwards раз, группой
+    // на человека, под ней его награды. Человек — белорусское ФИО, если оно есть,
+    // иначе русское; организации без имени не считаются.
+    void applyTopAwarded(int minimumAwards);
+    // ключ человека для applyTopAwarded, пусто у организации
+    static QString personKey(const Person& person);
+    // число групп (людей) в «Топе»
+    int groupCount() const { return m_groups.size(); }
+
     bool isGrouped() const { return m_grouped; }
     int shownCount() const;
     const Person* personAt(const QModelIndex& index) const;
@@ -102,6 +111,7 @@ private:
     int m_sortColumn = 3;
     Qt::SortOrder m_sortOrder = Qt::AscendingOrder;
     bool m_grouped = false;
+    bool m_byPerson = false; // группы — люди («Топ награжденных»), а не награды
     // русская сортировка: «Ё» после «Е», белорусские «і»/«ў» рядом с «и»/«у»,
     // числа по значению («5-й» раньше «12-й»)
     QCollator m_collator;

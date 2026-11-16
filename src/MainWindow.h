@@ -31,6 +31,8 @@ private:
     QWidget* createPeopleTab();
     QWidget* createStatsTab();
     QWidget* createDictionaryTab();
+    QWidget* createTopTab();
+    void refreshTop();
     void connectRefresh();
     void openDatabase(const QString& path);
     void chooseDatabase();
@@ -98,6 +100,9 @@ private:
     QCheckBox* m_nameVariants = nullptr;      // только голубые строки
     QAction* m_groupAction = nullptr; // «Вид → Группировать по награде»
     QTreeView* m_peopleView = nullptr;
+    PersonModel* m_top = nullptr;     // «Топ награжденных»
+    QTreeView* m_topView = nullptr;
+    QLabel* m_topCount = nullptr;
 
     QCheckBox* m_statsByMonth = nullptr;
     QRadioButton* m_statsByAward = nullptr;
@@ -113,5 +118,6 @@ private:
     bool m_openingDatabase = false;
     bool m_statsStale = true;
     bool m_dictionaryStale = true;
+    bool m_topStale = true;
     PeopleViewState m_peopleState;
 };

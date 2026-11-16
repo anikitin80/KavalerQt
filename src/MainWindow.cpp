@@ -119,12 +119,14 @@ MainWindow::MainWindow(QWidget* parent)
     m_people = new PersonModel(&m_catalog, this);
     m_stats = new StatsModel(&m_catalog, this);
     m_dictionary = new DictionaryModel(&m_catalog, this);
+    m_top = new PersonModel(&m_catalog, this);
 
     createMenus();
     m_tabs = new QTabWidget;
     m_tabs->addTab(createPeopleTab(), QStringLiteral("Список награждений"));
     m_tabs->addTab(createStatsTab(), QStringLiteral("Статистика"));
     m_tabs->addTab(createDictionaryTab(), QStringLiteral("Словарь имен"));
+    m_tabs->addTab(createTopTab(), QStringLiteral("Топ награжденных"));
     setCentralWidget(m_tabs);
 
     m_count = new QLabel;
@@ -393,6 +395,51 @@ QWidget* MainWindow::createDictionaryTab()
     return dictPage;
 }
 
+// люди, награждённые больше трёх раз: группа на человека, под ней его награды
+QWidget* MainWindow::createTopTab()
+{
+    m_topCount = new QLabel;
+    m_topView = new PeopleTree;
+    m_topView->setModel(m_top);
+    m_topView->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_topView->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    m_topView->setAlternatingRowColors(true);
+    m_topView->setWordWrap(false);
+    m_topView->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_topView->setUniformRowHeights(true);
+    m_topView->setAnimated(false);
+    m_topView->setItemDelegate(new PeopleDelegate(m_topView));
+    m_topView->header()->setStretchLastSection(false);
+    m_topView->header()->setMinimumSectionSize(20);
+    const int columnWidths[] = {320, 260, 420, 140, 50, 70};
+    for (int column = 0; column < 6; ++column)
+        m_topView->setColumnWidth(column, columnWidths[column]);
+    connect(m_topView, &QTreeView::doubleClicked, this, [this](const QModelIndex& index) {
+        if (const Person* person = m_top->personAt(index)) {
+            EditDialog dialog(&m_catalog, *person, this);
+            dialog.exec();
+        }
+    });
+    auto* topPage = new QWidget;
+    auto* topLayout = new QVBoxLayout(topPage);
+    topLayout->addWidget(m_topCount);
+    topLayout->addWidget(m_topView);
+    return topPage;
+}
+
+void MainWindow::refreshTop()
+{
+    if (!m_catalog.isOpen())
+        return;
+    // «более 3 раз»: от четырёх награждений
+    m_top->applyTopAwarded(4);
+    if (m_top->shownCount() <= 20000)
+        m_topView->expandAll();
+    m_topCount->setText(QStringLiteral("Награждённых больше трёх раз: %1, награждений у них: %2")
+                            .arg(m_top->groupCount()).arg(m_top->shownCount()));
+    m_topStale = false;
+}
+
 // фильтры, вкладки и изменения каталога обновляют то, что на экране
 void MainWindow::connectRefresh()
 {
@@ -433,6 +480,7 @@ void MainWindow::connectRefresh()
         // статистика и словарь имён пересобираются, только когда на них смотрят
         m_statsStale = true;
         m_dictionaryStale = true;
+        m_topStale = true;
         refreshVisibleTab();
     });
     connect(m_tabs, &QTabWidget::currentChanged, this, [this] { refreshVisibleTab(); });
@@ -485,6 +533,7 @@ void MainWindow::openDatabase(const QString& path)
     m_openingDatabase = false;
     m_statsStale = true;
     m_dictionaryStale = true;
+    m_topStale = true;
     refreshVisibleTab();
 }
 
@@ -563,6 +612,8 @@ void MainWindow::refreshVisibleTab()
         refreshStats();
     else if (m_tabs->currentIndex() == 2 && m_dictionaryStale)
         refreshDictionary();
+    else if (m_tabs->currentIndex() == 3 && m_topStale)
+        refreshTop();
 }
 
 void MainWindow::capturePeopleState()
@@ -1057,6 +1108,8 @@ void MainWindow::printCurrent()
         view = m_statsView;
     else if (m_tabs->currentIndex() == 2)
         view = m_dictView;
+    else if (m_tabs->currentIndex() == 3)
+        view = m_topView;
 
     const QAbstractItemModel* model = view->model();
     QString html = QStringLiteral("<table border='1' cellspacing='0' cellpadding='4' style='border-collapse:collapse'><tr>");
