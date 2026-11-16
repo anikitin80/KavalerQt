@@ -45,30 +45,6 @@ QVector<QChar> collectChars(const QString& text, const QString& chars)
     return result;
 }
 
-void addDict(QHash<QString, QStringList>& dict, const QString& by, const QString& ru)
-{
-    auto it = dict.find(by);
-    if (it == dict.end()) {
-        dict.insert(by, QStringList{ru});
-        return;
-    }
-    if (!it->contains(ru))
-        it->push_back(ru);
-}
-
-// написания части имени: самое частое первым, при равенстве — встреченное раньше
-void rankDict(QHash<QString, QStringList>& dict, const QHash<QString, QHash<QString, int>>& counts)
-{
-    for (auto it = dict.begin(); it != dict.end(); ++it) {
-        if (it->size() < 2)
-            continue;
-        const QHash<QString, int> seen = counts.value(it.key());
-        std::stable_sort(it->begin(), it->end(), [&seen](const QString& a, const QString& b) {
-            return seen.value(a) > seen.value(b);
-        });
-    }
-}
-
 QString joinAlt(const QStringList& values)
 {
     if (values.size() <= 1)
@@ -437,34 +413,84 @@ bool Catalog::load(QString* error)
     return true;
 }
 
+namespace {
+
+// Русские написания одного белорусского текста: сколько раз встретилось
+// и где впервые (позиция в порядке обхода записей). Порядок обхода задаёт,
+// какое написание побеждает при равном числе.
+class Spellings
+{
+public:
+    void add(const QString& by, const QString& ru, int position)
+    {
+        Slot& slot = m_items[by][ru];
+        if (slot.count == 0)
+            slot.first = position;
+        ++slot.count;
+    }
+
+    // самое частое написание, при равенстве — встреченное раньше
+    QHash<QString, QString> best() const
+    {
+        QHash<QString, QString> result;
+        for (auto group = m_items.cbegin(); group != m_items.cend(); ++group)
+            result.insert(group.key(), ranked(group.value(), false).value(0));
+        return result;
+    }
+
+    // все написания: частые первыми, при равенстве — встреченное раньше
+    // или (alphabetical) по алфавиту
+    QHash<QString, QStringList> all(bool alphabetical) const
+    {
+        QHash<QString, QStringList> result;
+        for (auto group = m_items.cbegin(); group != m_items.cend(); ++group)
+            result.insert(group.key(), ranked(group.value(), alphabetical));
+        return result;
+    }
+
+private:
+    struct Slot
+    {
+        int count = 0;
+        int first = 0;
+    };
+
+    static QStringList ranked(const QHash<QString, Slot>& written, bool alphabetical)
+    {
+        QVector<QPair<QString, Slot>> items;
+        items.reserve(written.size());
+        for (auto it = written.cbegin(); it != written.cend(); ++it)
+            items.push_back({it.key(), it.value()});
+        std::sort(items.begin(), items.end(), [alphabetical](const auto& a, const auto& b) {
+            if (a.second.count != b.second.count)
+                return a.second.count > b.second.count;
+            return alphabetical ? a.first < b.first : a.second.first < b.second.first;
+        });
+        QStringList result;
+        result.reserve(items.size());
+        for (const auto& item : items)
+            result.push_back(item.first);
+        return result;
+    }
+
+    QHash<QString, QHash<QString, Slot>> m_items;
+};
+
+} // namespace
+
 void Catalog::rebuildDerived() const
 {
     m_derivedDirty = false;
+    rebuildStats();
+    rebuildTranslations();
+}
+
+// по награде и году: всего и по месяцам
+void Catalog::rebuildStats() const
+{
     m_stats.clear();
-    m_dictionary.clear();
-    m_first.clear();
-    m_last.clear();
-    m_middle.clear();
-    m_nameRu.clear();
-    m_profRu.clear();
-    m_rankRu.clear();
-
-    // одна белорусская должность → русское написание → как часто, и какой указ победит при равенстве
-    struct ProfSpelling {
-        int count = 0;
-        QDate earliest;
-        int order = 0;
-    };
-    QHash<QString, QHash<QString, ProfSpelling>> professions;
-
-    QHash<QString, QHash<QString, int>> fullNames;
     QHash<QPair<int, int>, int> statIndex;
-    for (int index = 0; index < m_people.size(); ++index) {
-        const Person& person = m_people.at(index);
-        const QString nameBy = belarusianNameKey(person.nameBy);
-        const QString name = person.name.simplified();
-        if (!nameBy.isEmpty() && !name.isEmpty())
-            ++fullNames[nameBy][name];
+    for (const Person& person : m_people) {
         if (!person.ukaseDate.isValid())
             continue;
         const QPair<int, int> key(person.awardId, person.ukaseDate.year());
@@ -481,52 +507,45 @@ void Catalog::rebuildDerived() const
         const int month = person.ukaseDate.month();
         if (month >= 1 && month <= 12)
             row.month[month - 1]++;
+    }
+    std::sort(m_stats.begin(), m_stats.end(), [this](const StatMonth& a, const StatMonth& b) {
+        if (const int cmp = compareAwards(a.awardId, b.awardId))
+            return cmp < 0;
+        return a.year < b.year;
+    });
+}
 
-        if (!person.personalBy.isEmpty() && !person.personal.isEmpty()) {
-            ProfSpelling& slot = professions[person.personalBy][person.personal];
-            if (slot.count == 0 || person.ukaseDate < slot.earliest) {
-                slot.earliest = person.ukaseDate;
-                slot.order = index;
-            }
-            ++slot.count;
-        }
+// русские написания белорусских должностей, званий, ФИО и частей ФИО
+void Catalog::rebuildTranslations() const
+{
+    // должность: при равенстве — написание из самого раннего указа
+    QVector<int> byDate;
+    for (int index = 0; index < m_people.size(); ++index) {
+        if (m_people.at(index).ukaseDate.isValid())
+            byDate.push_back(index);
     }
-    for (auto group = professions.cbegin(); group != professions.cend(); ++group) {
-        QString bestRu;
-        ProfSpelling best;
-        bool chosen = false;
-        for (auto spelling = group.value().cbegin(); spelling != group.value().cend(); ++spelling) {
-            const ProfSpelling& item = spelling.value();
-            const bool better = !chosen
-                || item.count > best.count
-                || (item.count == best.count && item.earliest < best.earliest)
-                || (item.count == best.count && item.earliest == best.earliest && item.order < best.order);
-            if (better) {
-                chosen = true;
-                bestRu = spelling.key();
-                best = item;
-            }
-        }
-        if (chosen)
-            m_profRu.insert(group.key(), bestRu);
+    std::stable_sort(byDate.begin(), byDate.end(), [this](int a, int b) {
+        return m_people.at(a).ukaseDate < m_people.at(b).ukaseDate;
+    });
+    Spellings professions;
+    for (int order = 0; order < byDate.size(); ++order) {
+        const Person& person = m_people.at(byDate.at(order));
+        if (!person.personalBy.isEmpty() && !person.personal.isEmpty())
+            professions.add(person.personalBy, person.personal, order);
     }
-    for (auto group = fullNames.cbegin(); group != fullNames.cend(); ++group) {
-        QVector<QPair<int, QString>> ranked;
-        ranked.reserve(group.value().size());
-        for (auto spelling = group.value().cbegin(); spelling != group.value().cend(); ++spelling)
-            ranked.push_back({spelling.value(), spelling.key()});
-        std::sort(ranked.begin(), ranked.end(), [](const QPair<int, QString>& a, const QPair<int, QString>& b) {
-            if (a.first != b.first)
-                return a.first > b.first;
-            return a.second < b.second;
-        });
-        QStringList names;
-        names.reserve(ranked.size());
-        for (const QPair<int, QString>& item : ranked)
-            names.push_back(item.second);
-        m_nameRu.insert(group.key(), names);
-    }
+    m_profRu = professions.best();
 
+    // полное ФИО: при равенстве — по алфавиту
+    Spellings fullNames;
+    for (const Person& person : m_people) {
+        const QString nameBy = belarusianNameKey(person.nameBy);
+        const QString name = person.name.simplified();
+        if (!nameBy.isEmpty() && !name.isEmpty())
+            fullNames.add(nameBy, name, 0);
+    }
+    m_nameRu = fullNames.all(true);
+
+    // звание и части ФИО: при равенстве — первое по русскому ФИО, затем по дате указа
     QVector<int> byName(m_people.size());
     for (int i = 0; i < byName.size(); ++i)
         byName[i] = i;
@@ -536,22 +555,11 @@ void Catalog::rebuildDerived() const
             return m_people.at(a).ukaseDate < m_people.at(b).ukaseDate;
         return cmp < 0;
     });
-
-    // одно белорусское звание → русское написание → как часто, и где это написание впервые стоит в byName
-    struct RankSpelling {
-        int count = 0;
-        int sortPos = 0;
-    };
-    QHash<QString, QHash<QString, RankSpelling>> ranks;
-    QHash<QString, QHash<QString, int>> firstCounts, lastCounts, middleCounts;
+    Spellings ranks, first, last, middle;
     for (int order = 0; order < byName.size(); ++order) {
         const Person& person = m_people.at(byName.at(order));
-        if (!person.rankBy.isEmpty() && !person.rank.isEmpty()) {
-            RankSpelling& slot = ranks[person.rankBy][person.rank];
-            if (slot.count == 0)
-                slot.sortPos = order;
-            ++slot.count;
-        }
+        if (!person.rankBy.isEmpty() && !person.rank.isEmpty())
+            ranks.add(person.rankBy, person.rank, order);
 
         if (person.name.isEmpty() || person.nameBy.isEmpty())
             continue;
@@ -561,38 +569,17 @@ void Catalog::rebuildDerived() const
         const int by2 = person.nameBy.indexOf(QLatin1Char(' '), by1 + 1);
         const int ru1 = person.name.indexOf(QLatin1Char(' '));
         const int ru2 = person.name.indexOf(QLatin1Char(' '), ru1 + 1);
-        const auto addPart = [](QHash<QString, QStringList>& dict, QHash<QString, QHash<QString, int>>& counts,
-                                 const QString& by, const QString& ru) {
-            addDict(dict, by, ru);
-            ++counts[by][ru];
-        };
-        addPart(m_first, firstCounts, belarusianNameKey(person.nameBy.mid(by1 + 1, by2 - by1 - 1)), person.name.mid(ru1 + 1, ru2 - ru1 - 1));
-        addPart(m_last, lastCounts, belarusianNameKey(person.nameBy.left(by1)), person.name.left(ru1));
-        addPart(m_middle, middleCounts, belarusianNameKey(person.nameBy.mid(by2 + 1)), person.name.mid(ru2 + 1));
+        first.add(belarusianNameKey(person.nameBy.mid(by1 + 1, by2 - by1 - 1)), person.name.mid(ru1 + 1, ru2 - ru1 - 1), order);
+        last.add(belarusianNameKey(person.nameBy.left(by1)), person.name.left(ru1), order);
+        middle.add(belarusianNameKey(person.nameBy.mid(by2 + 1)), person.name.mid(ru2 + 1), order);
     }
-    rankDict(m_first, firstCounts);
-    rankDict(m_last, lastCounts);
-    rankDict(m_middle, middleCounts);
-    for (auto group = ranks.cbegin(); group != ranks.cend(); ++group) {
-        QString bestRu;
-        RankSpelling best;
-        bool chosen = false;
-        for (auto spelling = group.value().cbegin(); spelling != group.value().cend(); ++spelling) {
-            const RankSpelling& item = spelling.value();
-            const bool better = !chosen
-                || item.count > best.count
-                || (item.count == best.count && item.sortPos < best.sortPos);
-            if (better) {
-                chosen = true;
-                bestRu = spelling.key();
-                best = item;
-            }
-        }
-        if (chosen)
-            m_rankRu.insert(group.key(), bestRu);
-    }
+    m_rankRu = ranks.best();
+    m_first = first.all(false);
+    m_last = last.all(false);
+    m_middle = middle.all(false);
 
-    auto appendDict = [this](const QHash<QString, QStringList>& dict, const QString& type) {
+    m_dictionary.clear();
+    const auto appendDict = [this](const QHash<QString, QStringList>& dict, const QString& type) {
         QStringList keys = dict.keys();
         keys.sort(Qt::CaseInsensitive);
         for (const QString& key : keys) {
@@ -608,12 +595,6 @@ void Catalog::rebuildDerived() const
     appendDict(m_last, QStringLiteral("Фамилия"));
     appendDict(m_first, QStringLiteral("Имя"));
     appendDict(m_middle, QStringLiteral("Отчество"));
-
-    std::sort(m_stats.begin(), m_stats.end(), [this](const StatMonth& a, const StatMonth& b) {
-        if (const int cmp = compareAwards(a.awardId, b.awardId))
-            return cmp < 0;
-        return a.year < b.year;
-    });
 }
 
 void Catalog::rebuildIdentity()

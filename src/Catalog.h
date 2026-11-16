@@ -198,6 +198,8 @@ private:
     void invalidateDerived();
     void ensureDerived() const;
     void rebuildDerived() const;
+    void rebuildStats() const;
+    void rebuildTranslations() const;
     void rebuildIdentity();
     void addIdentity(const Person& person);
     void removeIdentity(const Person& person);

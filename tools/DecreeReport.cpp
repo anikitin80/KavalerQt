@@ -5,6 +5,7 @@
 //                 --out build/reports/2026-11-06 [--compare build/reports/<previous>]
 //   decree_report ... --rules-only   фамилии и переносы только по правилам, без каталога
 //   decree_report --names --db D:/Awards/DB/Kavaler.sqlite --out build/reports/names
+//   decree_report --dump-catalog catalog.tsv --db D:/Awards/DB/Kavaler.sqlite
 //
 // --names указы не читает. Выписывает белорусские полные имена, сохранённые
 // больше чем с одним русским написанием (names.tsv). Пустой список — таких нет.
@@ -327,13 +328,65 @@ int reportNameConflicts(const Catalog& catalog, const QString& databasePath, con
     return 0;
 }
 
-} // namespace
-
-int main(int argc, char** argv)
+// Производные данные каталога в один файл: статистика, словарь имён и переводы
+// каждой должности, звания и ФИО базы. Для проверки, что правка Catalog их не изменила.
+int dumpCatalog(const Catalog& catalog, const QString& path)
 {
-    QCoreApplication app(argc, argv);
-    QCoreApplication::setApplicationName(QStringLiteral("decree_report"));
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        console() << "cannot write " << path << "\n";
+        return 1;
+    }
+    QTextStream out(&file);
+    out.setEncoding(QStringConverter::Utf8);
+    for (const StatMonth& row : catalog.stats()) {
+        out << "stat\t" << row.awardId << '\t' << row.year << '\t' << row.total;
+        for (int month : row.month)
+            out << '\t' << month;
+        out << '\n';
+    }
+    for (const DictEntry& entry : catalog.dictionary())
+        out << "dict\t" << entry.type << '\t' << cell(entry.by) << '\t' << cell(entry.ru) << '\t' << cell(entry.alt) << '\n';
+    QSet<QString> professions, ranks, names;
+    for (const Person& person : catalog.people()) {
+        professions.insert(person.personalBy);
+        ranks.insert(person.rankBy);
+        names.insert(person.nameBy);
+    }
+    const auto sorted = [](const QSet<QString>& set) {
+        QStringList list(set.begin(), set.end());
+        list.sort();
+        return list;
+    };
+    for (const QString& by : sorted(professions))
+        out << "prof\t" << cell(by) << '\t' << cell(catalog.professionRu(by)) << '\n';
+    for (const QString& by : sorted(ranks))
+        out << "rank\t" << cell(by) << '\t' << cell(catalog.rankRu(by)) << '\n';
+    for (const QString& by : sorted(names))
+        out << "name\t" << cell(by) << '\t' << cell(catalog.translateName(by).join(QLatin1Char('|'))) << '\n';
+    console() << "wrote " << path << "\n";
+    return 0;
+}
 
+struct Options
+{
+    QString db;
+    QString docs;
+    QString out;
+    QString compare;
+    QString dictRu;
+    QString dictBy;
+    QString filter;
+    QString dump;
+    int limit = -1;
+    bool all = false;
+    bool rulesOnly = false;
+    bool namesOnly = false;
+};
+
+// параметры командной строки; -1 — продолжать, иначе код выхода
+int readOptions(QCoreApplication& app, Options& options)
+{
     QCommandLineParser cli;
     cli.setApplicationDescription(QStringLiteral("Parses the decree archive and compares it with the catalog."));
     cli.addHelpOption();
@@ -350,62 +403,77 @@ int main(int argc, char** argv)
                                              QStringLiteral("Restore surnames by the rules alone and keep line-wrap hyphens, without the catalog's surnames and words."));
     const QCommandLineOption namesOption(QStringLiteral("names"),
                                          QStringLiteral("Report Belarusian full names with more than one Russian spelling. Does not read decrees."));
-    for (const auto& option : {dbOption, docsOption, outOption, compareOption, dictRuOption, dictByOption, filterOption, limitOption, allOption, rulesOnlyOption, namesOption})
+    const QCommandLineOption dumpOption(QStringLiteral("dump-catalog"),
+                                        QStringLiteral("Write the catalog's derived data (stats, name dictionary, translations) to a file. Does not read decrees."),
+                                        QStringLiteral("file"));
+    for (const auto& option : {dbOption, docsOption, outOption, compareOption, dictRuOption, dictByOption, filterOption, limitOption, allOption, rulesOnlyOption, namesOption, dumpOption})
         cli.addOption(option);
     cli.process(app);
-    const bool namesOnly = cli.isSet(namesOption);
-    if (!cli.isSet(dbOption) || !cli.isSet(outOption) || (!namesOnly && !cli.isSet(docsOption))) {
-        console() << (namesOnly ? "--db and --out are required, see --help\n"
-                                : "--db, --docs and --out are required, see --help\n");
+
+    options.db = cli.value(dbOption);
+    options.docs = cli.value(docsOption);
+    options.out = cli.value(outOption);
+    options.compare = cli.value(compareOption);
+    options.dictRu = cli.value(dictRuOption);
+    options.dictBy = cli.value(dictByOption);
+    options.filter = cli.value(filterOption);
+    options.dump = cli.value(dumpOption);
+    if (cli.isSet(limitOption))
+        options.limit = cli.value(limitOption).toInt();
+    options.all = cli.isSet(allOption);
+    options.rulesOnly = cli.isSet(rulesOnlyOption);
+    options.namesOnly = cli.isSet(namesOption);
+
+    if (!options.dump.isEmpty())
+        return -1;
+    if (options.db.isEmpty() || options.out.isEmpty() || (!options.namesOnly && options.docs.isEmpty())) {
+        console() << (options.namesOnly ? "--db and --out are required, see --help\n"
+                                        : "--db, --docs and --out are required, see --help\n");
         return 2;
     }
-
-    Catalog catalog;
-    QString error;
-    if (!catalog.open(cli.value(dbOption), &error, true)) {
-        console() << "cannot open the catalog: " << error << "\n";
-        return 1;
-    }
-    if (namesOnly)
-        return reportNameConflicts(catalog, cli.value(dbOption), cli.value(outOption));
-
     // словари должностей: заданные явно или те, которыми пользуется программа
-    QString dictRu = cli.value(dictRuOption);
-    QString dictBy = cli.value(dictByOption);
-    {
-        QSettings appSettings(QStringLiteral("Anatoli Nikitin"), QStringLiteral("Kavaler"));
-        if (dictRu.isEmpty())
-            dictRu = appSettings.value(QStringLiteral("DictionaryRU")).toString();
-        if (dictBy.isEmpty())
-            dictBy = appSettings.value(QStringLiteral("DictionaryBY")).toString();
-    }
-    // парсер не должен читать и писать настройки программы
-    QCoreApplication::setOrganizationName(QStringLiteral("KavalerTools"));
+    QSettings appSettings(QStringLiteral("Anatoli Nikitin"), QStringLiteral("Kavaler"));
+    if (options.dictRu.isEmpty())
+        options.dictRu = appSettings.value(QStringLiteral("DictionaryRU")).toString();
+    if (options.dictBy.isEmpty())
+        options.dictBy = appSettings.value(QStringLiteral("DictionaryBY")).toString();
+    return -1;
+}
 
-    // указатель каталога: указ+имя → записи (по номеру) и отдельно по награде
+// указатель каталога: указ+имя → записи (по номеру) и отдельно по награде
+struct CatalogIndex
+{
     QHash<QString, QVector<const Person*>> byAward;
     QHash<QString, QVector<const Person*>> byName;
     QHash<QString, QVector<const Person*>> byDecree; // для ближайшей записи NEW
-    {
-        QVector<const Person*> people;
-        for (const Person& person : catalog.people())
-            people.push_back(&person);
-        std::sort(people.begin(), people.end(), [](const Person* a, const Person* b) { return a->id < b->id; });
-        for (const Person* person : people) {
-            byDecree[decreeOnlyKey(person->ukaseNo, person->ukaseDate)].push_back(person);
-            for (bool belarusian : {true, false}) {
-                const QString name = belarusian ? person->nameBy : person->name;
-                const QString personal = belarusian ? person->personalBy : person->personal;
-                const QString keyName = name.isEmpty() ? personal : name;
-                if (keyName.isEmpty())
-                    continue;
-                const QString decree = decreeKey(person->ukaseNo, person->ukaseDate, keyName, belarusian);
-                byName[decree].push_back(person);
-                byAward[awardKey(person->awardId, decree)].push_back(person);
-            }
+};
+
+CatalogIndex indexCatalog(const Catalog& catalog)
+{
+    CatalogIndex index;
+    QVector<const Person*> people;
+    for (const Person& person : catalog.people())
+        people.push_back(&person);
+    std::sort(people.begin(), people.end(), [](const Person* a, const Person* b) { return a->id < b->id; });
+    for (const Person* person : people) {
+        index.byDecree[decreeOnlyKey(person->ukaseNo, person->ukaseDate)].push_back(person);
+        for (bool belarusian : {true, false}) {
+            const QString name = belarusian ? person->nameBy : person->name;
+            const QString personal = belarusian ? person->personalBy : person->personal;
+            const QString keyName = name.isEmpty() ? personal : name;
+            if (keyName.isEmpty())
+                continue;
+            const QString decree = decreeKey(person->ukaseNo, person->ukaseDate, keyName, belarusian);
+            index.byName[decree].push_back(person);
+            index.byAward[awardKey(person->awardId, decree)].push_back(person);
         }
     }
+    return index;
+}
 
+// парсер, как в окне импорта: награды каталога, его фамилии и слова, словари должностей
+void setupParser(CDocumentParser& parser, const Catalog& catalog, const Options& options)
+{
     std::map<long, DecreeAward> awards;
     for (const Award& award : catalog.awards()) {
         DecreeAward item;
@@ -416,36 +484,364 @@ int main(int argc, char** argv)
         item.NameBY = award.nameBy.toStdWString();
         awards[item.ID] = item;
     }
-    CDocumentParser parser;
     parser.Initialize(awards);
-    // как окно импорта: неоднозначную фамилию и дефис переноса решает каталог (--rules-only — только правила)
-    if (!cli.isSet(rulesOnlyOption)) {
+    // неоднозначную фамилию и дефис переноса решает каталог (--rules-only — только правила)
+    if (!options.rulesOnly) {
         loadKnownSurnames(parser.m_NameConverter, catalog);
         loadKnownWords(parser, catalog);
     }
-    parser.m_ProfessionConverter.SetDictionaryPath(dictRu.toStdWString(), LangRU);
-    parser.m_ProfessionConverter.SetDictionaryPath(dictBy.toStdWString(), LangBY);
+    parser.m_ProfessionConverter.SetDictionaryPath(options.dictRu.toStdWString(), LangRU);
+    parser.m_ProfessionConverter.SetDictionaryPath(options.dictBy.toStdWString(), LangBY);
+}
 
+QStringList decreeFiles(const Options& options, const QDir& docs)
+{
     QStringList files;
-    const QDir docs(cli.value(docsOption));
     for (QDirIterator it(docs.path(), {QStringLiteral("*.docx")}, QDir::Files, QDirIterator::Subdirectories); it.hasNext();) {
         const QString path = it.next();
         if (QFileInfo(path).fileName().startsWith(QStringLiteral("~$")))
             continue;
-        if (cli.isSet(filterOption) && !path.contains(cli.value(filterOption), Qt::CaseInsensitive))
+        if (!options.filter.isEmpty() && !path.contains(options.filter, Qt::CaseInsensitive))
             continue;
         files.push_back(path);
     }
     files.sort();
-    if (cli.isSet(limitOption))
-        files = files.mid(0, cli.value(limitOption).toInt());
+    if (options.limit >= 0)
+        files = files.mid(0, options.limit);
+    return files;
+}
 
-    const QString outDir = cli.value(outOption);
-    QDir().mkpath(outDir);
-    QFile personsFile(QDir(outDir).filePath(QStringLiteral("persons.tsv")));
-    QFile filesFile(QDir(outDir).filePath(QStringLiteral("files.tsv")));
+// сведения о группе («работнікаў ... завода») в окне импорта добавляются к должности
+// флажком на файл: берём их, когда с ними с каталогом совпадает больше людей
+bool chooseGroupInfo(CDocumentParser& parser, const std::wstring& fileName, const CatalogIndex& index, QString* groupText)
+{
+    bool useGroup = false;
+    GroupInfo group;
+    std::wstring name = fileName;
+    if (parser.GetGroupInfo(name, group))
+        *groupText = QString::fromStdWString(group.Info);
+    if (parser.GetGroupInfo(name, group) && !group.Info.empty()) {
+        int with = 0, without = 0;
+        QHash<QString, int> seen;
+        for (PersonInfo& info : parser.m_Persons) {
+            const bool belarusian = !info.Ukaz.RussianLang;
+            const QString parsedName = QString::fromStdWString(info.Name);
+            const QString description = QString::fromStdWString(parser.GetPersonDescription(info, false));
+            const QString key = awardKey(info.AwardId, decreeKey(info.Ukaz.Number, info.Ukaz.Date,
+                                                                  parsedName.isEmpty() ? description : parsedName,
+                                                                  belarusian));
+            const int n = seen[key]++;
+            if (n >= index.byAward.value(key).size())
+                continue;
+            const QString& db = belarusian ? index.byAward.value(key).at(n)->personalBy : index.byAward.value(key).at(n)->personal;
+            for (bool checked : {false, true}) {
+                parser.CheckGroupInfo(fileName.c_str(), checked);
+                const QString text = NormalizeCyrillicText(
+                    QString::fromStdWString(parser.GetPersonDescription(info, false)), belarusian);
+                if (text == db)
+                    ++(checked ? with : without);
+            }
+        }
+        useGroup = with > without;
+    }
+    parser.CheckGroupInfo(fileName.c_str(), useGroup);
+    return useGroup;
+}
+
+// итоги прогона для summary.txt и сравнения
+struct Totals
+{
+    QMap<QString, int> statuses;
+    // фамилия, которую окно импорта попросит подтвердить: по статусу, всего и с 2020 года
+    QMap<QString, int> unsureSurnames;
+    QMap<QString, int> unsureRecent;
+    QMap<int, QMap<QString, int>> perYear;
+    QMap<QString, int> diffFields;
+    QMap<QString, int> nearKinds;
+    QHash<QString, Row> current;
+    int emptyFiles = 0;
+    int groupFiles = 0; // файлы, где сведения о группе добавлены к должности
+};
+
+// разобранные люди файла против каталога: k-й тёзка с k-й записью
+QVector<PendingRow> matchFile(CDocumentParser& parser, const QString& relative, const CatalogIndex& index,
+                              Totals& totals, QMap<QString, int>& fileCounts, QVector<int>& exactIndexes)
+{
+    QHash<QString, int> ordinal;
+    QVector<PendingRow> pending;
+    for (size_t i = 0; i < parser.m_Persons.size(); ++i) {
+        PersonInfo& info = parser.m_Persons[i];
+        const bool belarusian = !info.Ukaz.RussianLang;
+        Row row;
+        row.file = relative;
+        row.year = info.Ukaz.Date.isValid() ? info.Ukaz.Date.year() : 0;
+        row.index = int(i);
+        row.awardId = info.AwardId;
+        row.name = QString::fromStdWString(info.Name);
+        row.description = QString::fromStdWString(parser.GetPersonDescription(info, false));
+        row.rank = QString::fromStdWString(info.MilitaryRank);
+        row.posthumous = info.Posthumous;
+        row.surnameUnsure = !info.Organization && (info.Flags & PersonInfo::NF_SURNAME_UNSURE);
+
+        const QString matchName = row.name.isEmpty() ? row.description : row.name;
+        const QString decree = decreeKey(info.Ukaz.Number, info.Ukaz.Date, matchName, belarusian);
+        const QString key = awardKey(info.AwardId, decree);
+        const int n = ordinal[key]++;
+        if (info.Ukaz.Number == 0 || !info.Ukaz.Date.isValid()) {
+            row.status = QStringLiteral("BAD_HEADER");
+        } else if (n < index.byAward.value(key).size()) {
+            const Person* db = index.byAward.value(key).at(n);
+            row.dbId = db->id;
+            row.dbDescription = belarusian ? db->personalBy : db->personal;
+            row.dbRank = belarusian ? db->rankBy : db->rank;
+            row.dbPosthumous = db->posthumous != 0;
+            QStringList differs;
+            if (NormalizeCyrillicText(row.description, belarusian) != row.dbDescription)
+                differs << QStringLiteral("description");
+            if (NormalizeCyrillicText(row.rank, belarusian) != row.dbRank)
+                differs << QStringLiteral("rank");
+            if (row.posthumous != row.dbPosthumous)
+                differs << QStringLiteral("posthumous");
+            row.diffFields = differs.join(QLatin1Char(','));
+            row.status = differs.isEmpty() ? QStringLiteral("EXACT") : QStringLiteral("DIFF");
+            for (const QString& field : differs)
+                ++totals.diffFields[field];
+        } else if (!index.byName.value(decree).isEmpty()) {
+            row.status = QStringLiteral("OTHER_AWARD");
+            row.dbId = index.byName.value(decree).first()->id;
+        } else {
+            row.status = QStringLiteral("NEW");
+        }
+
+        ++totals.statuses[row.status];
+        if (row.surnameUnsure) {
+            ++totals.unsureSurnames[row.status];
+            if (row.year >= 2020)
+                ++totals.unsureRecent[row.status];
+        }
+        ++totals.perYear[row.year][row.status];
+        ++fileCounts[row.status];
+        totals.current.insert(rowKey(row.file, row.index), row);
+        if (row.status == QLatin1String("EXACT"))
+            exactIndexes.push_back(row.index);
+        PendingRow out;
+        out.row = row;
+        out.decreeNo = info.Ukaz.Number;
+        out.decreeDate = info.Ukaz.Date;
+        out.belarusian = belarusian;
+        out.sourceName = QString::fromStdWString(info.SourceName);
+        out.sourceCase = info.SourceCase;
+        pending.push_back(out);
+    }
+    return pending;
+}
+
+// ближайшая запись каталога для NEW: из того же указа и языка, не занятая этим файлом
+void findNearest(QVector<PendingRow>& pending, const CatalogIndex& index, Totals& totals)
+{
+    QSet<int> taken;
+    for (const PendingRow& out : pending) {
+        if (out.row.dbId && out.row.status != QLatin1String("OTHER_AWARD"))
+            taken.insert(out.row.dbId);
+    }
+    for (PendingRow& out : pending) {
+        if (out.row.status != QLatin1String("NEW"))
+            continue;
+        const QString parsed = NormalizeCyrillicText(out.row.name.isEmpty() ? out.row.description : out.row.name, out.belarusian);
+        double best = 0;
+        for (const Person* person : index.byDecree.value(decreeOnlyKey(out.decreeNo, out.decreeDate))) {
+            const QString name = out.belarusian ? person->nameBy : person->name;
+            if (name.isEmpty() || taken.contains(person->id))
+                continue;
+            const double score = similarity(parsed.toLower(), NormalizeCyrillicText(name, out.belarusian).toLower());
+            if (score > best) {
+                best = score;
+                out.nearId = person->id;
+                out.nearName = name;
+            }
+        }
+        out.nearKind = best >= 0.6 ? nearKind(parsed, NormalizeCyrillicText(out.nearName, out.belarusian)) : QStringLiteral("none");
+        ++totals.nearKinds[out.nearKind];
+    }
+}
+
+void writePersons(QTextStream& persons, const QVector<PendingRow>& pending, bool all)
+{
+    for (const PendingRow& out : pending) {
+        const Row& row = out.row;
+        if (row.status == QLatin1String("EXACT") && !all)
+            continue;
+        persons << cell(row.file) << '\t' << row.year << '\t' << row.index << '\t' << row.status << '\t'
+                << row.awardId << '\t' << row.dbId << '\t' << cell(row.name) << '\t' << cell(row.description)
+                << '\t' << cell(row.rank) << '\t' << (row.posthumous ? 1 : 0) << '\t' << cell(row.dbDescription)
+                << '\t' << cell(row.dbRank) << '\t' << (row.dbPosthumous ? 1 : 0) << '\t' << row.diffFields
+                << '\t' << out.decreeNo << '\t' << out.decreeDate.toString(Qt::ISODate) << '\t'
+                << (out.belarusian ? "by" : "ru") << '\t' << cell(out.sourceName) << '\t'
+                << (out.sourceCase == Dative ? "dat" : out.sourceCase == Accusative ? "acc" : "nom") << '\t'
+                << (out.nearId ? QString::number(out.nearId) : QString()) << '\t' << cell(out.nearName) << '\t'
+                << out.nearKind << '\t' << (row.surnameUnsure ? 1 : 0) << '\n';
+    }
+}
+
+void writeSummary(QTextStream& s, const Options& options, const Catalog& catalog, const QDir& docs, int fileCount, const Totals& totals)
+{
+    int total = 0;
+    for (int value : totals.statuses)
+        total += value;
+    s << "Отчёт парсера указов\n"
+      << "база: " << options.db << " (" << catalog.people().size() << " записей)\n"
+      << "указы: " << docs.path() << " (" << fileCount << " файлов, без людей: " << totals.emptyFiles
+      << ", со сведениями о группе: " << totals.groupFiles << ")\n"
+      << "словари: " << (options.dictRu.isEmpty() ? QStringLiteral("-") : options.dictRu) << ", "
+      << (options.dictBy.isEmpty() ? QStringLiteral("-") : options.dictBy) << "\n\n"
+      << "Людей разобрано: " << total << "\n";
+    for (const QString& status : kStatuses)
+        s << "  " << status.leftJustified(12) << QString::number(totals.statuses.value(status)).rightJustified(7) << "  "
+          << percent(totals.statuses.value(status), total) << "\n";
+    s << "\nРасхождения в найденных записях (DIFF), по полям:\n";
+    for (auto it = totals.diffFields.cbegin(); it != totals.diffFields.cend(); ++it)
+        s << "  " << it.key().leftJustified(12) << QString::number(it.value()).rightJustified(7) << "\n";
+    s << "\nФамилия требует подтверждения в окне импорта (EXACT — лишняя проверка, NEW — пойманная ошибка):\n";
+    for (const QString& status : kStatuses) {
+        if (totals.unsureSurnames.value(status) == 0)
+            continue;
+        s << "  " << status.leftJustified(12) << QString::number(totals.unsureSurnames.value(status)).rightJustified(7)
+          << "   с 2020 г.: " << totals.unsureRecent.value(status) << "\n";
+    }
+    if (!totals.nearKinds.isEmpty()) {
+        s << "\nНе найденные (NEW) по ближайшей записи указа (near_kind в persons.tsv):\n";
+        for (auto it = totals.nearKinds.cbegin(); it != totals.nearKinds.cend(); ++it)
+            s << "  " << it.key().leftJustified(17) << QString::number(it.value()).rightJustified(7) << "\n";
+    }
+    s << "\nПо годам (год: людей, EXACT, DIFF, OTHER_AWARD, NEW, BAD_HEADER):\n";
+    for (auto it = totals.perYear.cbegin(); it != totals.perYear.cend(); ++it) {
+        int yearTotal = 0;
+        for (int value : it.value())
+            yearTotal += value;
+        s << "  " << (it.key() ? QString::number(it.key()) : QStringLiteral("----")) << ": " << QString::number(yearTotal).rightJustified(6);
+        for (const QString& status : kStatuses)
+            s << QString::number(it.value().value(status)).rightJustified(7);
+        s << "   EXACT " << percent(it.value().value(QStringLiteral("EXACT")), yearTotal) << "\n";
+    }
+}
+
+// changes.tsv и итоги сравнения с прошлым прогоном
+void writeComparison(QTextStream& s, const Options& options, const Totals& totals)
+{
+    const QHash<QString, Row> previous = readRows(QDir(options.compare).filePath(QStringLiteral("persons.tsv")));
+    // люди, совпавшие точно в прошлый раз, в том persons.tsv отсутствуют
+    const QSet<QString> previousExact = readExactKeys(QDir(options.compare).filePath(QStringLiteral("files.tsv")));
+    QFile changesFile(QDir(options.out).filePath(QStringLiteral("changes.tsv")));
+    changesFile.open(QIODevice::WriteOnly | QIODevice::Text);
+    QTextStream changes(&changesFile);
+    changes.setEncoding(QStringConverter::Utf8);
+    changes << "kind\tfile\tindex\twas_status\tnow_status\twas_name\tnow_name\twas_description\tnow_description\twas_rank\tnow_rank\n";
+    int better = 0, worse = 0, other = 0, appeared = 0, vanished = 0;
+    QMap<QString, int> transitions;
+    const auto rank = [](const QString& status) { return status == QLatin1String("EXACT") ? 2 : status == QLatin1String("DIFF") ? 1 : 0; };
+    for (auto it = totals.current.cbegin(); it != totals.current.cend(); ++it) {
+        const Row& now = it.value();
+        const auto was = previous.constFind(it.key());
+        if (was == previous.cend() && previousExact.contains(it.key())) {
+            if (now.status == QLatin1String("EXACT"))
+                continue;
+            // в прошлый раз совпало с каталогом: старые значения были каталожными
+            ++worse;
+            ++transitions[QStringLiteral("EXACT -> ") + now.status];
+            changes << "worse\t" << cell(now.file) << '\t' << now.index << "\tEXACT\t" << now.status << "\t\t"
+                    << cell(now.name) << '\t' << cell(now.dbDescription) << '\t' << cell(now.description) << '\t'
+                    << cell(now.dbRank) << '\t' << cell(now.rank) << '\n';
+            continue;
+        }
+        if (was == previous.cend()) {
+            ++appeared;
+            changes << "appeared\t" << cell(now.file) << '\t' << now.index << "\t\t" << now.status << "\t\t" << cell(now.name)
+                    << "\t\t" << cell(now.description) << "\t\t" << cell(now.rank) << '\n';
+            continue;
+        }
+        if (was->status == now.status && was->name == cell(now.name) && was->description == cell(now.description) && was->rank == cell(now.rank))
+            continue;
+        QString kind;
+        if (rank(now.status) > rank(was->status)) {
+            kind = QStringLiteral("better");
+            ++better;
+        } else if (rank(now.status) < rank(was->status)) {
+            kind = QStringLiteral("worse");
+            ++worse;
+        } else {
+            kind = QStringLiteral("changed");
+            ++other;
+        }
+        if (was->status != now.status)
+            ++transitions[was->status + QStringLiteral(" -> ") + now.status];
+        changes << kind << '\t' << cell(now.file) << '\t' << now.index << '\t' << was->status << '\t' << now.status << '\t'
+                << was->name << '\t' << cell(now.name) << '\t' << was->description << '\t' << cell(now.description) << '\t'
+                << was->rank << '\t' << cell(now.rank) << '\n';
+    }
+    for (const QString& key : previousExact) {
+        if (!totals.current.contains(key)) {
+            ++vanished;
+            changes << "vanished\t" << key.section(QChar(0x1F), 0, 0) << '\t' << key.section(QChar(0x1F), 1) << "\tEXACT\t\t\t\t\t\t\t\n";
+        }
+    }
+    for (auto it = previous.cbegin(); it != previous.cend(); ++it) {
+        if (!totals.current.contains(it.key())) {
+            ++vanished;
+            changes << "vanished\t" << it->file << '\t' << it->index << '\t' << it->status << "\t\t" << it->name << "\t\t"
+                    << it->description << "\t\t" << it->rank << "\t\n";
+        }
+    }
+    s << "\nСравнение с " << options.compare << ":\n"
+      << "  стало лучше (к EXACT/DIFF):   " << better << "\n"
+      << "  стало хуже:                    " << worse << "\n"
+      << "  изменилось без смены статуса:  " << other << "\n"
+      << "  новые строки / пропавшие:      " << appeared << " / " << vanished << "\n";
+    for (auto it = transitions.cbegin(); it != transitions.cend(); ++it)
+        s << "    " << it.key() << ": " << it.value() << "\n";
+    s << "  подробно: changes.tsv\n";
+}
+
+} // namespace
+
+int main(int argc, char** argv)
+{
+    QCoreApplication app(argc, argv);
+    QCoreApplication::setApplicationName(QStringLiteral("decree_report"));
+
+    Options options;
+    if (const int code = readOptions(app, options); code >= 0)
+        return code;
+
+    Catalog catalog;
+    QString error;
+    if (!options.dump.isEmpty()) {
+        if (options.db.isEmpty() || !catalog.open(options.db, &error, true)) {
+            console() << "--dump-catalog needs --db: " << error << "\n";
+            return 2;
+        }
+        return dumpCatalog(catalog, options.dump);
+    }
+    if (!catalog.open(options.db, &error, true)) {
+        console() << "cannot open the catalog: " << error << "\n";
+        return 1;
+    }
+    if (options.namesOnly)
+        return reportNameConflicts(catalog, options.db, options.out);
+
+    // парсер не должен читать и писать настройки программы
+    QCoreApplication::setOrganizationName(QStringLiteral("KavalerTools"));
+
+    const CatalogIndex index = indexCatalog(catalog);
+    CDocumentParser parser;
+    setupParser(parser, catalog, options);
+    const QDir docs(options.docs);
+    const QStringList files = decreeFiles(options, docs);
+
+    QDir().mkpath(options.out);
+    QFile personsFile(QDir(options.out).filePath(QStringLiteral("persons.tsv")));
+    QFile filesFile(QDir(options.out).filePath(QStringLiteral("files.tsv")));
     if (!personsFile.open(QIODevice::WriteOnly | QIODevice::Text) || !filesFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        console() << "cannot write to " << outDir << "\n";
+        console() << "cannot write to " << options.out << "\n";
         return 1;
     }
     QTextStream persons(&personsFile);
@@ -456,20 +852,10 @@ int main(int argc, char** argv)
                "\tdb_description\tdb_rank\tdb_posthumous\tdiff_fields\tdecree_no\tdecree_date\tlanguage\tsource_name\tsource_case"
                "\tnear_id\tnear_name\tnear_kind\tsurname_unsure\n";
     filesOut << "file\tyear\tpersons\texact\tdiff\tother_award\tnew\tbad_header\terror\texact_index\tgroup_used\tgroup_info\n";
-    const bool allPersons = cli.isSet(allOption);
 
-    QMap<QString, int> totals;
-    // фамилия, которую окно импорта попросит подтвердить: по статусу, всего и с 2020 года
-    QMap<QString, int> unsureSurnames, unsureRecent;
-    QMap<int, QMap<QString, int>> perYear;
-    QMap<QString, int> diffFields;
-    QMap<QString, int> nearKinds;
-    QHash<QString, Row> current;
-    int emptyFiles = 0;
-    int groupFiles = 0; // файлы, где сведения о группе добавлены к должности
+    Totals totals;
     QElapsedTimer timer;
     timer.start();
-
     for (int f = 0; f < files.size(); ++f) {
         const QString path = files.at(f);
         const QString relative = docs.relativeFilePath(path);
@@ -481,156 +867,19 @@ int main(int argc, char** argv)
         if (!lines.empty())
             parser.ProcessFile(QFileInfo(path).fileName().toStdWString(), lines);
 
-        // сведения о группе («работнікаў ... завода») в окне импорта добавляются
-        // к должности флажком на файл: берём их, когда совпадает больше людей
-        const std::wstring fileName = QFileInfo(path).fileName().toStdWString();
-        bool useGroup = false;
         QString groupText;
-        {
-            GroupInfo group;
-            std::wstring name = fileName;
-            if (parser.GetGroupInfo(name, group))
-                groupText = QString::fromStdWString(group.Info);
-            if (parser.GetGroupInfo(name, group) && !group.Info.empty()) {
-                int with = 0, without = 0;
-                QHash<QString, int> seen;
-                for (PersonInfo& info : parser.m_Persons) {
-                    const bool belarusian = !info.Ukaz.RussianLang;
-                    const QString parsedName = QString::fromStdWString(info.Name);
-                    const QString description = QString::fromStdWString(parser.GetPersonDescription(info, false));
-                    const QString key = awardKey(info.AwardId, decreeKey(info.Ukaz.Number, info.Ukaz.Date,
-                                                                          parsedName.isEmpty() ? description : parsedName,
-                                                                          belarusian));
-                    const int n = seen[key]++;
-                    if (n >= byAward.value(key).size())
-                        continue;
-                    const QString& db = belarusian ? byAward.value(key).at(n)->personalBy : byAward.value(key).at(n)->personal;
-                    for (bool checked : {false, true}) {
-                        parser.CheckGroupInfo(fileName.c_str(), checked);
-                        const QString description = NormalizeCyrillicText(
-                            QString::fromStdWString(parser.GetPersonDescription(info, false)), belarusian);
-                        if (description == db)
-                            ++(checked ? with : without);
-                    }
-                }
-                useGroup = with > without;
-            }
-            parser.CheckGroupInfo(fileName.c_str(), useGroup);
-        }
+        const bool useGroup = chooseGroupInfo(parser, QFileInfo(path).fileName().toStdWString(), index, &groupText);
         if (useGroup)
-            ++groupFiles;
+            ++totals.groupFiles;
 
         QMap<QString, int> fileCounts;
-        QHash<QString, int> ordinal;
         QVector<int> exactIndexes;
-        QVector<PendingRow> pending;
-        for (size_t i = 0; i < parser.m_Persons.size(); ++i) {
-            PersonInfo& info = parser.m_Persons[i];
-            const bool belarusian = !info.Ukaz.RussianLang;
-            Row row;
-            row.file = relative;
-            row.year = info.Ukaz.Date.isValid() ? info.Ukaz.Date.year() : 0;
-            row.index = int(i);
-            row.awardId = info.AwardId;
-            row.name = QString::fromStdWString(info.Name);
-            row.description = QString::fromStdWString(parser.GetPersonDescription(info, false));
-            row.rank = QString::fromStdWString(info.MilitaryRank);
-            row.posthumous = info.Posthumous;
-            row.surnameUnsure = !info.Organization && (info.Flags & PersonInfo::NF_SURNAME_UNSURE);
+        QVector<PendingRow> pending = matchFile(parser, relative, index, totals, fileCounts, exactIndexes);
+        findNearest(pending, index, totals);
+        writePersons(persons, pending, options.all);
 
-            const QString matchName = row.name.isEmpty() ? row.description : row.name;
-            const QString decree = decreeKey(info.Ukaz.Number, info.Ukaz.Date, matchName, belarusian);
-            const QString key = awardKey(info.AwardId, decree);
-            const int n = ordinal[key]++;
-            if (info.Ukaz.Number == 0 || !info.Ukaz.Date.isValid()) {
-                row.status = QStringLiteral("BAD_HEADER");
-            } else if (n < byAward.value(key).size()) {
-                const Person* db = byAward.value(key).at(n);
-                row.dbId = db->id;
-                row.dbDescription = belarusian ? db->personalBy : db->personal;
-                row.dbRank = belarusian ? db->rankBy : db->rank;
-                row.dbPosthumous = db->posthumous != 0;
-                QStringList differs;
-                if (NormalizeCyrillicText(row.description, belarusian) != row.dbDescription)
-                    differs << QStringLiteral("description");
-                if (NormalizeCyrillicText(row.rank, belarusian) != row.dbRank)
-                    differs << QStringLiteral("rank");
-                if (row.posthumous != row.dbPosthumous)
-                    differs << QStringLiteral("posthumous");
-                row.diffFields = differs.join(QLatin1Char(','));
-                row.status = differs.isEmpty() ? QStringLiteral("EXACT") : QStringLiteral("DIFF");
-                for (const QString& field : differs)
-                    ++diffFields[field];
-            } else if (!byName.value(decree).isEmpty()) {
-                row.status = QStringLiteral("OTHER_AWARD");
-                row.dbId = byName.value(decree).first()->id;
-            } else {
-                row.status = QStringLiteral("NEW");
-            }
-
-            ++totals[row.status];
-            if (!info.Organization && (info.Flags & PersonInfo::NF_SURNAME_UNSURE)) {
-                ++unsureSurnames[row.status];
-                if (row.year >= 2020)
-                    ++unsureRecent[row.status];
-            }
-            ++perYear[row.year][row.status];
-            ++fileCounts[row.status];
-            current.insert(rowKey(row.file, row.index), row);
-            if (row.status == QLatin1String("EXACT"))
-                exactIndexes.push_back(row.index);
-            PendingRow out;
-            out.row = row;
-            out.decreeNo = info.Ukaz.Number;
-            out.decreeDate = info.Ukaz.Date;
-            out.belarusian = belarusian;
-            out.sourceName = QString::fromStdWString(info.SourceName);
-            out.sourceCase = info.SourceCase;
-            pending.push_back(out);
-        }
-
-        // ближайшая запись каталога для NEW: из того же указа и языка, не занятая этим файлом
-        QSet<int> taken;
-        for (const PendingRow& out : pending) {
-            if (out.row.dbId && out.row.status != QLatin1String("OTHER_AWARD"))
-                taken.insert(out.row.dbId);
-        }
-        for (PendingRow& out : pending) {
-            if (out.row.status != QLatin1String("NEW"))
-                continue;
-            const QString parsed = NormalizeCyrillicText(out.row.name.isEmpty() ? out.row.description : out.row.name, out.belarusian);
-            double best = 0;
-            for (const Person* person : byDecree.value(decreeOnlyKey(out.decreeNo, out.decreeDate))) {
-                const QString name = out.belarusian ? person->nameBy : person->name;
-                if (name.isEmpty() || taken.contains(person->id))
-                    continue;
-                const double score = similarity(parsed.toLower(), NormalizeCyrillicText(name, out.belarusian).toLower());
-                if (score > best) {
-                    best = score;
-                    out.nearId = person->id;
-                    out.nearName = name;
-                }
-            }
-            out.nearKind = best >= 0.6 ? nearKind(parsed, NormalizeCyrillicText(out.nearName, out.belarusian)) : QStringLiteral("none");
-            ++nearKinds[out.nearKind];
-        }
-
-        for (const PendingRow& out : pending) {
-            const Row& row = out.row;
-            if (row.status == QLatin1String("EXACT") && !allPersons)
-                continue;
-            persons << cell(row.file) << '\t' << row.year << '\t' << row.index << '\t' << row.status << '\t'
-                    << row.awardId << '\t' << row.dbId << '\t' << cell(row.name) << '\t' << cell(row.description)
-                    << '\t' << cell(row.rank) << '\t' << (row.posthumous ? 1 : 0) << '\t' << cell(row.dbDescription)
-                    << '\t' << cell(row.dbRank) << '\t' << (row.dbPosthumous ? 1 : 0) << '\t' << row.diffFields
-                    << '\t' << out.decreeNo << '\t' << out.decreeDate.toString(Qt::ISODate) << '\t'
-                    << (out.belarusian ? "by" : "ru") << '\t' << cell(out.sourceName) << '\t'
-                    << (out.sourceCase == Dative ? "dat" : out.sourceCase == Accusative ? "acc" : "nom") << '\t'
-                    << (out.nearId ? QString::number(out.nearId) : QString()) << '\t' << cell(out.nearName) << '\t'
-                    << out.nearKind << '\t' << (row.surnameUnsure ? 1 : 0) << '\n';
-        }
         if (parser.m_Persons.empty())
-            ++emptyFiles;
+            ++totals.emptyFiles;
         const QString year = docs.relativeFilePath(QFileInfo(path).path()).section(QLatin1Char('/'), 0, 0);
         filesOut << cell(relative) << '\t' << year << '\t' << parser.m_Persons.size() << '\t'
                  << fileCounts.value(QStringLiteral("EXACT")) << '\t' << fileCounts.value(QStringLiteral("DIFF")) << '\t'
@@ -643,120 +892,14 @@ int main(int argc, char** argv)
     personsFile.close();
     filesFile.close();
 
-    // сводка
-    int total = 0;
-    for (int value : totals)
-        total += value;
     QString summary;
     QTextStream s(&summary);
-    s << "Отчёт парсера указов\n"
-      << "база: " << cli.value(dbOption) << " (" << catalog.people().size() << " записей)\n"
-      << "указы: " << docs.path() << " (" << files.size() << " файлов, без людей: " << emptyFiles
-      << ", со сведениями о группе: " << groupFiles << ")\n"
-      << "словари: " << (dictRu.isEmpty() ? QStringLiteral("-") : dictRu) << ", " << (dictBy.isEmpty() ? QStringLiteral("-") : dictBy) << "\n\n"
-      << "Людей разобрано: " << total << "\n";
-    for (const QString& status : kStatuses)
-        s << "  " << status.leftJustified(12) << QString::number(totals.value(status)).rightJustified(7) << "  " << percent(totals.value(status), total) << "\n";
-    s << "\nРасхождения в найденных записях (DIFF), по полям:\n";
-    for (auto it = diffFields.cbegin(); it != diffFields.cend(); ++it)
-        s << "  " << it.key().leftJustified(12) << QString::number(it.value()).rightJustified(7) << "\n";
-    s << "\nФамилия требует подтверждения в окне импорта (EXACT — лишняя проверка, NEW — пойманная ошибка):\n";
-    for (const QString& status : kStatuses) {
-        if (unsureSurnames.value(status) == 0)
-            continue;
-        s << "  " << status.leftJustified(12) << QString::number(unsureSurnames.value(status)).rightJustified(7)
-          << "   с 2020 г.: " << unsureRecent.value(status) << "\n";
-    }
-    if (!nearKinds.isEmpty()) {
-        s << "\nНе найденные (NEW) по ближайшей записи указа (near_kind в persons.tsv):\n";
-        for (auto it = nearKinds.cbegin(); it != nearKinds.cend(); ++it)
-            s << "  " << it.key().leftJustified(17) << QString::number(it.value()).rightJustified(7) << "\n";
-    }
-    s << "\nПо годам (год: людей, EXACT, DIFF, OTHER_AWARD, NEW, BAD_HEADER):\n";
-    for (auto it = perYear.cbegin(); it != perYear.cend(); ++it) {
-        int yearTotal = 0;
-        for (int value : it.value())
-            yearTotal += value;
-        s << "  " << (it.key() ? QString::number(it.key()) : QStringLiteral("----")) << ": " << QString::number(yearTotal).rightJustified(6);
-        for (const QString& status : kStatuses)
-            s << QString::number(it.value().value(status)).rightJustified(7);
-        s << "   EXACT " << percent(it.value().value(QStringLiteral("EXACT")), yearTotal) << "\n";
-    }
-
-    if (cli.isSet(compareOption)) {
-        const QHash<QString, Row> previous = readRows(QDir(cli.value(compareOption)).filePath(QStringLiteral("persons.tsv")));
-        // люди, совпавшие точно в прошлый раз, в том persons.tsv отсутствуют
-        const QSet<QString> previousExact = readExactKeys(QDir(cli.value(compareOption)).filePath(QStringLiteral("files.tsv")));
-        QFile changesFile(QDir(outDir).filePath(QStringLiteral("changes.tsv")));
-        changesFile.open(QIODevice::WriteOnly | QIODevice::Text);
-        QTextStream changes(&changesFile);
-        changes.setEncoding(QStringConverter::Utf8);
-        changes << "kind\tfile\tindex\twas_status\tnow_status\twas_name\tnow_name\twas_description\tnow_description\twas_rank\tnow_rank\n";
-        int better = 0, worse = 0, other = 0, appeared = 0, vanished = 0;
-        QMap<QString, int> transitions;
-        const auto rank = [](const QString& status) { return status == QLatin1String("EXACT") ? 2 : status == QLatin1String("DIFF") ? 1 : 0; };
-        for (auto it = current.cbegin(); it != current.cend(); ++it) {
-            const Row& now = it.value();
-            const auto was = previous.constFind(it.key());
-            if (was == previous.cend() && previousExact.contains(it.key())) {
-                if (now.status == QLatin1String("EXACT"))
-                    continue;
-                // в прошлый раз совпало с каталогом: старые значения были каталожными
-                ++worse;
-                ++transitions[QStringLiteral("EXACT -> ") + now.status];
-                changes << "worse\t" << cell(now.file) << '\t' << now.index << "\tEXACT\t" << now.status << "\t\t"
-                        << cell(now.name) << '\t' << cell(now.dbDescription) << '\t' << cell(now.description) << '\t'
-                        << cell(now.dbRank) << '\t' << cell(now.rank) << '\n';
-                continue;
-            }
-            if (was == previous.cend()) {
-                ++appeared;
-                changes << "appeared\t" << cell(now.file) << '\t' << now.index << "\t\t" << now.status << "\t\t" << cell(now.name) << "\t\t" << cell(now.description) << "\t\t" << cell(now.rank) << '\n';
-                continue;
-            }
-            if (was->status == now.status && was->name == cell(now.name) && was->description == cell(now.description) && was->rank == cell(now.rank))
-                continue;
-            QString kind;
-            if (rank(now.status) > rank(was->status)) {
-                kind = QStringLiteral("better");
-                ++better;
-            } else if (rank(now.status) < rank(was->status)) {
-                kind = QStringLiteral("worse");
-                ++worse;
-            } else {
-                kind = QStringLiteral("changed");
-                ++other;
-            }
-            if (was->status != now.status)
-                ++transitions[was->status + QStringLiteral(" -> ") + now.status];
-            changes << kind << '\t' << cell(now.file) << '\t' << now.index << '\t' << was->status << '\t' << now.status << '\t'
-                    << was->name << '\t' << cell(now.name) << '\t' << was->description << '\t' << cell(now.description) << '\t'
-                    << was->rank << '\t' << cell(now.rank) << '\n';
-        }
-        for (const QString& key : previousExact) {
-            if (!current.contains(key)) {
-                ++vanished;
-                changes << "vanished\t" << key.section(QChar(0x1F), 0, 0) << '\t' << key.section(QChar(0x1F), 1) << "\tEXACT\t\t\t\t\t\t\t\n";
-            }
-        }
-        for (auto it = previous.cbegin(); it != previous.cend(); ++it) {
-            if (!current.contains(it.key())) {
-                ++vanished;
-                changes << "vanished\t" << it->file << '\t' << it->index << '\t' << it->status << "\t\t" << it->name << "\t\t" << it->description << "\t\t" << it->rank << "\t\n";
-            }
-        }
-        s << "\nСравнение с " << cli.value(compareOption) << ":\n"
-          << "  стало лучше (к EXACT/DIFF):   " << better << "\n"
-          << "  стало хуже:                    " << worse << "\n"
-          << "  изменилось без смены статуса:  " << other << "\n"
-          << "  новые строки / пропавшие:      " << appeared << " / " << vanished << "\n";
-        for (auto it = transitions.cbegin(); it != transitions.cend(); ++it)
-            s << "    " << it.key() << ": " << it.value() << "\n";
-        s << "  подробно: changes.tsv\n";
-    }
+    writeSummary(s, options, catalog, docs, files.size(), totals);
+    if (!options.compare.isEmpty())
+        writeComparison(s, options, totals);
     s.flush();
 
-    QFile summaryFile(QDir(outDir).filePath(QStringLiteral("summary.txt")));
+    QFile summaryFile(QDir(options.out).filePath(QStringLiteral("summary.txt")));
     if (summaryFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
         QTextStream out(&summaryFile);
         out.setEncoding(QStringConverter::Utf8);
