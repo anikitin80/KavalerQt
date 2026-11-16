@@ -62,8 +62,12 @@ bool CDocumentParser::IsMilitaryAward(int awardId)
 namespace {
 
 // слова указа; в белорусских строках «і» кириллическая (латинскую «i» уже заменили)
-const std::vector<std::wstring> searchTargetsRU = { L"медалью", L"орденом", L"почетное звание", L"почетные звания" };
-const std::vector<std::wstring> searchTargetsBY = { L"медалём", L"ордэнам", L"ганаровае званн", L"ганаровыя званн" };
+// [2] и [3] — почётные звания (см. readAwardLine); звание Героя — в конце:
+// «прысвоіць … Домрачэвай Дар’і Уладзіміраўне званне «Герой Беларусі»» (указ 66/2014)
+const std::vector<std::wstring> searchTargetsRU = { L"медалью", L"орденом", L"почетное звание", L"почетные звания",
+	L"звание «Герой", L"звание \"Герой", L"звание \u201CГерой", L"звание \u201EГерой" };
+const std::vector<std::wstring> searchTargetsBY = { L"медалём", L"ордэнам", L"ганаровае званн", L"ганаровыя званн",
+	L"званне «Герой", L"званне \"Герой", L"званне \u201CГерой", L"званне \u201EГерой" };
 const std::vector<std::wstring> searchFinishBY = { L"Прэзідэнт Рэспублікі Беларусь" };
 const std::vector<std::wstring> searchFinishRU = { L"Президент Республики Беларусь" };
 const std::vector<std::wstring> searchUkazStart = { L"УКАЗ ПР", L"УКАЗ ПР", L"УКАЗПР" };

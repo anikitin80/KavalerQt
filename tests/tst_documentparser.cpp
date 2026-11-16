@@ -47,6 +47,7 @@ private slots:
     void posthumousInDescription();
 
     void decreeHeader();
+    void heroTitle();
     void singleAwardPersonBeforeAward();
     void singleAwardPosthumous();
     void singleAwardPosthumousAfterAward();
@@ -278,6 +279,24 @@ void TestDocumentParser::decreeHeader()
     QCOMPARE(ukaz.Number, 2995);
     QCOMPARE(ukaz.Date, QDate(1994, 4, 26));
     QVERIFY(ukaz.RussianLang);
+}
+
+// звание «Герой Беларусі»: «прысвоіць … Домрачэвай Дар’і Уладзіміраўне званне …» (указ 66/2014),
+// дата и подпись слиплись, как в файлах из «Эталона»
+void TestDocumentParser::heroTitle()
+{
+    parse({QStringLiteral("УКАЗ\u00A0ПРЭЗІДЭНТАРЭСПУБЛІКІБЕЛАРУСЬ"), QStringLiteral("17лютага2014 г.№ 66"),
+           QStringLiteral("Аб прысваенні Д.У.Домрачэвай звання «Герой Беларусі»"),
+           QStringLiteral("За высокае прафесійнае майстэрства і выключныя спартыўныя дасягненні прысвоіць "
+                          "спартсмену-інструктару нацыянальнай каманды Рэспублікі Беларусь па біятлону "
+                          "Домрачэвай Дар’і Уладзіміраўне званне «Герой Беларусі»."),
+           QStringLiteral("ПрэзідэнтРэспублікіБеларусь")});
+    QCOMPARE(int(m_parser->m_Persons.size()), 1);
+    const PersonInfo& person = m_parser->m_Persons.front();
+    QCOMPARE(person.AwardId, 1);
+    QCOMPARE(QString::fromStdWString(person.Name), QStringLiteral("Домрачэва Дар’я Уладзіміраўна"));
+    QCOMPARE(person.Ukaz.Number, 66);
+    QCOMPARE(person.Ukaz.Date, QDate(2014, 2, 17));
 }
 
 void TestDocumentParser::singleAwardPersonBeforeAward()

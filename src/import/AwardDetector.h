@@ -29,4 +29,8 @@ private:
 	Entries m_MedalDetectorBY;
 	Entries m_OrdenDetectorBY;
 	Entries m_PochetDetectorBY;
+
+	// звание «Герой Беларуси»: «прысвоіць … званне «Герой Беларусі»»
+	Entries m_HeroDetector;
+	Entries m_HeroDetectorBY;
 };

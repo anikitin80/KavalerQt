@@ -10,6 +10,8 @@ void CAwardDetector::Initialize(const std::map<long, DecreeAward>& awards)
 	m_MedalDetectorBY.clear();
 	m_OrdenDetectorBY.clear();
 	m_PochetDetectorBY.clear();
+	m_HeroDetector.clear();
+	m_HeroDetectorBY.clear();
 
 	for (const auto& award : awards)
 	{
@@ -21,7 +23,13 @@ void CAwardDetector::Initialize(const std::map<long, DecreeAward>& awards)
 		nameBY.erase(0, nameBY.find(' ') + 1);
 		nameBY.erase(std::remove(nameBY.begin(), nameBY.end(), L'"'), nameBY.end());
 
-		if (award.second.Type == DecreeAward::Orden)
+		if (award.second.Type == DecreeAward::Hero)
+		{
+			// «Звание "Герой Беларуси"» → «Герой Беларуси»
+			m_HeroDetector.push_back({ name, award.first });
+			m_HeroDetectorBY.push_back({ nameBY, award.first });
+		}
+		else if (award.second.Type == DecreeAward::Orden)
 		{
 			m_OrdenDetector.push_back({ name, award.first });
 			m_OrdenDetectorBY.push_back({ nameBY, award.first });
@@ -137,6 +145,8 @@ int CAwardDetector::Find(std::wstring award, bool bRussian, bool bPochetNameOnly
 			detector = bRussian ? &m_MedalDetector : &m_MedalDetectorBY;
 		else if (firstWord == (bRussian ? L"орденом" : L"ордэнам"))
 			detector = bRussian ? &m_OrdenDetector : &m_OrdenDetectorBY;
+		else if (firstWord == (bRussian ? L"звание" : L"званне"))
+			detector = bRussian ? &m_HeroDetector : &m_HeroDetectorBY;
 		else if (firstWord == (bRussian ? L"почетное" : L"ганаровае")) {
 			honorTitle = true;
 			const size_t space2 = text.find(L' ', nameAt);

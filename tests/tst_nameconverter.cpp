@@ -56,6 +56,10 @@ void TestNameConverter::normalizeName_data()
                                             << QStringLiteral("Сидоров Павел Иванович");
     QTest::newRow("ru dat exception Лев") << QStringLiteral("Сидорову Льву Ивановичу") << LangRU << Dative
                                           << QStringLiteral("Сидоров Лев Иванович");
+    QTest::newRow("ru dat male -та") << QStringLiteral("Иванову Никите Петровичу") << LangRU << Dative
+                                     << QStringLiteral("Иванов Никита Петрович");
+    QTest::newRow("by dat male -та") << QStringLiteral("Куканенку Мікіце Барысавічу") << LangBY << Dative
+                                     << QStringLiteral("Куканенка Мікіта Барысавіч");
 
     // мужские имена на «-а»: «-у» винительного не остаётся
     QTest::newRow("by acc male Кузьма") << QStringLiteral("Лесняка Кузьму Мікалаевіча") << LangBY << Accusative

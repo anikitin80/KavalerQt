@@ -136,6 +136,7 @@ const RulesList CNameConverter::RulesFirstName = ExpandRules({
 	{ SexFemale,LangBY, L"ві",			L"",		L"--ў" },	// Любові
 	{ SexFemale,LangBY, L"аву",			L"ава",		L"--ў" },
 	{ SexMale,  LangBY, L"ту",			L"ту",		L"-а" },
+	{ SexMale,  LangBY, L"це",			L"",		L"--та" },	// Мікіце (указ 457/2021)
 	{ SexMale,  LangBY, L"аву",			L"ава",		L"--ў" },
 	{ SexMale,  LangBY, L"дзію",		L"дзія",	L"--ь" },
 	{ SexMale,  LangAny,L"аю,ею,ию,ою,ію,ыю,эю,iю", L"ая,ея,ия,оя,ія,ыя,эя,iя", L"-й" },
@@ -143,7 +144,7 @@ const RulesList CNameConverter::RulesFirstName = ExpandRules({
 	{ SexMale,  LangAny,L"е,ё,и,і,о,ы,э", L"е,ё,и,і,о,ы,э,ю", L"" },
 	// винительный «Кузьму», «Данілу», «Саву», «Славу» — мужские имена на «-а»
 	{ SexMale,  LangAny,L"",			L"у",		L"-а" },
-	{ SexMale,  LangRU,	L"ге,ке,хе,че,ще,же",L"гу,ку,ху,чу,щу,жу", L"-а" },
+	{ SexMale,  LangRU,	L"ге,ке,хе,че,ще,же,те",L"гу,ку,ху,чу,щу,жу,ту", L"-а" },	// Никите
 	{ SexFemale,LangAny,L"б,в,г,д,ж,з,й,к,л,м,н,п,р,с,т,ў,ф,х,ц,ч,ш,щ,ъ,ь", L"б,в,г,д,ж,з,й,к,л,м,н,п,р,с,т,ў,ф,х,ц,ч,ш,щ,ъ,ь", L"" },
 	{ SexMale,  LangAny,L"бу,ву,гу,ду,жу,зу,ку,лу,му,ну,пу,ру,су,ту,фу,ху,цу,чу,шу", L"ба,ва,га,да,жа,за,ка,ла,ма,на,па,ра,са,та,фа,ха,ца,ча,ша", L"-" },
 });
