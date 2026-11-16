@@ -49,8 +49,6 @@ private:
     QTableWidget* m_persons = nullptr;
     QLabel* m_personCount = nullptr;
     QCheckBox* m_onlyNew = nullptr; // скрыть людей, уже найденных в каталоге
-    QCheckBox* m_useGroup = nullptr;
-    QLineEdit* m_group = nullptr;
     bool m_filling = false;
     bool m_hasSelection = false;
     int m_awardId = 0;

@@ -159,17 +159,14 @@ ImportDialog::ImportDialog(Catalog* catalog, QWidget* parent)
     m_onlyNew = new QCheckBox(QStringLiteral("Только новые"));
     m_onlyNew->setToolTip(QStringLiteral("Скрыть людей, которые уже есть в каталоге"));
     m_onlyNew->setChecked(QSettings().value(QStringLiteral("ImportOnlyNew"), false).toBool());
-    m_useGroup = new QCheckBox(QStringLiteral("Добавить к должности данные группы"));
-    m_useGroup->setEnabled(false);
-    m_group = new QLineEdit;
-    m_group->setEnabled(false);
 
     auto* importSelected = new QPushButton(QStringLiteral("Импорт выбранных"));
     auto* importAll = new QPushButton(QStringLiteral("Импорт всех"));
     auto* close = new QPushButton(QStringLiteral("Закрыть"));
 
     // раскладка исходного диалога (IDD_DOC_PARSER): файл/папка, путь,
-    // старт с переименованием, прогресс, награды, люди, сведения о группе, импорт
+    // старт с переименованием, прогресс, награды, люди, импорт. Сведений о группе
+    // («работников завода …») в окне нет: с 2012 года их к должности не добавляют
     auto* modeRow = new QHBoxLayout;
     modeRow->addWidget(m_fileMode);
     modeRow->addWidget(folderMode);
@@ -191,10 +188,6 @@ ImportDialog::ImportDialog(Catalog* catalog, QWidget* parent)
     personsRow->addWidget(m_onlyNew);
     personsRow->addStretch();
 
-    auto* groupRow = new QHBoxLayout;
-    groupRow->addWidget(m_useGroup);
-    groupRow->addWidget(m_group, 1);
-
     auto* buttons = new QHBoxLayout;
     buttons->addStretch();
     buttons->addWidget(importSelected);
@@ -209,7 +202,6 @@ ImportDialog::ImportDialog(Catalog* catalog, QWidget* parent)
     layout->addWidget(m_awards, 88);   // высоты как в исходном: 88 и 153
     layout->addLayout(personsRow);
     layout->addWidget(m_persons, 153);
-    layout->addLayout(groupRow);
     layout->addLayout(buttons);
 
     connect(browse, &QPushButton::clicked, this, &ImportDialog::choosePath);
@@ -226,18 +218,6 @@ ImportDialog::ImportDialog(Catalog* catalog, QWidget* parent)
     });
     connect(m_onlyNew, &QCheckBox::toggled, this, [this](bool checked) {
         QSettings().setValue(QStringLiteral("ImportOnlyNew"), checked);
-        showPersons();
-    });
-    connect(m_useGroup, &QCheckBox::toggled, this, [this](bool checked) {
-        if (m_filling || m_fileName.isEmpty())
-            return;
-        m_parser.CheckGroupInfo(toWide(m_fileName).c_str(), checked);
-        showPersons();
-    });
-    connect(m_group, &QLineEdit::textEdited, this, [this](const QString& text) {
-        if (m_filling || m_fileName.isEmpty())
-            return;
-        m_parser.UpdateGroupInfo(toWide(m_fileName).c_str(), toWide(text).c_str());
         showPersons();
     });
     connect(m_persons, &QTableWidget::itemChanged, this, [this](QTableWidgetItem* item) {
@@ -519,25 +499,11 @@ void ImportDialog::showPersons()
     m_awardId = 0;
     m_fileName.clear();
     m_filling = true;
-    m_useGroup->setEnabled(false);
-    m_useGroup->setChecked(false);
-    m_group->setEnabled(false);
-    m_group->clear();
 
     if (QTreeWidgetItem* item = m_awards->currentItem()) {
         m_hasSelection = true;
         m_awardId = item->data(0, Qt::UserRole).toInt();
         m_fileName = item->data(0, Qt::UserRole + 1).toString();
-        if (!m_fileName.isEmpty()) {
-            GroupInfo group;
-            std::wstring fileName = toWide(m_fileName);
-            if (m_parser.GetGroupInfo(fileName, group)) {
-                m_useGroup->setEnabled(true);
-                m_group->setEnabled(true);
-                m_useGroup->setChecked(group.Checked);
-                m_group->setText(fromWide(group.Info));
-            }
-        }
     }
 
     // «За безупречную службу» дают и гражданским: нет звания — ошибка разбора,
