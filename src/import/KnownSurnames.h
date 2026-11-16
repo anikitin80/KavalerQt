@@ -12,6 +12,22 @@
 #include <map>
 #include <unordered_map>
 
+// награды каталога для CDocumentParser::Initialize
+inline std::map<long, DecreeAward> decreeAwards(const Catalog& catalog)
+{
+    std::map<long, DecreeAward> awards;
+    for (const Award& award : catalog.awards()) {
+        DecreeAward item;
+        item.ID = award.id;
+        item.Name = award.name.toStdWString();
+        item.NameBY = award.nameBy.toStdWString();
+        item.Type = award.type;
+        item.Priority = award.priority;
+        awards[item.ID] = item;
+    }
+    return awards;
+}
+
 inline void loadKnownSurnames(CNameConverter& converter, const Catalog& catalog)
 {
     // [пол: SexAny, SexMale, SexFemale]

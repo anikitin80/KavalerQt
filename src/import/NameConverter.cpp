@@ -421,9 +421,9 @@ bool isNameConsonant(wchar_t c)
 	return !isNameVowel(c) && std::wstring(L"йўьъ'’-").find(c) == std::wstring::npos && c >= L'А' && c <= L'я';
 }
 
-} // namespace
-
-std::vector<std::wstring> CNameConverter::SurnameVariants(const std::wstring& oblique, const std::wstring& ruleResult, SexType sex)
+// основы, от которых строятся варианты: результат правила, косвенная форма,
+// если фамилия не склоняется, и именительные по окончанию косвенной формы
+std::vector<std::wstring> nominativeBases(const std::wstring& oblique, const std::wstring& ruleResult, SexType sex)
 {
 	std::vector<std::wstring> bases{ ruleResult };
 	const std::wstring lower = ToLower(oblique);
@@ -435,42 +435,7 @@ std::vector<std::wstring> CNameConverter::SurnameVariants(const std::wstring& ob
 		const std::wstring e(ending);
 		return lower.length() > e.length() + 2 && lower.compare(lower.length() - e.length(), e.length(), e) == 0;
 	};
-	if (sex != SexFemale)
-	{
-		// «Склюту» — Склют или Склюта, «Ардзяка» — Ардзяк, «Колесня» — Колеснь (беглая ниже)
-		if (endsWith(L"у") || endsWith(L"а") || endsWith(L"ю") || endsWith(L"я"))
-		{
-			const std::wstring stem = oblique.substr(0, oblique.length() - 1);
-			bases.push_back(stem);
-			bases.push_back(stem + L"а");
-			// «Харунжу» — Харунжы
-			bases.push_back(stem + L"ы");
-			if (endsWith(L"ю") || endsWith(L"я"))
-			{
-				bases.push_back(stem + L"ь");
-				bases.push_back(stem + L"й"); // «Неглюя» — Неглюй
-				bases.push_back(stem + L"я"); // «Семяненю» — Семяненя
-			}
-			// «Ціву» — Ціў: в конце белорусского слова «в» становится «ў»
-			if (!stem.empty() && stem.back() == L'в')
-				bases.push_back(stem.substr(0, stem.length() - 1) + L"ў");
-		}
-		// дательный мужской фамилии на «-а/-я»: «Мисюле» — Мисюля или Мисюла
-		if (endsWith(L"е"))
-		{
-			const std::wstring stem = oblique.substr(0, oblique.length() - 1);
-			bases.push_back(stem + L"я");
-			bases.push_back(stem + L"а");
-		}
-		// русская фамилия-прилагательное с ударным окончанием: «Кутовому», «Рябого» — Кутовой, Рябой
-		if (endsWith(L"ому") || endsWith(L"ого") || endsWith(L"ему") || endsWith(L"его"))
-		{
-			const std::wstring stem = oblique.substr(0, oblique.length() - 3);
-			bases.push_back(stem + L"ой");
-			bases.push_back(stem + L"ий");
-		}
-	}
-	else
+	if (sex == SexFemale)
 	{
 		// женская фамилия на согласный не склоняется: «Сухавей», «Макей»
 		bases.push_back(oblique);
@@ -481,62 +446,113 @@ std::vector<std::wstring> CNameConverter::SurnameVariants(const std::wstring& ob
 			bases.push_back(stem + L"а");
 			bases.push_back(stem + L"ая");
 		}
+		return bases;
 	}
+	// «Склюту» — Склют или Склюта, «Ардзяка» — Ардзяк, «Колесня» — Колеснь (беглая ниже)
+	if (endsWith(L"у") || endsWith(L"а") || endsWith(L"ю") || endsWith(L"я"))
+	{
+		const std::wstring stem = oblique.substr(0, oblique.length() - 1);
+		bases.push_back(stem);
+		bases.push_back(stem + L"а");
+		// «Харунжу» — Харунжы
+		bases.push_back(stem + L"ы");
+		if (endsWith(L"ю") || endsWith(L"я"))
+		{
+			bases.push_back(stem + L"ь");
+			bases.push_back(stem + L"й"); // «Неглюя» — Неглюй
+			bases.push_back(stem + L"я"); // «Семяненю» — Семяненя
+		}
+		// «Ціву» — Ціў: в конце белорусского слова «в» становится «ў»
+		if (!stem.empty() && stem.back() == L'в')
+			bases.push_back(stem.substr(0, stem.length() - 1) + L"ў");
+	}
+	// дательный мужской фамилии на «-а/-я»: «Мисюле» — Мисюля или Мисюла
+	if (endsWith(L"е"))
+	{
+		const std::wstring stem = oblique.substr(0, oblique.length() - 1);
+		bases.push_back(stem + L"я");
+		bases.push_back(stem + L"а");
+	}
+	// русская фамилия-прилагательное с ударным окончанием: «Кутовому», «Рябого» — Кутовой, Рябой
+	if (endsWith(L"ому") || endsWith(L"ого") || endsWith(L"ему") || endsWith(L"его"))
+	{
+		const std::wstring stem = oblique.substr(0, oblique.length() - 3);
+		bases.push_back(stem + L"ой");
+		bases.push_back(stem + L"ий");
+	}
+	return bases;
+}
 
+// беглая гласная перед последней согласной: «Лобанк» — Лобанок, «Глушц» — Глушец,
+// «Колеснь» — Колесень; и безударная «я» там же: «Кузняц» — Кузнец
+template <typename Add>
+void addFleetingVowel(const std::wstring& base, const Add& add)
+{
+	const size_t n = base.length();
+	if (n >= 4 && base.compare(n - 2, 2, L"нь") == 0 && isNameConsonant(base[n - 3]))
+	{
+		for (const wchar_t* vowel : { L"е", L"а", L"э", L"ё" })
+			add(base.substr(0, n - 2) + vowel + L"нь");
+	}
+	// «Жыўнь» — Жывень: «ў» перед беглой гласной снова «в»
+	else if (n >= 4 && base.compare(n - 2, 2, L"нь") == 0 && base[n - 3] == L'ў')
+	{
+		for (const wchar_t* vowel : { L"е", L"э", L"ё" })
+			add(base.substr(0, n - 3) + L"в" + vowel + L"нь");
+	}
+	else if (n >= 3 && isNameConsonant(base[n - 1]) && isNameConsonant(base[n - 2]))
+	{
+		for (const wchar_t* vowel : { L"о", L"е", L"а", L"э", L"ё" })
+		{
+			add(base.substr(0, n - 1) + vowel + base.substr(n - 1));
+			// белорусское «т» перед «е» — «ц»: «Катла» — Кацел, Кацёл
+			const std::wstring v(vowel);
+			if (base[n - 2] == L'т' && (v == L"е" || v == L"ё"))
+				add(base.substr(0, n - 2) + L"ц" + vowel + base.substr(n - 1));
+		}
+	}
+	if (n >= 4 && base[n - 2] == L'я' && isNameConsonant(base[n - 1]))
+		add(base.substr(0, n - 2) + L"е" + base.substr(n - 1));
+}
+
+// одна гласная, безударная в косвенном падеже: «Валк» — Волк/Воўк, «Бабр» — Бобр, «Ярш» — Ёрш
+template <typename Add>
+void addStressedVowel(const std::wstring& base, const Add& add)
+{
+	const size_t n = base.length();
+	size_t vowels = 0, at = 0;
+	for (size_t i = 0; i < n; ++i)
+	{
+		if (isNameVowel(base[i]))
+		{
+			++vowels;
+			at = i;
+		}
+	}
+	if (vowels != 1 || (base[at] != L'а' && base[at] != L'я' && base[at] != L'Я' && base[at] != L'А'))
+		return;
+	std::wstring stressed = base;
+	stressed[at] = base[at] == L'а' ? L'о' : base[at] == L'А' ? L'О' : base[at] == L'я' ? L'ё' : L'Ё';
+	add(stressed);
+	if (at + 1 < n && stressed[at + 1] == L'л')
+		add(stressed.substr(0, at + 1) + L"ў" + stressed.substr(at + 2));
+}
+
+} // namespace
+
+std::vector<std::wstring> CNameConverter::SurnameVariants(const std::wstring& oblique, const std::wstring& ruleResult, SexType sex)
+{
 	std::vector<std::wstring> variants;
 	const auto add = [&variants, &ruleResult](const std::wstring& word) {
 		if (word.length() > 1 && ToLower(word) != ToLower(ruleResult)
 			&& std::find(variants.begin(), variants.end(), word) == variants.end())
 			variants.push_back(word);
 	};
-	for (const std::wstring& base : bases)
+	for (const std::wstring& base : nominativeBases(oblique, ruleResult, sex))
 	{
 		add(base);
-		const size_t n = base.length();
-		// беглая гласная: «Лобанк» — Лобанок, «Глушц» — Глушец, «Колеснь» — Колесень
-		if (n >= 4 && base.compare(n - 2, 2, L"нь") == 0 && isNameConsonant(base[n - 3]))
-		{
-			for (const wchar_t* vowel : { L"е", L"а", L"э", L"ё" })
-				add(base.substr(0, n - 2) + vowel + L"нь");
-		}
-		// «Жыўнь» — Жывень: «ў» перед беглой гласной снова «в»
-		else if (n >= 4 && base.compare(n - 2, 2, L"нь") == 0 && base[n - 3] == L'ў')
-		{
-			for (const wchar_t* vowel : { L"е", L"э", L"ё" })
-				add(base.substr(0, n - 3) + L"в" + vowel + L"нь");
-		}
-		else if (n >= 3 && isNameConsonant(base[n - 1]) && isNameConsonant(base[n - 2]))
-		{
-			for (const wchar_t* vowel : { L"о", L"е", L"а", L"э", L"ё" })
-			{
-				add(base.substr(0, n - 1) + vowel + base.substr(n - 1));
-				// белорусское «т» перед «е» — «ц»: «Катла» — Кацел, Кацёл
-				const std::wstring v(vowel);
-				if (base[n - 2] == L'т' && (v == L"е" || v == L"ё"))
-					add(base.substr(0, n - 2) + L"ц" + vowel + base.substr(n - 1));
-			}
-		}
-		// безударная «я» перед последней согласной: «Кузняц» — Кузнец
-		if (n >= 4 && base[n - 2] == L'я' && isNameConsonant(base[n - 1]))
-			add(base.substr(0, n - 2) + L"е" + base.substr(n - 1));
-		// одна гласная, безударная в косвенном падеже: «Валк» — Волк/Воўк, «Бабр» — Бобр, «Ярш» — Ёрш
-		size_t vowels = 0, at = 0;
-		for (size_t i = 0; i < n; ++i)
-		{
-			if (isNameVowel(base[i]))
-			{
-				++vowels;
-				at = i;
-			}
-		}
-		if (vowels == 1 && (base[at] == L'а' || base[at] == L'я' || base[at] == L'Я' || base[at] == L'А'))
-		{
-			std::wstring stressed = base;
-			stressed[at] = base[at] == L'а' ? L'о' : base[at] == L'А' ? L'О' : base[at] == L'я' ? L'ё' : L'Ё';
-			add(stressed);
-			if (at + 1 < n && stressed[at + 1] == L'л')
-				add(stressed.substr(0, at + 1) + L"ў" + stressed.substr(at + 2));
-		}
+		addFleetingVowel(base, add);
+		addStressedVowel(base, add);
 	}
 	return variants;
 }

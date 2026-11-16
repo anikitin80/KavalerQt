@@ -27,6 +27,11 @@ public:
     explicit MainWindow(QWidget* parent = nullptr);
 
 private:
+    void createMenus();
+    QWidget* createPeopleTab();
+    QWidget* createStatsTab();
+    QWidget* createDictionaryTab();
+    void connectRefresh();
     void openDatabase(const QString& path);
     void chooseDatabase();
     void fillFilters();

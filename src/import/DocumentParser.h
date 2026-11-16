@@ -29,7 +29,6 @@ public:
 	void ResetData();
 
 	bool ProcessFile(const std::wstring& fileName, const std::vector<std::wstring>& arrLines);
-	int  GetFileMonth(const std::wstring& fileName) { return m_mapFileMonth[fileName];  }
 	// requirePatronymic: при разборе файла режем только полное имя с отчеством.
 	// Кнопка в импорте оставляет и пару без отчества.
 	bool SpltPersonInfo(PersonInfo& person, bool requirePatronymic = false);
@@ -108,7 +107,6 @@ protected:
 	// 0, если ничего не совпало.
 	int  GetAwardId(std::wstring award, bool bRussian, bool bPochetNameOnly = false, size_t* phraseLength = nullptr);
 
-	std::map<std::wstring, int> m_mapFileMonth;
 	std::wstring m_FileName;
 	std::wstring m_SectionCity; // «г. Мінск» в городском разделе списка
 	// сведения о группе действуют: из заголовка указа — до его конца,

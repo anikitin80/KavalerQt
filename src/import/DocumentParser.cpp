@@ -28,7 +28,6 @@ void CDocumentParser::ResetData()
 {
 	m_AwardsStat.clear();
 	m_Persons.clear();
-	m_mapFileMonth.clear();
 	m_GroupsInfo.clear();
 	m_UkazInfo.Clear();
 	m_GroupActive = m_GroupWholeDecree = false;
@@ -88,10 +87,7 @@ void CDocumentParser::ParseDecreeHeader(const std::wstring& strLine)
 
 	pos = strLine.rfind(L'г', pos - 1);
 	if (pos != std::wstring::npos)
-	{
 		m_UkazInfo.Date = ParseDate(strLine.substr(0, pos), m_UkazInfo.RussianLang);
-		m_mapFileMonth[m_FileName] = m_UkazInfo.Date.isValid() ? m_UkazInfo.Date.month() : 0;
-	}
 }
 
 // раздел списка («па Брэсцкай вобласці», «па г. Мінску»): у людей городского

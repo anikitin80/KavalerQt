@@ -118,16 +118,7 @@ ImportDialog::ImportDialog(Catalog* catalog, QWidget* parent)
     setWindowTitle(QStringLiteral("Парсинг документов о награждении"));
     resize(1100, 760);
 
-    std::map<long, DecreeAward> awards;
-    for (const Award& award : catalog->awards()) {
-        DecreeAward item;
-        item.ID = award.id;
-        item.Name = toWide(award.name);
-        item.NameBY = toWide(award.nameBy);
-        item.Type = award.type;
-        item.Priority = award.priority;
-        awards[item.ID] = item;
-    }
+    std::map<long, DecreeAward> awards = decreeAwards(*catalog);
     m_parser.Initialize(awards);
     // неоднозначную фамилию («Склюту» — Склют или Склюта) решает каталог
     loadKnownSurnames(m_parser.m_NameConverter, *catalog);
@@ -220,58 +211,68 @@ ImportDialog::ImportDialog(Catalog* catalog, QWidget* parent)
         QSettings().setValue(QStringLiteral("ImportOnlyNew"), checked);
         showPersons();
     });
-    connect(m_persons, &QTableWidget::itemChanged, this, [this](QTableWidgetItem* item) {
-        if (m_filling || item->column() != 0)
-            return;
-        const int index = item->data(Qt::UserRole).toInt();
-        if (index < 0 || index >= int(m_parser.m_Persons.size()))
-            return;
-        PersonInfo& person = m_parser.m_Persons[size_t(index)];
-        m_filling = true;
-        if (person.Flags & PersonInfo::NF_SURNAME_UNSURE) {
-            // исправленное вручную имя проверено пользователем
-            const bool edited = toWide(item->text()) != person.Name;
-            person.SurnameConfirmed = edited || item->checkState() == Qt::Checked;
-            if (edited)
-                item->setCheckState(Qt::Checked);
-        }
-        person.Name = toWide(item->text());
-        // исправленное имя может теперь совпасть с каталогом или другим человеком
-        markKnown();
-        m_filling = false;
-    });
+    connect(m_persons, &QTableWidget::itemChanged, this, &ImportDialog::nameEdited);
     m_persons->setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(m_persons, &QWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
-        const int row = m_persons->rowAt(pos.y());
-        if (row < 0)
-            return;
-        QMenu menu(this);
-        QAction* confirm = menu.addAction(QStringLiteral("Подтвердить фамилию"));
-        menu.addSeparator();
-        QAction* split = menu.addAction(QStringLiteral("Разделить награждения"));
-        QAction* chosen = menu.exec(m_persons->viewport()->mapToGlobal(pos));
-        if (chosen == confirm) {
-            confirmSelectedSurnames();
-            return;
-        }
-        if (chosen != split)
-            return;
-        const int index = m_persons->item(row, 0)->data(Qt::UserRole).toInt();
-        if (index < 0 || index >= int(m_parser.m_Persons.size()))
-            return;
-        if (!m_parser.SpltPersonInfo(m_parser.m_Persons[size_t(index)]))
-            return;
-        const std::wstring fileName = toWide(m_fileName);
-        for (AwardInfo& award : m_parser.m_AwardsStat) {
-            auto found = award.CountByFiles.find(fileName);
-            if (found == award.CountByFiles.end())
-                continue;
-            found->second++;
-            award.TotalCount++;
-        }
-        fillAwards();
-        showPersons();
-    });
+    connect(m_persons, &QWidget::customContextMenuRequested, this, &ImportDialog::showPersonMenu);
+}
+
+// имя исправлено или отмечено галочкой подтверждения фамилии
+void ImportDialog::nameEdited(QTableWidgetItem* item)
+{
+    if (m_filling || item->column() != 0)
+        return;
+    const int index = item->data(Qt::UserRole).toInt();
+    if (index < 0 || index >= int(m_parser.m_Persons.size()))
+        return;
+    PersonInfo& person = m_parser.m_Persons[size_t(index)];
+    m_filling = true;
+    if (person.Flags & PersonInfo::NF_SURNAME_UNSURE) {
+        // исправленное вручную имя проверено пользователем
+        const bool edited = toWide(item->text()) != person.Name;
+        person.SurnameConfirmed = edited || item->checkState() == Qt::Checked;
+        if (edited)
+            item->setCheckState(Qt::Checked);
+    }
+    person.Name = toWide(item->text());
+    // исправленное имя может теперь совпасть с каталогом или другим человеком
+    markKnown();
+    m_filling = false;
+}
+
+void ImportDialog::showPersonMenu(const QPoint& pos)
+{
+    const int row = m_persons->rowAt(pos.y());
+    if (row < 0)
+        return;
+    QMenu menu(this);
+    QAction* confirm = menu.addAction(QStringLiteral("Подтвердить фамилию"));
+    menu.addSeparator();
+    QAction* split = menu.addAction(QStringLiteral("Разделить награждения"));
+    QAction* chosen = menu.exec(m_persons->viewport()->mapToGlobal(pos));
+    if (chosen == confirm)
+        confirmSelectedSurnames();
+    else if (chosen == split)
+        splitPerson(row);
+}
+
+// «Матусевичу ... и директору совхоза»: второй человек строки отдельным награждением
+void ImportDialog::splitPerson(int row)
+{
+    const int index = m_persons->item(row, 0)->data(Qt::UserRole).toInt();
+    if (index < 0 || index >= int(m_parser.m_Persons.size()))
+        return;
+    if (!m_parser.SpltPersonInfo(m_parser.m_Persons[size_t(index)]))
+        return;
+    const std::wstring fileName = toWide(m_fileName);
+    for (AwardInfo& award : m_parser.m_AwardsStat) {
+        auto found = award.CountByFiles.find(fileName);
+        if (found == award.CountByFiles.end())
+            continue;
+        found->second++;
+        award.TotalCount++;
+    }
+    fillAwards();
+    showPersons();
 }
 
 void ImportDialog::choosePath()

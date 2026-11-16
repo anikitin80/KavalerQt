@@ -29,6 +29,9 @@ private:
     void fillAwards();
     Person personFromInfo(const PersonInfo& info);
     void markKnown(); // см. ImportMatch.h
+    void nameEdited(QTableWidgetItem* item);
+    void showPersonMenu(const QPoint& pos);
+    void splitPerson(int row);
     // фамилия угадана и ещё не подтверждена: такого человека импортировать нельзя
     bool needsSurnameCheck(const PersonInfo& person) const;
     void paintName(QTableWidgetItem* name, const PersonInfo& person) const;

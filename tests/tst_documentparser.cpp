@@ -278,7 +278,6 @@ void TestDocumentParser::decreeHeader()
     QCOMPARE(ukaz.Number, 2995);
     QCOMPARE(ukaz.Date, QDate(1994, 4, 26));
     QVERIFY(ukaz.RussianLang);
-    QCOMPARE(m_parser->GetFileMonth(L"test.docx"), 4);
 }
 
 void TestDocumentParser::singleAwardPersonBeforeAward()

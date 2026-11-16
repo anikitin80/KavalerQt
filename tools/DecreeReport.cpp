@@ -474,16 +474,7 @@ CatalogIndex indexCatalog(const Catalog& catalog)
 // парсер, как в окне импорта: награды каталога, его фамилии и слова, словари должностей
 void setupParser(CDocumentParser& parser, const Catalog& catalog, const Options& options)
 {
-    std::map<long, DecreeAward> awards;
-    for (const Award& award : catalog.awards()) {
-        DecreeAward item;
-        item.ID = award.id;
-        item.Type = award.type;
-        item.Priority = award.priority;
-        item.Name = award.name.toStdWString();
-        item.NameBY = award.nameBy.toStdWString();
-        awards[item.ID] = item;
-    }
+    std::map<long, DecreeAward> awards = decreeAwards(catalog);
     parser.Initialize(awards);
     // неоднозначную фамилию и дефис переноса решает каталог (--rules-only — только правила)
     if (!options.rulesOnly) {

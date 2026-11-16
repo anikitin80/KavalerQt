@@ -120,6 +120,27 @@ MainWindow::MainWindow(QWidget* parent)
     m_stats = new StatsModel(&m_catalog, this);
     m_dictionary = new DictionaryModel(&m_catalog, this);
 
+    createMenus();
+    m_tabs = new QTabWidget;
+    m_tabs->addTab(createPeopleTab(), QStringLiteral("Список награждений"));
+    m_tabs->addTab(createStatsTab(), QStringLiteral("Статистика"));
+    m_tabs->addTab(createDictionaryTab(), QStringLiteral("Словарь имен"));
+    setCentralWidget(m_tabs);
+
+    m_count = new QLabel;
+    statusBar()->addWidget(m_count);
+    connectRefresh();
+
+    const QString path = storedDatabasePath();
+    if (!path.isEmpty() && QFileInfo::exists(path))
+        openDatabase(path);
+    else
+        statusBar()->showMessage(QStringLiteral("Откройте файл базы SQLite"));
+}
+
+// меню, панель инструментов и их действия
+void MainWindow::createMenus()
+{
     // действие панели и меню: имя значка, текст меню, короткий текст
     // под значком (текст меню, если пусто), подсказка
     const auto makeAction = [this](const QString& icon, const QString& text, const QString& iconText, const QString& toolTip,
@@ -217,7 +238,11 @@ MainWindow::MainWindow(QWidget* parent)
                            "Импорт указов из Word (docx), перевод через Яндекс.\n\n"
                            "Значки: UIcons by Flaticon (flaticon.com)."));
     });
+}
 
+// строка фильтров и список награждений
+QWidget* MainWindow::createPeopleTab()
+{
     // длинные названия наград не растягивают строку фильтров: поле узкое,
     // раскрытый список — во всю ширину названий, полное название в подсказке
     m_award = new QComboBox;
@@ -297,7 +322,12 @@ MainWindow::MainWindow(QWidget* parent)
     auto* peopleLayout = new QVBoxLayout(peoplePage);
     peopleLayout->addLayout(filters);
     peopleLayout->addWidget(m_peopleView);
+    return peoplePage;
+}
 
+// статистика по месяцам или по годам
+QWidget* MainWindow::createStatsTab()
+{
     m_statsByMonth = new QCheckBox(QStringLiteral("По месяцам"));
     m_statsByMonth->setChecked(true);
     // группировка — только у статистики по месяцам; без месяцев таблица награда × год
@@ -332,7 +362,12 @@ MainWindow::MainWindow(QWidget* parent)
     auto* statsLayout = new QVBoxLayout(statsPage);
     statsLayout->addLayout(statsRow);
     statsLayout->addWidget(m_statsView);
+    return statsPage;
+}
 
+// словарь частей имени
+QWidget* MainWindow::createDictionaryTab()
+{
     m_dictFilter = new QLineEdit;
     m_dictFilter->setPlaceholderText(QStringLiteral("Фильтр словаря"));
     m_dictVariantsOnly = new QCheckBox(QStringLiteral("Только с вариантами перевода"));
@@ -355,16 +390,12 @@ MainWindow::MainWindow(QWidget* parent)
     auto* dictLayout = new QVBoxLayout(dictPage);
     dictLayout->addLayout(dictFilters);
     dictLayout->addWidget(m_dictView);
+    return dictPage;
+}
 
-    m_tabs = new QTabWidget;
-    m_tabs->addTab(peoplePage, QStringLiteral("Список награждений"));
-    m_tabs->addTab(statsPage, QStringLiteral("Статистика"));
-    m_tabs->addTab(dictPage, QStringLiteral("Словарь имен"));
-    setCentralWidget(m_tabs);
-
-    m_count = new QLabel;
-    statusBar()->addWidget(m_count);
-
+// фильтры, вкладки и изменения каталога обновляют то, что на экране
+void MainWindow::connectRefresh()
+{
     const auto refresh = [this] { refreshPeople(); };
     connect(m_award, &QComboBox::currentIndexChanged, this, refresh);
     connect(m_year, &QComboBox::currentIndexChanged, this, refresh);
@@ -405,12 +436,6 @@ MainWindow::MainWindow(QWidget* parent)
         refreshVisibleTab();
     });
     connect(m_tabs, &QTabWidget::currentChanged, this, [this] { refreshVisibleTab(); });
-
-    const QString path = storedDatabasePath();
-    if (!path.isEmpty() && QFileInfo::exists(path))
-        openDatabase(path);
-    else
-        statusBar()->showMessage(QStringLiteral("Откройте файл базы SQLite"));
 }
 
 QString MainWindow::storedDatabasePath() const
