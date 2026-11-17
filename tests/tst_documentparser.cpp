@@ -71,6 +71,7 @@ private slots:
     void groupKeepsInitialsAndPrecedesTheDegree();
     void organizationIsAwardedItself();
     void organizationInAwardList();
+    void deputiesGetTheirChamber();
     void workplaceIsNotAnOrganization();
     void wrappedWordsAreJoinedByTheCatalog();
     void latinLettersInTheJobAndName();
@@ -1104,6 +1105,31 @@ void TestDocumentParser::organizationInAwardList()
              QStringLiteral("Вытворчы кааператыў імя В.І.КРЭМКО, Гродзенскі раён"));
     QVERIFY(!m_parser->m_Persons[1].Organization);
     QCOMPARE(text(m_parser->m_Persons[1].Name), QStringLiteral("Грыгорык Таццяна Віктараўна"));
+}
+
+// 508/2004: палата из заголовка встаёт за «Пастаяннай камісіі»;
+// кто палату уже назвал, тому её не дописываем
+void TestDocumentParser::deputiesGetTheirChamber()
+{
+    parse({kUkazBy, QStringLiteral("14 кастрычніка 2004 г. № 508"),
+           QStringLiteral("Аб узнагароджанні групы дэпутатаў Палаты прадстаўнікоў Нацыянальнага сходу Рэспублікі "
+                          "Беларусь дзяржаўнымі ўзнагародамі Рэспублікі Беларусь"),
+           QStringLiteral("За актыўную дзейнасць ўзнагародзіць дэпутатаў Палаты прадстаўнікоў Нацыянальнага сходу "
+                          "Рэспублікі Беларусь:"),
+           QStringLiteral("ордэнам Айчыны ІІІ ступені"),
+           QStringLiteral("ПаповаВадзіма Аляксандравіча"), QStringLiteral("–"),
+           QStringLiteral("Старшыню Палаты прадстаўнікоў Нацыянальнага сходу Рэспублікі Беларусь"),
+           QStringLiteral("ордэнам Пашаны"),
+           QStringLiteral("АзарчанкаваАляксандра Міхайлавіча"), QStringLiteral("–"),
+           QStringLiteral("старшыню Пастаяннай камісіі па аграрных пытаннях"),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")}, QStringLiteral("508.docx"));
+    m_parser->CheckGroupInfo(L"508.docx", true);
+    QCOMPARE(int(m_parser->m_Persons.size()), 2);
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[0], false)),
+             QStringLiteral("Старшыня Палаты прадстаўнікоў Нацыянальнага сходу Рэспублікі Беларусь"));
+    QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[1], false)),
+             QStringLiteral("старшыня Пастаяннай камісіі Палаты прадстаўнікоў Нацыянальнага сходу Рэспублікі Беларусь "
+                            "па аграрных пытаннях"));
 }
 
 // родительный падеж — место работы человека; список после двоеточия тоже люди

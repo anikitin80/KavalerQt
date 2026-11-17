@@ -75,7 +75,9 @@ const std::vector<std::wstring> searchActionsBY = { L"знагародзіць",
 const std::vector<std::wstring> searchActionsRU = { L"наградить", L"Наградить", L"присвоить", L"Присвоить" };
 const std::vector<std::wstring> searchGroup = { L"группу", L"группы", L"работников", L"работникам", L"работнікаў", L"супрацоўнікаў",
 	L"супрацоўнікам", L"сотрудникам", L"сотрудников", L"артистов", L"артистам", L"артыстаў", L"артыстам",
-	L"ваеннаслужачых", L"военнослужащих" };
+	L"ваеннаслужачых", L"военнослужащих",
+	// только «групы»: «за дзейнасць дэпутатаў ...» (569/2011) — не группа
+	L"групы дэпутатаў", L"группы депутатов" };
 const std::vector<std::wstring> searchGroupEnd = { L"государственными", L"орденом", L"медалью", L"дзяржаўнымі", L"ордэнам", L"медалём", L"почетные", L"почетное", L"почетных",
 	L"почетного", L"ганаровага", L"ганаровае", L"ганаровых", L"ганаровыя" };
 
@@ -1040,9 +1042,24 @@ std::wstring CDocumentParser::GetPersonDescription(PersonInfo& person, bool bGet
 		// второй раз не добавляем: «дырэктар ААТ «Белкард»» уже называет организацию
 		else if (!strGroupInfo.empty() && strDesc.find(strGroupInfo) == std::wstring::npos)
 		{
-			// «заведующий кафедрой, профессор» — институт стоит перед степенью
+			// «заведующий кафедрой, профессор» — институт стоит перед степенью;
+			// палата — сразу за «Пастаяннай камісіі», до «па ...» (508/2004)
 			const size_t comma = academicTitleComma(strDesc);
-			if (comma != std::wstring::npos)
+			const wchar_t* commissionWords = L"Пастаяннай камісіі";
+			size_t commission = strDesc.find(commissionWords);
+			if (commission == std::wstring::npos) {
+				commissionWords = L"Постоянной комиссии";
+				commission = strDesc.find(commissionWords);
+			}
+			// палата не названа: сразу за комиссией «па ...»
+			if (commission != std::wstring::npos) {
+				commission += std::wcslen(commissionWords);
+				if (strDesc.compare(commission, 4, L" па ") != 0 && strDesc.compare(commission, 4, L" по ") != 0)
+					commission = std::wstring::npos;
+			}
+			if (commission != std::wstring::npos)
+				strDesc.insert(commission, L" " + strGroupInfo);
+			else if (comma != std::wstring::npos)
 				strDesc.insert(comma, L" " + strGroupInfo);
 			else
 			{
