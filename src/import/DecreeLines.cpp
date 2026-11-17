@@ -25,10 +25,7 @@ void singularFirstWord(std::wstring& text, LangType lang)
 	{
 		size_t hyphen = word.find(L'-', start);
 		std::wstring part = word.substr(start, hyphen == std::wstring::npos ? std::wstring::npos : hyphen - start);
-		auto endsWith = [&](const wchar_t* suffix) {
-			const size_t length = std::wcslen(suffix);
-			return part.size() > length + 2 && part.compare(part.size() - length, length, suffix) == 0;
-		};
+		auto endsWith = [&](const wchar_t* suffix) { return EndsWith(part, suffix, 3); };
 		if (lang == LangBY && endsWith(L"аў"))
 			part.replace(part.size() - 2, 2, L"а");
 		else if (lang == LangRU && endsWith(L"ов"))
@@ -52,8 +49,7 @@ void singularSharedJob(std::wstring& text, LangType lang)
 	StrTrim(trimmed);
 	const std::wstring conjunction = lang == LangRU ? L" и" : L" і";
 	const bool listed = !trimmed.empty() && (trimmed.back() == L','
-		|| (trimmed.size() > conjunction.size()
-			&& trimmed.compare(trimmed.size() - conjunction.size(), conjunction.size(), conjunction) == 0));
+		|| EndsWith(trimmed, conjunction.c_str(), 1));
 	if (listed)
 		singularFirstWord(text, lang);
 }
@@ -523,12 +519,6 @@ bool takeLeadingPersonName(CNameConverter& names, std::wstring& text, LangType l
 	return false;
 }
 
-static bool endsWith(const std::wstring& word, const wchar_t* suffix)
-{
-	const size_t length = std::wcslen(suffix);
-	return word.size() > length && word.compare(word.size() - length, length, suffix) == 0;
-}
-
 // учреждение без формы собственности: «Беларускі нацыянальны тэхнічны
 // ўніверсітэт» — с заглавной, прилагательные и учрежденческое слово в конце;
 // у человека так не бывает
@@ -556,7 +546,7 @@ static bool isInstitutionName(const std::wstring& text)
 	static const wchar_t* adjectiveEnds[] = {L"і", L"ы", L"ую", L"ая", L"ый", L"ий", L"ой"};
 	return std::all_of(words.begin(), words.end() - 1, [](const std::wstring& word) {
 		return std::any_of(std::begin(adjectiveEnds), std::end(adjectiveEnds),
-						   [&](const wchar_t* end) { return endsWith(word, end); });
+						   [&](const wchar_t* end) { return EndsWith(word, end, 1); });
 	});
 }
 
@@ -586,7 +576,7 @@ static void toNominative(std::wstring& text)
 				break;
 			}
 		}
-		if (!replaced && endsWith(lower, L"ую"))
+		if (!replaced && EndsWith(lower, L"ую", 1))
 			word.replace(word.size() - 2, 2, L"ая");
 		text.replace(start, end - start, word);
 		start = end + 1;

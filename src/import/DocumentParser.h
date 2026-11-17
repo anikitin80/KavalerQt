@@ -37,7 +37,6 @@ public:
 	std::wstring GetPersonDescription(size_t nIndex);
 	std::wstring GetPersonDescription(PersonInfo& person, bool bGetRank);
 	bool  GetGroupInfo(std::wstring& fileName, GroupInfo& groupInfo);
-	void  UpdateGroupInfo(const wchar_t* fileName, const wchar_t* groupInfo);
 	void  CheckGroupInfo(const wchar_t* fileName, bool bCheck);
 
 	static bool IsMilitaryAward(int awardId);

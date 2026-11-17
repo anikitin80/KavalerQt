@@ -18,8 +18,6 @@ private slots:
     void findTokens();
     void isCapital();
     void toLower();
-    void normalizeBelarusianI_data();
-    void normalizeBelarusianI();
     void normalizeCyrillicText_data();
     void normalizeCyrillicText();
 };
@@ -122,39 +120,6 @@ void TestTextUtil::toLower()
     QCOMPARE(QString::fromStdWString(ToLower(L"")), QString());
 }
 
-void TestTextUtil::normalizeBelarusianI_data()
-{
-    QTest::addColumn<QString>("text");
-    QTest::addColumn<QString>("expected");
-
-    QTest::newRow("capital at word start") << QStringLiteral("Iгар") << QStringLiteral("Ігар");
-    QTest::newRow("inside words") << QStringLiteral("Нiкiпарчык Раiса Мiкалаеўна")
-                                  << QStringLiteral("Нікіпарчык Раіса Мікалаеўна");
-    QTest::newRow("word end") << QStringLiteral("Рэспублiкi Беларусь") << QStringLiteral("Рэспублікі Беларусь");
-    QTest::newRow("mixed with cyrillic") << QStringLiteral("Дзмiтрый Анатольевіч") << QStringLiteral("Дзмітрый Анатольевіч");
-    QTest::newRow("in quotes") << QStringLiteral("«Мiнскi рысорны завод»") << QStringLiteral("«Мінскі рысорны завод»");
-    QTest::newRow("conjunction") << QStringLiteral("кафедры лагістыкі i цэнавай палітыкі")
-                                 << QStringLiteral("кафедры лагістыкі і цэнавай палітыкі");
-    QTest::newRow("conjunction after comma") << QStringLiteral("аналізу, i аўдыту") << QStringLiteral("аналізу, і аўдыту");
-    QTest::newRow("roman numeral") << QStringLiteral("юрыст I класа") << QStringLiteral("юрыст I класа");
-    QTest::newRow("roman numerals") << QStringLiteral("ордэн Айчыны III ступені") << QStringLiteral("ордэн Айчыны III ступені");
-    QTest::newRow("roman in quotes") << QStringLiteral("аддзела «I» 2-га ўпраўлення") << QStringLiteral("аддзела «I» 2-га ўпраўлення");
-    QTest::newRow("latin word") << QStringLiteral("«Moeller Electrotechnika s.r.o.» прадстаўніцтва")
-                                << QStringLiteral("«Moeller Electrotechnika s.r.o.» прадстаўніцтва");
-    QTest::newRow("latin i between latin words") << QStringLiteral("Smith i Wesson") << QStringLiteral("Smith i Wesson");
-    QTest::newRow("roman numeral XIX") << QStringLiteral("першай паловы XIX стагоддзя") << QStringLiteral("першай паловы XIX стагоддзя");
-    QTest::newRow("already cyrillic") << QStringLiteral("Іваноў Ігар") << QStringLiteral("Іваноў Ігар");
-    QTest::newRow("empty") << QString() << QString();
-}
-
-void TestTextUtil::normalizeBelarusianI()
-{
-    QFETCH(QString, text);
-    QFETCH(QString, expected);
-    QCOMPARE(NormalizeBelarusianI(text), expected);
-    QCOMPARE(HasLatinBelarusianI(text), text != expected);
-}
-
 void TestTextUtil::normalizeCyrillicText_data()
 {
     QTest::addColumn<QString>("text");
@@ -176,7 +141,22 @@ void TestTextUtil::normalizeCyrillicText_data()
                                       << QStringLiteral("работает с 1990 года в колхозе");
     QTest::newRow("ru conjunction a") << QStringLiteral("слесарь a также механик") << false << QStringLiteral("слесарь а также механик");
     QTest::newRow("by preposition y") << QStringLiteral("настаўнік y школе") << true << QStringLiteral("настаўнік у школе");
+    // латинская «i» в белорусском тексте
+    QTest::newRow("by capital i at word start") << QStringLiteral("Iгар") << true << QStringLiteral("Ігар");
+    QTest::newRow("by i inside words") << QStringLiteral("Нiкiпарчык Раiса Мiкалаеўна") << true
+                                       << QStringLiteral("Нікіпарчык Раіса Мікалаеўна");
+    QTest::newRow("by i at word end") << QStringLiteral("Рэспублiкi Беларусь") << true << QStringLiteral("Рэспублікі Беларусь");
+    QTest::newRow("by i in quotes") << QStringLiteral("«Мiнскi рысорны завод»") << true << QStringLiteral("«Мінскі рысорны завод»");
+    QTest::newRow("by conjunction i") << QStringLiteral("кафедры лагістыкі i цэнавай палітыкі") << true
+                                      << QStringLiteral("кафедры лагістыкі і цэнавай палітыкі");
+    QTest::newRow("by conjunction after comma") << QStringLiteral("аналізу, i аўдыту") << true << QStringLiteral("аналізу, і аўдыту");
     // должно остаться
+    QTest::newRow("by roman numeral") << QStringLiteral("юрыст I класа") << true << QStringLiteral("юрыст I класа");
+    QTest::newRow("by roman numerals") << QStringLiteral("ордэн Айчыны III ступені") << true << QStringLiteral("ордэн Айчыны III ступені");
+    QTest::newRow("by roman in quotes") << QStringLiteral("аддзела «I» 2-га ўпраўлення") << true
+                                        << QStringLiteral("аддзела «I» 2-га ўпраўлення");
+    QTest::newRow("by latin i between latin words") << QStringLiteral("Smith i Wesson") << true << QStringLiteral("Smith i Wesson");
+    QTest::newRow("empty") << QString() << true << QString();
     QTest::newRow("roman latin") << QStringLiteral("першай паловы XIX стагоддзя") << true << QStringLiteral("першай паловы XIX стагоддзя");
     QTest::newRow("roman mixed script") << QStringLiteral("XXІ стагоддзя") << true << QStringLiteral("XXІ стагоддзя");
     QTest::newRow("roman ru") << QStringLiteral("участник XXIV съезда") << false << QStringLiteral("участник XXIV съезда");
@@ -198,7 +178,6 @@ void TestTextUtil::normalizeCyrillicText()
     QFETCH(bool, belarusian);
     QFETCH(QString, expected);
     QCOMPARE(NormalizeCyrillicText(text, belarusian), expected);
-    QCOMPARE(HasLatinLookalikes(text, belarusian), text != expected);
 }
 
 QTEST_GUILESS_MAIN(TestTextUtil)

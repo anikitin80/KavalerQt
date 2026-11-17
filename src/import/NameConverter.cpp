@@ -429,10 +429,7 @@ SexType CNameConverter::GetSex(std::wstring& middleName, NounCase nounCase)
 SexType CNameConverter::AdjectiveSurnameSex(const std::wstring& surname, NounCase nounCase)
 {
 	const std::wstring lower = ToLower(surname);
-	const auto endsWith = [&lower](const wchar_t* ending) {
-		const size_t length = std::wcslen(ending);
-		return lower.length() > length + 1 && lower.compare(lower.length() - length, length, ending) == 0;
-	};
+	const auto endsWith = [&lower](const wchar_t* ending) { return EndsWith(lower, ending, 2); };
 	static const wchar_t* female[] = { L"скую", L"цкую", L"ская", L"цкая", L"скай", L"цкай", L"ской", L"цкой" };
 	static const wchar_t* maleAccusative[] = { L"скага", L"цкага", L"ского", L"цкого" };
 	static const wchar_t* maleDative[] = { L"скаму", L"цкаму", L"скому", L"цкому" };
@@ -484,10 +481,7 @@ std::vector<std::wstring> nominativeBases(const std::wstring& oblique, const std
 	if (lower.length() > 3 && (lower.back() == L'і' || lower.back() == L'и'
 		|| (lower.back() == L'у' && isNameVowel(lower[lower.length() - 2]))))
 		bases.push_back(oblique);
-	const auto endsWith = [&lower](const wchar_t* ending) {
-		const std::wstring e(ending);
-		return lower.length() > e.length() + 2 && lower.compare(lower.length() - e.length(), e.length(), e) == 0;
-	};
+	const auto endsWith = [&lower](const wchar_t* ending) { return EndsWith(lower, ending, 3); };
 	if (sex == SexFemale)
 	{
 		// женская фамилия на согласный не склоняется: «Сухавей», «Макей»

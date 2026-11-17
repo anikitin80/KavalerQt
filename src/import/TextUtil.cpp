@@ -100,16 +100,11 @@ bool cyrillicAfter(const QString& text, int pos)
 }
 
 // кириллическая буква, похожая на латинскую, или пустой QChar
-QChar cyrillicTwin(QChar c, bool belarusian, bool onlyI)
+QChar cyrillicTwin(QChar c, bool belarusian)
 {
     switch (c.unicode()) {
     case 'i': return belarusian ? QChar(0x0456) : QChar(); // і
     case 'I': return belarusian ? QChar(0x0406) : QChar(); // І
-    default: break;
-    }
-    if (onlyI)
-        return {};
-    switch (c.unicode()) {
     case 'a': return QChar(0x0430);
     case 'c': return QChar(0x0441);
     case 'e': return QChar(0x0435);
@@ -157,11 +152,11 @@ bool romanNumeralAt(const QString& text, int pos)
     return true;
 }
 
-int latinInCyrillicWord(const QString& text, int from, bool belarusian, bool onlyI)
+int latinInCyrillicWord(const QString& text, bool belarusian)
 {
-    for (int i = from; i < text.size(); ++i) {
+    for (int i = 0; i < text.size(); ++i) {
         const QChar c = text.at(i);
-        if (cyrillicTwin(c, belarusian, onlyI).isNull() || romanNumeralAt(text, i))
+        if (cyrillicTwin(c, belarusian).isNull() || romanNumeralAt(text, i))
             continue;
         const QChar previous = i > 0 ? text.at(i - 1) : QChar();
         const QChar next = i + 1 < text.size() ? text.at(i + 1) : QChar();
@@ -174,41 +169,37 @@ int latinInCyrillicWord(const QString& text, int from, bool belarusian, bool onl
     return -1;
 }
 
-QString normalize(const QString& text, bool belarusian, bool onlyI)
+} // namespace
+
+QString NormalizeCyrillicText(const QString& text, bool belarusian)
 {
-    int pos = latinInCyrillicWord(text, 0, belarusian, onlyI);
+    int pos = latinInCyrillicWord(text, belarusian);
     if (pos < 0)
         return text;
     QString result = text;
     // снова с начала: заменённая буква может сделать латинского соседа
     // тоже частью кириллического слова («Mixaіл» → «Міхаіл»)
     while (pos >= 0) {
-        result[pos] = cyrillicTwin(result.at(pos), belarusian, onlyI);
-        pos = latinInCyrillicWord(result, 0, belarusian, onlyI);
+        result[pos] = cyrillicTwin(result.at(pos), belarusian);
+        pos = latinInCyrillicWord(result, belarusian);
     }
     return result;
 }
 
-} // namespace
-
-QString NormalizeBelarusianI(const QString& text)
+bool EndsWith(const std::wstring& word, const wchar_t* suffix, size_t minStem)
 {
-    return normalize(text, true, true);
+    const size_t length = std::wcslen(suffix);
+    return word.size() >= length + minStem && word.compare(word.size() - length, length, suffix) == 0;
 }
 
-bool HasLatinBelarusianI(const QString& text)
+bool EndsWithAny(const std::wstring& word, std::initializer_list<const wchar_t*> suffixes, size_t minStem)
 {
-    return latinInCyrillicWord(text, 0, true, true) >= 0;
-}
-
-QString NormalizeCyrillicText(const QString& text, bool belarusian)
-{
-    return normalize(text, belarusian, false);
-}
-
-bool HasLatinLookalikes(const QString& text, bool belarusian)
-{
-    return latinInCyrillicWord(text, 0, belarusian, false) >= 0;
+    for (const wchar_t* suffix : suffixes)
+    {
+        if (EndsWith(word, suffix, minStem))
+            return true;
+    }
+    return false;
 }
 
 void ToCyrillicI(std::wstring& text, bool capitalToo)

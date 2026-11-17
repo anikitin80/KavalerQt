@@ -368,8 +368,7 @@ bool CDocumentParser::readListWithoutDash(const std::wstring& strLine, bool acti
 	const std::wstring& rest = m_Persons.back().Description;
 	const std::wstring conjunction = m_UkazInfo.RussianLang ? L" и" : L" і";
 	const bool listed = !rest.empty() && (rest.back() == L','
-		|| (rest.size() > conjunction.size()
-			&& rest.compare(rest.size() - conjunction.size(), conjunction.size(), conjunction) == 0));
+		|| EndsWith(rest, conjunction.c_str(), 1));
 	if (!listed)
 	{
 		m_Persons.resize(addedFrom);
@@ -707,8 +706,7 @@ bool CDocumentParser::SpltPersonInfo(PersonInfo& person, bool requirePatronymic)
 	{
 		// « и» только в конце: иначе «имени» и «імя» режутся как союз
 		const size_t length = std::wcslen(closed);
-		if (person.Description.size() < length
-			|| person.Description.compare(person.Description.size() - length, length, closed) != 0)
+		if (!EndsWith(person.Description, closed))
 			return false;
 		posNextPerson = person.Description.size() - length;
 		bSameProfession = true;
@@ -780,8 +778,7 @@ bool CDocumentParser::peelListedPeople(PersonInfo& person)
 			separator = true;
 		}
 		// « и» уже с пробелом, поэтому «имени» не отрезается
-		if (trial.size() > conjunctionLength
-			&& trial.compare(trial.size() - conjunctionLength, conjunctionLength, conjunction) == 0)
+		if (EndsWith(trial, conjunction, 1))
 		{
 			trial.erase(trial.size() - conjunctionLength);
 			StrTrim(trial);
@@ -1140,18 +1137,6 @@ void  CDocumentParser::CheckGroupInfo(const wchar_t* fileName, bool bCheck)
 		if (iter->FileName == fileName)
 		{
 			iter->Checked = bCheck;
-			break;
-		}
-	}
-}
-
-void  CDocumentParser::UpdateGroupInfo(const wchar_t* fileName, const wchar_t* groupInfo)
-{
-	for (auto iter = m_GroupsInfo.begin(); iter != m_GroupsInfo.end(); iter++)
-	{
-		if (iter->FileName == fileName)
-		{
-			iter->Info = groupInfo;
 			break;
 		}
 	}

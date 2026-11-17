@@ -35,22 +35,13 @@ const RulesList CProfessionConverter::RulesProfession = CNameConverter::ExpandRu
 
 namespace {
 
-// слово кончается одним из окончаний и длиннее его хотя бы на три буквы
-bool EndsWithAny(const std::wstring& word, std::initializer_list<const wchar_t*> endings)
-{
-	for (const wchar_t* ending : endings)
-	{
-		const size_t length = std::wcslen(ending);
-		if (word.length() > length + 2 && word.compare(word.length() - length, length, ending) == 0)
-			return true;
-	}
-	return false;
-}
+// окончание должности: до него основа хотя бы из трёх букв
+constexpr size_t kStem = 3;
 
 // именительный прилагательного («вядучы», «дзяжурны», «старшая», «главный»)
 bool IsAdjective(const std::wstring& word)
 {
-	return EndsWithAny(word, { L"ы", L"і", L"ый", L"ий", L"ой", L"ая", L"яя" });
+	return EndsWithAny(word, { L"ы", L"і", L"ый", L"ий", L"ой", L"ая", L"яя" }, kStem);
 }
 
 // вид, который ищет Lookup: нижний регистр и белорусская «і» вместо латинской «i»
@@ -314,7 +305,7 @@ size_t CProfessionConverter::ConvertHyphenPrefix(std::wstring& strSource, size_t
 		std::wstring word = ToLower(original);
 		const bool letters = !word.empty() && std::all_of(word.begin(), word.end(), [](wchar_t c) { return c >= 0x0400 && c <= 0x04FF; });
 		// «ваенна-», «судова-», «пажарна-» — части прилагательного, не должности
-		const bool adverbStem = word.size() > 3 && (word.compare(word.size() - 2, 2, L"на") == 0 || word.compare(word.size() - 2, 2, L"ва") == 0);
+		const bool adverbStem = EndsWithAny(word, { L"на", L"ва" }, 2);
 		// незнакомая часть меняется, только если оканчивается как косвенный падеж
 		// должности («оптыка», «бойцу»): «вице-», «экс-», «штаб-» остаются
 		const wchar_t last = word.empty() ? L'\0' : word.back();
@@ -543,8 +534,8 @@ size_t CProfessionConverter::ConvertTrailingWord(std::wstring& strSource, size_t
 	const wchar_t last = head.back();
 	const bool feminineHead = last == L'а' || last == L'я';
 	// дательный совпадает с родительным («старшыні Пастаяннай камісіі»): только в скобке
-	const bool feminineAdjective = nounCase == Dative ? bracket && EndsWithAny(lower, { L"ай", L"яй", L"ой", L"ей" })
-		: EndsWithAny(lower, { L"ую", L"юю" });
+	const bool feminineAdjective = nounCase == Dative ? bracket && EndsWithAny(lower, { L"ай", L"яй", L"ой", L"ей" }, kStem)
+		: EndsWithAny(lower, { L"ую", L"юю" }, kStem);
 	if (feminineHead && feminineAdjective && (!bracket || strSource[posWordEnd] == L')')
 		&& CNameConverter::ApplyRules(word, RulesAdjectives, SexAny, lang, nounCase, false))
 	{
@@ -573,23 +564,23 @@ size_t CProfessionConverter::ConvertTrailingWord(std::wstring& strSource, size_t
 		if (to == std::wstring::npos)
 			to = compound.length();
 		// первая часть — словарная должность, остальные как в ConvertWordChain
-		std::wstring word = compound.substr(from, to - from);
-		const WordForm part = findForm(word, lang, nounCase);
+		std::wstring partWord = compound.substr(from, to - from);
+		const WordForm part = findForm(partWord, lang, nounCase);
 		const bool first = converted.empty();
-		if (first && (!part.inDictionary || part.declinedLength != word.length() || IsAdjective(part.nominative)))
+		if (first && (!part.inDictionary || part.declinedLength != partWord.length() || IsAdjective(part.nominative)))
 			return posStart;
 		// «анестэзіёлага-рэанімацыйнага аддзялення» — составное прилагательное
 		// (не «рэаніматолага»: у существительного перед «-ага» нет «н», «к», «в», «ч»)
-		if (!first && EndsWithAny(word, { L"нага", L"кага", L"вага", L"чага", L"ога", L"ого", L"его", L"аму", L"ому", L"ему",
-			L"ай", L"ой", L"ей", L"яй", L"ую", L"юю", L"ых", L"іх", L"их" }))
+		if (!first && EndsWithAny(partWord, { L"нага", L"кага", L"вага", L"чага", L"ога", L"ого", L"его", L"аму", L"ому", L"ему",
+			L"ай", L"ой", L"ей", L"яй", L"ую", L"юю", L"ых", L"іх", L"их" }, kStem))
 			return posStart;
-		if (part.found && part.declinedLength == word.length())
-			word = part.nominative;
-		else if (!AddNewWord(word, lang, nounCase))
+		if (part.found && part.declinedLength == partWord.length())
+			partWord = part.nominative;
+		else if (!AddNewWord(partWord, lang, nounCase))
 			return posStart;
 		if (!first)
 			converted += L'-';
-		converted += word;
+		converted += partWord;
 		from = to + 1;
 	}
 	ReplaceKeepingFirstLetter(strSource, posWord, posEnd - posWord, converted);
@@ -631,7 +622,7 @@ bool CProfessionConverter::StartsWithProfession(const std::wstring& strSource, s
 		{
 			size_t posPart = posWord;
 			const std::wstring part = ToLower(GetNextWord(strSource, posPart));
-			compoundAdjective = EndsWithAny(part, { L"ай", L"ой", L"ых", L"іх", L"их", L"ым", L"ае", L"ое", L"ыя", L"ые" });
+			compoundAdjective = EndsWithAny(part, { L"ай", L"ой", L"ых", L"іх", L"их", L"ым", L"ае", L"ое", L"ыя", L"ые" }, kStem);
 		}
 		// прилагательное из словаря перед «і»/«и» — часть списка
 		// прилагательных, не должность: «грамадзянскага, працоўнага і сацыяльнага
@@ -724,12 +715,6 @@ void CProfessionConverter::ConvertLeadingAdjectives(std::wstring& strSource, siz
 
 namespace {
 
-bool endsWith(const std::wstring& word, const wchar_t* suffix)
-{
-	const size_t length = std::wcslen(suffix);
-	return word.length() >= length && word.compare(word.length() - length, length, suffix) == 0;
-}
-
 // Формы, которые общее правило портит, а словарь не лечит.
 // Косвенный падеж здесь тот же, что в указе и в каталоге. Именительный
 // в словаре («лозапляцельшчык») переписал бы совпавшую строку, а косвенный
@@ -770,13 +755,13 @@ bool CProfessionConverter::ruleNominative(std::wstring word, LangType lang, Noun
 	// «падраздзялення» — родительный среднего рода, не «падраздзяленнь».
 	// «іканапісца» уже именительный. «-я» → «-ь» для незнакомого слова
 	// даёт «кіруючаь» и «музеь».
-	if (endsWith(original, L"ння") || endsWith(original, L"нния") || endsWith(original, L"ения")
-		|| endsWith(original, L"енья") || endsWith(original, L"ца")
-		|| endsWith(original, L"ая") || endsWith(original, L"яя") || endsWith(original, L"яе"))
+	if (EndsWith(original, L"ння") || EndsWith(original, L"нния") || EndsWith(original, L"ения")
+		|| EndsWith(original, L"енья") || EndsWith(original, L"ца")
+		|| EndsWith(original, L"ая") || EndsWith(original, L"яя") || EndsWith(original, L"яе"))
 		return false;
 	if (!CNameConverter::ApplyRules(word, RulesProfession, SexAny, lang, nounCase, false) || word.empty())
 		return false;
-	if (ToLower(word) == original || endsWith(ToLower(word), L"ь"))
+	if (ToLower(word) == original || EndsWith(ToLower(word), L"ь"))
 		return false;
 	nominative = std::move(word);
 	return true;
@@ -1140,7 +1125,7 @@ void CProfessionConverter::FindNewWords(std::wstring& strSource, LangType lang, 
 	}
 
 	const std::wstring lower = ToLower(word);
-	if (endsWith(lower, L"ння") || endsWith(lower, L"нния") || endsWith(lower, L"ения") || endsWith(lower, L"енья"))
+	if (EndsWith(lower, L"ння") || EndsWith(lower, L"нния") || EndsWith(lower, L"ения") || EndsWith(lower, L"енья"))
 		return;
 	AddNewWord(word, lang, nounCase);
 }
