@@ -709,9 +709,8 @@ QString PersonModel::personKey(const Person& person)
     return {};
 }
 
-QString PersonModel::namesakeKey(const Person& person)
+QString PersonModel::namesakeKey(const QString& key, const Person& person)
 {
-    const QString key = personKey(person);
     if (key.isEmpty() || person.namesake <= 0)
         return key;
     return key + QStringLiteral("#") + QString::number(person.namesake);
@@ -732,12 +731,33 @@ void PersonModel::applyTopAwarded(int minimumAwards)
     QHash<QString, int> slotOfKey;
     QHash<int, QString> nameOfSlot;
     QVector<Group> all;
+    // запись русского указа без белорусского ФИО — тот же человек, что и записи,
+    // где это русское ФИО стоит рядом с белорусским (если белорусское одно)
+    QHash<QString, QString> byKeyOfRussian;
+    for (const Person& person : people) {
+        if (person.nameBy.simplified().isEmpty() || person.name.simplified().isEmpty())
+            continue;
+        Person russian;
+        russian.name = person.name;
+        const QString ruKey = personKey(russian);
+        const QString byKey = personKey(person);
+        const auto it = byKeyOfRussian.find(ruKey);
+        if (it == byKeyOfRussian.end())
+            byKeyOfRussian.insert(ruKey, byKey);
+        else if (*it != byKey)
+            it->clear(); // несколько белорусских написаний: не угадываем
+    }
     for (int i = 0; i < people.size(); ++i) {
-        const QString name = personKey(people.at(i));
+        QString name = personKey(people.at(i));
         if (name.isEmpty())
             continue;
+        if (people.at(i).nameBy.simplified().isEmpty()) {
+            const QString byKey = byKeyOfRussian.value(name);
+            if (!byKey.isEmpty())
+                name = byKey;
+        }
         ++awardsOfName[name];
-        const QString key = namesakeKey(people.at(i));
+        const QString key = namesakeKey(name, people.at(i));
         int slot = slotOfKey.value(key, -1);
         if (slot < 0) {
             slot = all.size();

@@ -34,8 +34,8 @@ public:
     void applyTopAwarded(int minimumAwards);
     // ключ человека для applyTopAwarded, пусто у организации
     static QString personKey(const Person& person);
-    // personKey с номером тёзки: тёзки с разными номерами — разные люди
-    static QString namesakeKey(const Person& person);
+    // ключ человека с номером тёзки: тёзки с разными номерами — разные люди
+    static QString namesakeKey(const QString& key, const Person& person);
     // число групп (людей) в «Топе»
     int groupCount() const { return m_groups.size(); }
 
