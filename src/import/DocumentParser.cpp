@@ -286,6 +286,8 @@ bool CDocumentParser::switchHonoraryTitle(std::wstring& strLine, AwardState& awa
 	if (award.id <= 0)
 	{
 		award.id = GetAwardId(titleLine.c_str(), m_UkazInfo.RussianLang, true);
+		if (award.id > 0)
+			readTitleLineTail(strLine, award);
 		return award.id > 0;
 	}
 	if (titleLine.find(L"Заслуж") == std::wstring::npos && titleLine.find(L"Народны") == std::wstring::npos)
@@ -296,7 +298,34 @@ bool CDocumentParser::switchHonoraryTitle(std::wstring& strLine, AwardState& awa
 	UpdateAwardStat(award.id, strLine, award.count);
 	award.id = newAwardId;
 	award.count = 0;
+	readTitleLineTail(strLine, award);
 	return true;
+}
+
+// люди в строке звания после тире: «"Заслужаны майстар спорту …" – спартсменам-інструктарам …
+// Астапчук Надзеі Мікалаеўне і Несцярэнка Юліі Віктараўне;» (указ 396/2005)
+void CDocumentParser::readTitleLineTail(const std::wstring& strLine, AwardState& award)
+{
+	const size_t open = strLine.find_first_not_of(L"  ");
+	if (open == std::wstring::npos || strLine[open] != L'«')
+		return;
+	const size_t close = strLine.find(L'»', open);
+	if (close == std::wstring::npos)
+		return;
+	const size_t dash = strLine.find_first_not_of(L"  ", close + 1);
+	if (dash == std::wstring::npos || strLine[dash] != L'–')
+		return;
+	std::wstring tail = strLine.substr(dash + 1);
+	std::replace(tail.begin(), tail.end(), L' ', L' ');
+	StrTrim(tail);
+	while (!tail.empty() && (tail.back() == L';' || tail.back() == L'.'))
+		tail.pop_back();
+	if (tail.empty())
+		return;
+	const size_t addedFrom = m_Persons.size();
+	std::wstring awardText = award.text;
+	ExtractPersonInfo(awardText, tail, award.id);
+	award.count += int(m_Persons.size() - addedFrom);
 }
 
 // организация отдельной строкой списка, в том числе с тире в названии
@@ -439,8 +468,10 @@ void CDocumentParser::readListLine(const std::wstring& strLine, bool actionLine,
 	}
 }
 
-bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vector<std::wstring>& arrLines)
+bool CDocumentParser::ProcessFile(const std::wstring& fileName, const std::vector<std::wstring>& sourceLines)
 {
+	// список званий одним предложением разбирается как список по строкам
+	const std::vector<std::wstring> arrLines = splitInlineTitleLists(sourceLines);
 	bool bResult = false;
 
 	m_FileName = fileName;
@@ -638,9 +669,10 @@ void CDocumentParser::ExtractPersonInfo(std::wstring& curAward, std::wstring& st
 	std::wstring name;
 	bool organisation = false;
 	if (!takePersonName(m_NameConverter, strAwardedInfo, lang, nounCase, name)) {
-		if (!takeOrganisation(strAwardedInfo, name))
+		if (takeOrganisation(strAwardedInfo, name))
+			organisation = true;
+		else if (!takeLeadingPersonName(m_NameConverter, strAwardedInfo, lang, nounCase, name))
 			return;
-		organisation = true;
 	}
 
 	if (!organisation)
@@ -840,6 +872,10 @@ void CDocumentParser::fillMissingJobs(size_t from)
 		PersonInfo job;
 		job.Ukaz = person.Ukaz;
 		job.Description = person.PointJob;
+		// «прысвоіць артыстам …» → «артысту»: при звании должность в дательном, как у людей
+		const std::wstring firstWord = job.Description.substr(0, job.Description.find_first_of(L" -"));
+		if (!firstWord.empty() && firstWord.back() == L'у' && GetNounCaseByAwardId(person.AwardId) == Dative)
+			job.AwardId = person.AwardId;
 		NormalizePersonInfo(job);
 		person.Description = job.Description;
 		if (person.MilitaryRank.empty())

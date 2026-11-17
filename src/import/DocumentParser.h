@@ -79,6 +79,7 @@ protected:
 	// строки указа под наградой (см. ProcessFile)
 	bool readAwardLine(const std::wstring& strLine, size_t posTargetStart, bool actionLine, size_t posActionEnd, AwardState& award);
 	bool switchHonoraryTitle(std::wstring& strLine, AwardState& award);
+	void readTitleLineTail(const std::wstring& strLine, AwardState& award);
 	void readListLine(const std::wstring& strLine, bool actionLine, const std::vector<std::wstring>& lines, size_t& index, AwardState& award);
 	bool readOrganisationLine(const std::wstring& strLine, AwardState& award);
 	bool readListWithoutDash(const std::wstring& strLine, bool actionLine, AwardState& award);

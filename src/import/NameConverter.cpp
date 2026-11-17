@@ -250,6 +250,39 @@ bool CNameConverter::IsMiddleName(const std::wstring& name, LangType lang, NounC
 	return false;
 }
 
+namespace {
+
+// «аглу» в указах — опечатка, в каталоге «аглы»; «гызы», «кызы» — женское отчество
+struct PatronymicParticle
+{
+	const wchar_t* word;
+	const wchar_t* catalog;
+	SexType sex;
+};
+const PatronymicParticle patronymicParticles[] = {
+	{ L"аглы", L"аглы", SexMale }, { L"аглу", L"аглы", SexMale },
+	{ L"оглы", L"оглы", SexMale }, { L"оглу", L"оглы", SexMale },
+	{ L"гызы", L"гызы", SexFemale }, { L"кызы", L"кызы", SexFemale },
+};
+
+const PatronymicParticle* findPatronymicParticle(const std::wstring& word)
+{
+	const std::wstring lower = ToLower(word);
+	for (const PatronymicParticle& particle : patronymicParticles)
+	{
+		if (lower == particle.word)
+			return &particle;
+	}
+	return nullptr;
+}
+
+} // namespace
+
+bool CNameConverter::IsPatronymicParticle(const std::wstring& word)
+{
+	return findPatronymicParticle(word) != nullptr;
+}
+
 bool CNameConverter::NormalizeName(std::wstring& fullName, LangType lang, NounCase nounCase, bool* surnameSure,
                                    SurnameSpellings* spellings)
 {
@@ -301,7 +334,26 @@ bool CNameConverter::NormalizeName(std::wstring& fullName, LangType lang, NounCa
 	// нет («Сычэўскага Яна», «Быкоўскую Алену») или оно с ошибкой («Міколу»)
 	const SexType adjectiveSex = AdjectiveSurnameSex(lastName, nounCase);
 	bool surnameFirst = false;
-	if (!middleName.empty())
+	// тюркское отчество «Тэймур гызы»: пол — по частице, имя отца — как в указе.
+	// «Султана аглы» в указе склонено, а «Абдула аглы» — нет (Абдулла), и по слову
+	// их не различить: на «-а» имя не считается разобранным, окно импорта спросит
+	const size_t particleAt = middleName.rfind(L' ');
+	const PatronymicParticle* particle = particleAt == std::wstring::npos
+		? nullptr : findPatronymicParticle(middleName.substr(particleAt + 1));
+	if (particle)
+	{
+		sex = particle->sex;
+		std::wstring father = middleName.substr(0, particleAt);
+		StrTrim(father);
+		// «Бафалі Аглы» в каталоге с заглавной — первая буква частицы как в указе
+		// (у «аглу» и «аглы» она одна)
+		std::wstring word = particle->catalog;
+		word[0] = middleName[particleAt + 1];
+		middleName = father + L' ' + word;
+		const std::wstring lowerFather = ToLower(father);
+		middleNameOk = lowerFather.empty() || (lowerFather.back() != L'а' && lowerFather.back() != L'я');
+	}
+	else if (!middleName.empty())
 	{
 		sex = GetSex(middleName, nounCase);
 		if (sex == SexMale && adjectiveSex == SexFemale && !IsMiddleName(middleName, lang, nounCase))

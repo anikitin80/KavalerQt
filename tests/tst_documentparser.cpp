@@ -86,6 +86,12 @@ private slots:
     void jobFromTheActivityInThePoint();
     void jobFromAnEarlierPoint();
     void resetClearsEverything();
+    void oneSentenceNameBeforeJob();
+    void oneSentenceRankBeforeNameRu();
+    void oneSentenceForeignNameWithoutPatronymic();
+    void oneSentenceTurkicPatronymic();
+    void honoraryTitleLineWithPeople();
+    void honoraryTitlesInOneSentence();
 
 private:
     void parse(const QStringList& lines, const QString& fileName = QStringLiteral("test.docx"));
@@ -297,6 +303,115 @@ void TestDocumentParser::heroTitle()
     QCOMPARE(QString::fromStdWString(person.Name), QStringLiteral("Домрачэва Дар’я Уладзіміраўна"));
     QCOMPARE(person.Ukaz.Number, 66);
     QCOMPARE(person.Ukaz.Date, QDate(2014, 2, 17));
+}
+
+// указ одним предложением, имя сразу после награды, должность и звание после запятой (469/2021)
+void TestDocumentParser::oneSentenceNameBeforeJob()
+{
+    parse({kUkazBy, QStringLiteral("2 снежня 2021 г. № 469"), QStringLiteral("Аб узнагароджанні"),
+           QStringLiteral("За адвагу і асабістую мужнасць, праяўленыя пры выкананні службовых абавязкаў, "
+                          "узнагародзіць ордэнам «За асабістую мужнасць» Федасюка Дзмітрыя Юр’евіча, "
+                          "супрацоўніка Камітэта дзяржаўнай бяспекі, старшага лейтэнанта (пасмяротна)."),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QCOMPARE(int(m_parser->m_Persons.size()), 1);
+    PersonInfo& person = m_parser->m_Persons.front();
+    QCOMPARE(text(person.Name), QStringLiteral("Федасюк Дзмітрый Юр’евіч"));
+    QCOMPARE(text(m_parser->GetPersonDescription(person, false)), QStringLiteral("супрацоўнік Камітэта дзяржаўнай бяспекі"));
+    QCOMPARE(text(person.MilitaryRank), QStringLiteral("старшы лейтэнант"));
+    QVERIFY(person.Posthumous);
+}
+
+// звание одним словом перед именем уходит в конец должности (указ 753/1999 — длинная должность перед именем)
+void TestDocumentParser::oneSentenceRankBeforeNameRu()
+{
+    parse({kUkazRu, QStringLiteral("20 декабря 1999 г. № 753"),
+           QStringLiteral("За большой личный вклад в укрепление законности и правопорядка, образцовое исполнение "
+                          "служебных обязанностей наградить орденом «За службу Родине» ІІІ степени начальника "
+                          "управления внутренних дел Могилевского облисполкома Апанасевича Виталия Ивановича, "
+                          "генерал-майора милиции."),
+           kPresident});
+    QCOMPARE(int(m_parser->m_Persons.size()), 1);
+    PersonInfo& person = m_parser->m_Persons.front();
+    QCOMPARE(text(person.Name), QStringLiteral("Апанасевич Виталий Иванович"));
+    QCOMPARE(text(m_parser->GetPersonDescription(person, false)),
+             QStringLiteral("начальник управления внутренних дел Могилевского облисполкома"));
+    QCOMPARE(text(person.MilitaryRank), QStringLiteral("генерал-майор милиции"));
+}
+
+// иностранец: имя и фамилия без отчества (125/2025); пробелы в «у г. Нові Сад» неразрывные, как в указе
+void TestDocumentParser::oneSentenceForeignNameWithoutPatronymic()
+{
+    parse({kUkazBy, QStringLiteral("27 сакавіка 2025 г. № 125"), QStringLiteral("Аб узнагароджанні"),
+           QStringLiteral("За значны асабісты ўклад у развіццё супрацоўніцтва ўзнагародзіць ордэнам Пашаны "
+                          "Драгалюба Швоню, дырэктара прадпрыемства «Беларус-Аграпанонка», ганаровага консула "
+                          "Рэспублікі Беларусь у\u00A0г.\u00A0Нові Сад (Рэспубліка Сербія)."),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QCOMPARE(int(m_parser->m_Persons.size()), 1);
+    PersonInfo& person = m_parser->m_Persons.front();
+    QCOMPARE(text(person.Name), QStringLiteral("Драгалюб Швоня"));
+    QVERIFY(text(m_parser->GetPersonDescription(person, false)).startsWith(QStringLiteral("дырэктар прадпрыемства")));
+}
+
+// «… Салахаву Зарыфу Тэймур гызы медалём …» (179/2012)
+void TestDocumentParser::oneSentenceTurkicPatronymic()
+{
+    parse({kUkazBy, QStringLiteral("16 красавіка 2012 г. № 179"),
+           QStringLiteral("Аб узнагароджанні З.Салахавай медалём Францыска Скарыны"),
+           QStringLiteral("За шматгадовую дзейнасць па папулярызацыі твораў беларускай літаратуры ў замежжы "
+                          "ўзнагародзіць старшыню праўлення таварыства «Кніга» (Азербайджанская Рэспубліка) "
+                          "Салахаву Зарыфу Тэймур гызы медалём Францыска Скарыны."),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QCOMPARE(int(m_parser->m_Persons.size()), 1);
+    PersonInfo& person = m_parser->m_Persons.front();
+    QCOMPARE(person.AwardId, 19);
+    QCOMPARE(text(person.Name), QStringLiteral("Салахава Зарыфа Тэймур гызы"));
+    QCOMPARE(text(m_parser->GetPersonDescription(person, false)),
+             QStringLiteral("старшыня праўлення таварыства «Кніга» (Азербайджанская Рэспубліка)"));
+}
+
+// люди в строке звания после тире (396/2005)
+void TestDocumentParser::honoraryTitleLineWithPeople()
+{
+    parse({kUkazBy, QStringLiteral("23 жніўня 2005 г. № 396"),
+           QStringLiteral("2. Прысвоіць ганаровыя званні Рэспублікі Беларусь:"),
+           QStringLiteral("«Заслужаны трэнер Рэспублікі Беларусь» – старшаму трэнеру нацыянальнай каманды "
+                          "Рэспублікі Беларусь па лёгкай атлетыцы Літвінаву Сяргею Мікалаевічу."),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QCOMPARE(int(m_parser->m_Persons.size()), 1);
+    PersonInfo& person = m_parser->m_Persons.front();
+    QVERIFY(person.AwardId > 0);
+    QCOMPARE(text(person.Name), QStringLiteral("Літвінаў Сяргей Мікалаевіч"));
+    QCOMPARE(text(m_parser->GetPersonDescription(person, false)),
+             QStringLiteral("старшы трэнер нацыянальнай каманды Рэспублікі Беларусь па лёгкай атлетыцы"));
+}
+
+// весь список званий в одном предложении, должность общая в начале (145/2001)
+void TestDocumentParser::honoraryTitlesInOneSentence()
+{
+    parse({kUkazBy, QStringLiteral("14 сакавіка 2001 г. № 145"),
+           QStringLiteral("За высокае выканаўчае майстэрства прысвоіць артыстам Дзяржаўнага акадэмічнага народнага "
+                          "аркестра ганаровыя званні Рэспублікі Беларусь: «Народны артыст Беларусі» – Лясун Святлане "
+                          "Лаўрэнцьеўне, «Заслужаны артыст Рэспублікі Беларусь» – Рыдлеўскай Ларысе Леанідаўне і "
+                          "Ткачу Уладзіміру Міхайлавічу."),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QCOMPARE(int(m_parser->m_Persons.size()), 3);
+    QStringList names;
+    for (PersonInfo& person : m_parser->m_Persons)
+    {
+        names << text(person.Name);
+        QCOMPARE(text(m_parser->GetPersonDescription(person, false)),
+                 QStringLiteral("артыст Дзяржаўнага акадэмічнага народнага аркестра"));
+    }
+    names.sort();
+    QCOMPARE(names, QStringList({QStringLiteral("Лясун Святлана Лаўрэнцьеўна"),
+                                 QStringLiteral("Рыдлеўская Ларыса Леанідаўна"),
+                                 QStringLiteral("Ткач Уладзімір Міхайлавіч")}));
+    // «Народны артыст» у Лясун, «Заслужаны артыст» у двух других
+    std::map<QString, int> awards;
+    for (PersonInfo& person : m_parser->m_Persons)
+        awards[text(person.Name)] = person.AwardId;
+    QVERIFY(awards[names[0]] != awards[names[1]]);
+    QCOMPARE(awards[names[1]], awards[names[2]]);
 }
 
 void TestDocumentParser::singleAwardPersonBeforeAward()
@@ -1199,9 +1314,10 @@ void TestDocumentParser::jobFromTheActionLine()
     QStringList names = personNames(m_parser->m_Persons, true);
     names.sort();
     const QString job = QStringLiteral(" | спартсмен-інструктар нацыянальнай каманды Рэспублікі Беларусь па лёгкай атлетыцы");
-    QCOMPARE(names.mid(0, 3), QStringList({QStringLiteral("Драгун Аксана Уладзіміраўна") + job,
-                                           QStringLiteral("Турава Рыта Мікалаеўна") + job,
-                                           QStringLiteral("Ціхан Іван Рыгоравіч") + job}));
+    QCOMPARE(names, QStringList({QStringLiteral("Драгун Аксана Уладзіміраўна") + job,
+                                 QStringLiteral("Літвінаў Сяргей Мікалаевіч | старшы трэнер нацыянальнай каманды"),
+                                 QStringLiteral("Турава Рыта Мікалаеўна") + job,
+                                 QStringLiteral("Ціхан Іван Рыгоравіч") + job}));
 }
 
 void TestDocumentParser::jobFromTheActivityInThePoint()

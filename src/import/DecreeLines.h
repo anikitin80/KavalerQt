@@ -59,6 +59,15 @@ void stripComradeTitle(std::wstring& text);
 // «тов.» перед фамилией убирается. Ложь, если такой пары нет.
 bool takePersonName(CNameConverter& names, std::wstring& text, LangType lang, NounCase nounCase, std::wstring& name);
 
+// Список званий в одном предложении («…прысвоіць артыстам … ганаровыя званні Рэспублікі
+// Беларусь: «Народны артыст Беларусі» – Лясун …, «Заслужаны артыст …» – Рыдлеўскай … і Ткачу …»,
+// указ 145/2001) делится на строку с действием и по строке на звание, как в обычном списке.
+std::vector<std::wstring> splitInlineTitleLists(const std::vector<std::wstring>& lines);
+
+// Имя впереди, должность после запятой или тире («Федасюка Дзмітрыя Юр’евіча,
+// супрацоўніка …»), в тексте остаётся должность. Ложь, если такого имени нет.
+bool takeLeadingPersonName(CNameConverter& names, std::wstring& text, LangType lang, NounCase nounCase, std::wstring& name);
+
 // Организация в именительном или винительном: «узнагародзіць адкрытае
 // акцыянернае таварыства «...» ордэнам». Родительный («слесара адкрытага
 // таварыства») сюда не попадает: это место работы, его забирает takePersonName.

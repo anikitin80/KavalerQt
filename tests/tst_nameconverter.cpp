@@ -19,6 +19,7 @@ private slots:
     void uncertainSurnameIsReported();
     void aliasAtStartDoesNotThrow();
     void unknownPatronymicIsReported();
+    void turkicPatronymic();
     void isMiddleName_data();
     void isMiddleName();
     void sex();
@@ -268,6 +269,27 @@ void TestNameConverter::aliasAtStartDoesNotThrow()
     } catch (...) {
         QFAIL("NormalizeName threw on an alias at the start of the name");
     }
+}
+
+// «Зіяда Аліабас аглы», «Зарыфу Тэймур гызы»: пол по частице, имя отца как в указе;
+// «Шафаята» может быть и склонённым «Шафаят», и «Абдула» (Абдулла) — имя на проверку
+void TestNameConverter::turkicPatronymic()
+{
+    CNameConverter converter;
+    std::wstring name = L"Самедзадэ Зіяда Аліабас аглы";
+    QVERIFY(converter.NormalizeName(name, LangBY, Accusative));
+    QCOMPARE(QString::fromStdWString(name), QStringLiteral("Самедзадэ Зіяд Аліабас аглы"));
+
+    name = L"Салахаву Зарыфу Тэймур гызы";
+    QVERIFY(converter.NormalizeName(name, LangBY, Accusative));
+    QCOMPARE(QString::fromStdWString(name), QStringLiteral("Салахава Зарыфа Тэймур гызы"));
+
+    name = L"Мехціева Арыфа Шафаята аглу";
+    QVERIFY(!converter.NormalizeName(name, LangBY, Accusative));
+    QCOMPARE(QString::fromStdWString(name), QStringLiteral("Мехціеў Арыф Шафаята аглы"));
+
+    QVERIFY(CNameConverter::IsPatronymicParticle(L"Аглы"));
+    QVERIFY(!CNameConverter::IsPatronymicParticle(L"Алі"));
 }
 
 void TestNameConverter::isMiddleName_data()

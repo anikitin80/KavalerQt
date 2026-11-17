@@ -139,11 +139,22 @@ std::wstring jobFromPointLine(const std::wstring& line, size_t actionEnd, LangTy
 		job.erase(job.find_last_not_of(L' ') + 1);
 		if (job.empty() || IsCapital(job[0]))
 			return {};
+		// награда после должности не входит в неё: «…прысвоіць артыстам … філармоніі
+		// ганаровыя званні Рэспублікі Беларусь:» (указ 145/2001)
 		static const wchar_t* awards[] = { L"медал", L"орден", L"ордэн", L"почетн", L"ганаров" };
 		const std::wstring lower = ToLower(job);
+		size_t awardAt = std::wstring::npos;
 		for (const wchar_t* award : awards)
 		{
-			if (lower.find(award) != std::wstring::npos)
+			const size_t at = lower.find(award);
+			if (at != std::wstring::npos && (at == 0 || lower[at - 1] == L' '))
+				awardAt = std::min(awardAt, at);
+		}
+		if (awardAt != std::wstring::npos)
+		{
+			job.erase(awardAt);
+			job.erase(job.find_last_not_of(L' ') + 1);
+			if (job.empty())
 				return {};
 		}
 		std::wstring single = job;
@@ -365,8 +376,26 @@ bool takePersonName(CNameConverter& names, std::wstring& text, LangType lang, No
 		bHasAlias = true;
 
 	size_t pos1 = bHasAlias ? text.rfind(' ', posBracket - 2) : text.rfind(' ');
+	// тюркское отчество «Султана аглы»: частица — часть отчества, имя отца — с заглавной
+	bool turkicPatronymic = false;
+	if (pos1 != std::wstring::npos && pos1 > 0 && !bHasAlias
+		&& CNameConverter::IsPatronymicParticle(text.substr(pos1 + 1)))
+	{
+		pos1 = text.rfind(' ', pos1 - 1);
+		turkicPatronymic = pos1 != std::wstring::npos;
+	}
+	if (pos1 == std::wstring::npos || pos1 == 0)
+		return false;
 	size_t pos2 = text.rfind(' ', pos1 - 1);
-	if (pos1 == std::wstring::npos || pos2 == std::wstring::npos)
+	// весь текст — два слова с заглавной, иностранное имя без отчества: «Пейрані Андрэ»
+	if (pos2 == std::wstring::npos && !turkicPatronymic && !bHasAlias
+		&& IsCapital(text[0]) && IsCapital(text[pos1 + 1]))
+	{
+		name = text;
+		text.clear();
+		return true;
+	}
+	if (pos2 == std::wstring::npos)
 		return false;
 
 	if (!IsCapital(text[pos1 + 1]) || !IsCapital(text[pos2 + 1]))
@@ -374,7 +403,7 @@ bool takePersonName(CNameConverter& names, std::wstring& text, LangType lang, No
 
 	size_t sep = pos2;
 	bool nameOnly = false;
-	if (names.IsMiddleName(text.substr(pos1), lang, nounCase))
+	if (turkicPatronymic || names.IsMiddleName(text.substr(pos1), lang, nounCase))
 	{
 		size_t pos3 = text.rfind(' ', pos2 - 1);
 		if (pos3 != std::wstring::npos && IsCapital(text[pos3 + 1]))
@@ -411,6 +440,87 @@ bool takePersonName(CNameConverter& names, std::wstring& text, LangType lang, No
 
 	text.erase(sep);
 	return true;
+}
+
+std::vector<std::wstring> splitInlineTitleLists(const std::vector<std::wstring>& lines)
+{
+	std::vector<std::wstring> result;
+	result.reserve(lines.size());
+	for (const std::wstring& line : lines)
+	{
+		size_t phrase = std::wstring::npos;
+		for (const wchar_t* words : { L"ганаровыя званні", L"почетные звания" })
+		{
+			phrase = line.find(words);
+			if (phrase != std::wstring::npos)
+				break;
+		}
+		const size_t colon = phrase == std::wstring::npos ? std::wstring::npos : line.find(L':', phrase);
+		const size_t first = colon == std::wstring::npos ? std::wstring::npos : line.find_first_not_of(L"  ", colon + 1);
+		if (first == std::wstring::npos || line[first] != L'«')
+		{
+			result.push_back(line);
+			continue;
+		}
+		result.push_back(line.substr(0, colon + 1));
+		// следующее звание начинается с «« после запятой или точки с запятой вне кавычек
+		size_t begin = first;
+		for (size_t pos = first + 1; pos < line.size(); ++pos)
+		{
+			if (line[pos] != L'«' || InsideQuotes(line, pos))
+				continue;
+			size_t back = pos;
+			while (back > begin && (line[back - 1] == L' ' || line[back - 1] == L' '))
+				--back;
+			if (back > begin && (line[back - 1] == L',' || line[back - 1] == L';'))
+			{
+				result.push_back(line.substr(begin, back - 1 - begin));
+				begin = pos;
+			}
+		}
+		result.push_back(line.substr(begin));
+	}
+	return result;
+}
+
+// Имя впереди, должность после запятой или тире — указ одним предложением:
+// «…ордэнам «…» Федасюка Дзмітрыя Юр’евіча, супрацоўніка …», «…звание «…»
+// генерал-майору Портнову Юрию Валентиновичу, помощнику …». Слово перед именем
+// (воинское звание) уходит в конец должности, где его ищет разбор званий;
+// длинная часть перед именем («начальника управления … Апанасевича …,
+// генерал-майора милиции») остаётся началом должности.
+bool takeLeadingPersonName(CNameConverter& names, std::wstring& text, LangType lang, NounCase nounCase, std::wstring& name)
+{
+	const auto trimmed = [](std::wstring part) {
+		const size_t first = part.find_first_not_of(L"  ");
+		if (first == std::wstring::npos)
+			return std::wstring();
+		part.erase(0, first);
+		part.erase(part.find_last_not_of(L"  ") + 1);
+		return part;
+	};
+	for (size_t pos = 1; pos < text.size(); ++pos)
+	{
+		if ((text[pos] != L',' && text[pos] != L'–') || InsideQuotes(text, pos))
+			continue;
+		std::wstring before = trimmed(text.substr(0, pos));
+		const std::wstring after = trimmed(text.substr(pos + 1));
+		if (before.empty() || after.empty())
+			continue;
+		std::wstring candidate;
+		if (!takePersonName(names, before, lang, nounCase, candidate))
+			continue;
+		before = trimmed(before);
+		name = std::move(candidate);
+		if (before.empty())
+			text = after;
+		else if (before.find(L' ') == std::wstring::npos)
+			text = after + L", " + before;
+		else
+			text = before + L", " + after;
+		return true;
+	}
+	return false;
 }
 
 // Организация в именительном или винительном: «узнагародзіць адкрытае

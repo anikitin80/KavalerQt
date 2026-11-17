@@ -103,6 +103,8 @@ public:
 	// SexAny, если это не прилагательное.
 	static SexType AdjectiveSurnameSex(const std::wstring& surname, NounCase nounCase);
 	bool IsMiddleName(const std::wstring& name, LangType lang, NounCase nounCase);
+	// частица тюркского отчества после имени отца: «Султана аглы», «Тэймур гызы»
+	static bool IsPatronymicParticle(const std::wstring& word);
 
 	// фамилии каталога (нижний регистр → сколько записей): косвенная форма часто
 	// даёт несколько именительных («Склюту» — Склют или Склюта, «Лобанку» —
