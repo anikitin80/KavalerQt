@@ -586,8 +586,14 @@ QVector<PendingRow> matchFile(CDocumentParser& parser, const QString& relative, 
             row.dbDescription = belarusian ? db->personalBy : db->personal;
             row.dbRank = belarusian ? db->rankBy : db->rank;
             row.dbPosthumous = db->posthumous != 0;
+            // 217/1999: в указе после фамилий пусто, кто Герой Советского Союза,
+            // а кто полный кавалер ордена Славы, в каталог внесено не из указа
+            const bool heroGroup = info.Ukaz.Number == 217 && info.Ukaz.Date == QDate(1999, 4, 15)
+                && row.description.isEmpty()
+                && (row.dbDescription.compare(QStringLiteral("Герой Советского Союза"), Qt::CaseInsensitive) == 0
+                    || row.dbDescription.compare(QStringLiteral("полный кавалер ордена Славы"), Qt::CaseInsensitive) == 0);
             QStringList differs;
-            if (NormalizeCyrillicText(row.description, belarusian) != row.dbDescription)
+            if (!heroGroup && NormalizeCyrillicText(row.description, belarusian) != row.dbDescription)
                 differs << QStringLiteral("description");
             if (NormalizeCyrillicText(row.rank, belarusian) != row.dbRank)
                 differs << QStringLiteral("rank");
