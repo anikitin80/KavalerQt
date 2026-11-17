@@ -8,6 +8,7 @@
 #include <QSet>
 #include <QSqlError>
 #include <QSqlQuery>
+#include <QSqlRecord>
 #include <QTextStream>
 #include <QVariant>
 #include <algorithm>
@@ -59,6 +60,24 @@ QString belarusianNameKey(const QString& name)
 }
 
 } // namespace
+
+QString Person::romanNumeral(int number)
+{
+    static const struct { int value; const char* digits; } kRoman[] = {
+        {1000, "M"}, {900, "CM"}, {500, "D"}, {400, "CD"}, {100, "C"}, {90, "XC"},
+        {50, "L"}, {40, "XL"}, {10, "X"}, {9, "IX"}, {5, "V"}, {4, "IV"}, {1, "I"}};
+    QString text;
+    for (const auto& roman : kRoman) {
+        for (; number >= roman.value; number -= roman.value)
+            text += QLatin1String(roman.digits);
+    }
+    return text;
+}
+
+QString Person::namesakeMark() const
+{
+    return namesake > 0 ? QStringLiteral(" [%1]").arg(romanNumeral(namesake)) : QString();
+}
 
 bool Person::needTranslation() const
 {
@@ -351,6 +370,19 @@ bool Catalog::open(const QString& path, QString* error, bool readOnly)
     QSqlQuery pragma(m_db);
     pragma.exec(QStringLiteral("PRAGMA foreign_keys = ON"));
 
+    // номер тёзки появился позже остальных полей: старой базе его добавляем,
+    // открытая только для чтения читается с нулями
+    m_hasNamesake = m_db.record(QStringLiteral("Kavalers")).contains(QStringLiteral("Namesake"));
+    if (!m_hasNamesake && !readOnly) {
+        QSqlQuery alter(m_db);
+        if (!alter.exec(QStringLiteral("ALTER TABLE Kavalers ADD COLUMN Namesake INTEGER NOT NULL DEFAULT 0"))) {
+            if (error)
+                *error = alter.lastError().text();
+            return fail();
+        }
+        m_hasNamesake = true;
+    }
+
     if (!load(error))
         return fail();
 
@@ -382,8 +414,8 @@ bool Catalog::load(QString* error)
     people.setForwardOnly(true); // строки читаются один раз: без кэша всех 78 тысяч
     if (!people.exec(QStringLiteral(
             "SELECT ID, Award_ID, Name, Name_BY, Personal_Info, Personal_Info_BY, "
-            "Awarded_For, Rank, Rank_BY, Ukase_No, Ukase_Date, Posthumous, Ukase_Lang "
-            "FROM Kavalers"))) {
+            "Awarded_For, Rank, Rank_BY, Ukase_No, Ukase_Date, Posthumous, Ukase_Lang, %1 "
+            "FROM Kavalers").arg(m_hasNamesake ? QStringLiteral("Namesake") : QStringLiteral("0")))) {
         if (error)
             *error = people.lastError().text();
         return false;
@@ -405,6 +437,7 @@ bool Catalog::load(QString* error)
         person.ukaseDate = QDate::fromString(people.value(10).toString(), Qt::ISODate); // "yyyy-MM-dd"
         person.posthumous = people.value(11).toInt();
         person.language = people.value(12).toInt();
+        person.namesake = people.value(13).toInt();
         m_people.push_back(person);
     }
 
@@ -749,13 +782,13 @@ bool Catalog::writePerson(Person& person, QString* error)
     if (update) {
         query.prepare(QStringLiteral(
             "UPDATE Kavalers SET Award_ID=?, Ukase_Date=?, Ukase_No=?, Ukase_Lang=?, Posthumous=?, "
-            "Name=?, Name_BY=?, Awarded_For=?, Personal_Info=?, Personal_Info_BY=?, Rank=?, Rank_BY=? "
-            "WHERE ID=?"));
+            "Name=?, Name_BY=?, Awarded_For=?, Personal_Info=?, Personal_Info_BY=?, Rank=?, Rank_BY=?, "
+            "Namesake=? WHERE ID=?"));
     } else {
         query.prepare(QStringLiteral(
             "INSERT INTO Kavalers (Award_ID, Name, Name_BY, Personal_Info, Personal_Info_BY, "
-            "Awarded_For, Rank, Rank_BY, Ukase_No, Ukase_Date, Posthumous, Ukase_Lang) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
+            "Awarded_For, Rank, Rank_BY, Ukase_No, Ukase_Date, Posthumous, Ukase_Lang, Namesake) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
     }
 
     if (update) {
@@ -774,6 +807,7 @@ bool Catalog::writePerson(Person& person, QString* error)
         bindText(query, person.personalBy);
         bindText(query, person.rank);
         bindText(query, person.rankBy);
+        query.addBindValue(person.namesake);
         query.addBindValue(person.id);
     } else {
         query.addBindValue(person.awardId);
@@ -791,6 +825,7 @@ bool Catalog::writePerson(Person& person, QString* error)
             query.addBindValue(QVariant());
         query.addBindValue(person.posthumous);
         query.addBindValue(person.language);
+        query.addBindValue(person.namesake);
     }
 
     if (!exec(query, error))

@@ -411,9 +411,14 @@ QWidget* MainWindow::createTopTab()
     m_topView->setItemDelegate(new PeopleDelegate(m_topView));
     m_topView->header()->setStretchLastSection(false);
     m_topView->header()->setMinimumSectionSize(20);
-    const int columnWidths[] = {320, 260, 420, 140, 50, 70};
+    const int columnWidths[] = {320, 0, 0, 140, 50, 70};
     for (int column = 0; column < 6; ++column)
         m_topView->setColumnWidth(column, columnWidths[column]);
+    // ФИО уже в строке группы, колонка не нужна; должность занимает всё свободное место
+    m_topView->setColumnHidden(1, true);
+    m_topView->header()->setSectionResizeMode(2, QHeaderView::Stretch);
+    m_topView->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_topView, &QWidget::customContextMenuRequested, this, &MainWindow::showTopContextMenu);
     connect(m_topView, &QTreeView::doubleClicked, this, [this](const QModelIndex& index) {
         if (const Person* person = m_top->personAt(index)) {
             EditDialog dialog(&m_catalog, *person, this);
@@ -869,6 +874,56 @@ void MainWindow::showContextMenu(const QPoint& pos)
         translateSelectedProfession();
     else if (chosen == quotes)
         fixSelectedQuotes();
+}
+
+void MainWindow::showTopContextMenu(const QPoint& pos)
+{
+    if (!m_topView->indexAt(pos).isValid())
+        return;
+    QMenu menu(this);
+    QMenu* namesake = menu.addMenu(QStringLiteral("Тёзка"));
+    namesake->addAction(QStringLiteral("Без номера"), this, [this] { setSelectedNamesake(0); });
+    namesake->addSeparator();
+    for (int number = 1; number <= 5; ++number) {
+        namesake->addAction(QStringLiteral("[%1]").arg(Person::romanNumeral(number)), this,
+                            [this, number] { setSelectedNamesake(number); });
+    }
+    namesake->addAction(QStringLiteral("Другой номер..."), this, [this] {
+        bool ok = false;
+        const int number = QInputDialog::getInt(this, QStringLiteral("Тёзка"), QStringLiteral("Номер тёзки:"),
+                                                6, 1, 99, 1, &ok);
+        if (ok)
+            setSelectedNamesake(number);
+    });
+    menu.exec(m_topView->viewport()->mapToGlobal(pos));
+}
+
+// выделенная строка человека — все его награды, строка награды — только она
+void MainWindow::setSelectedNamesake(int namesake)
+{
+    QSet<int> ids;
+    QVector<Person> changed;
+    const auto add = [&](const QModelIndex& index) {
+        const Person* person = m_top->personAt(index);
+        if (person && !ids.contains(person->id)) {
+            ids.insert(person->id);
+            if (person->namesake != namesake) {
+                changed.push_back(*person);
+                changed.back().namesake = namesake;
+            }
+        }
+    };
+    for (const QModelIndex& index : m_topView->selectionModel()->selectedRows()) {
+        if (m_top->personAt(index)) {
+            add(index);
+            continue;
+        }
+        for (int row = 0; row < m_top->rowCount(index); ++row)
+            add(m_top->index(row, 0, index));
+    }
+    const int scroll = m_topView->verticalScrollBar()->value();
+    if (saveChanged(changed))
+        m_topView->verticalScrollBar()->setValue(scroll);
 }
 
 void MainWindow::translateSelectedCloud(CloudScope scope)

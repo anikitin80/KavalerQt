@@ -45,6 +45,9 @@ private:
     void addPerson(const Person* copyFrom);
     void deleteSelected();
     void showContextMenu(const QPoint& pos);
+    // «Топ награжденных»: номер тёзки у выделенных наград и людей
+    void showTopContextMenu(const QPoint& pos);
+    void setSelectedNamesake(int namesake);
     void translateSelectedCloud(CloudScope scope);
     void translateSelectedByDictionary();
     void translateSelectedProfession();

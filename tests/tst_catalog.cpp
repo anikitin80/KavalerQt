@@ -141,6 +141,7 @@ private slots:
     void failedOpenKeepsCurrentDatabase();
     void replaceTextSavesLikeAnEdit();
     void organizationFlagIsStored();
+    void namesakeIsAddedAndStored();
 
 private:
     QTemporaryDir m_dir;
@@ -713,6 +714,34 @@ void TestCatalog::russianNameConflicts()
 
 // копия, сохранённая после удаления своей записи (например, медленный перевод), не должна
 // вернуть запись в память; откатанная пачка оставляет новые номера незаданными
+// старая база получает поле Namesake при открытии; номер сохраняется и читается
+void TestCatalog::namesakeIsAddedAndStored()
+{
+    QString error;
+    for (const Person& person : m_catalog->people())
+        QCOMPARE(person.namesake, 0);
+    Person person = *byNameBy(*m_catalog, QStringLiteral("Шульга Валерый Ігаравіч"));
+    QCOMPARE(person.namesakeMark(), QString());
+    person.namesake = 2;
+    QVERIFY2(m_catalog->save(person, &error), qPrintable(error));
+    QCOMPARE(person.namesakeMark(), QStringLiteral(" [II]"));
+
+    Catalog reopened;
+    QVERIFY2(reopened.open(m_path, &error, true), qPrintable(error));
+    QCOMPARE(byNameBy(reopened, QStringLiteral("Шульга Валерый Ігаравіч"))->namesake, 2);
+
+    // старая база только для чтения не меняется, номера нулевые
+    const QString oldPath = m_dir.filePath(QStringLiteral("old-readonly.sqlite"));
+    QVERIFY(createDatabase(oldPath, {{QString(), QStringLiteral("Іваноў Ігар Пятровіч")}}));
+    Catalog old;
+    QVERIFY2(old.open(oldPath, &error, true), qPrintable(error));
+    QCOMPARE(old.people().size(), 1);
+    QCOMPARE(old.people().first().namesake, 0);
+
+    QCOMPARE(Person::romanNumeral(4), QStringLiteral("IV"));
+    QCOMPARE(Person::romanNumeral(14), QStringLiteral("XIV"));
+}
+
 void TestCatalog::savingDeletedRecordFails()
 {
     QString error;

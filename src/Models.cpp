@@ -263,9 +263,9 @@ bool PersonModel::hasNameVariants(const Person& person) const
 QString PersonModel::displayName(const Person& person) const
 {
     if (!person.name.isEmpty())
-        return person.name;
+        return person.name + person.namesakeMark();
     if (!person.nameBy.isEmpty())
-        return person.nameBy;
+        return person.nameBy + person.namesakeMark();
     if (!person.personal.isEmpty() || !person.personalBy.isEmpty())
         return QStringLiteral("Организация");
     return {};
@@ -389,7 +389,7 @@ QVariant PersonModel::data(const QModelIndex& index, int role) const
     const QStringList variants = person.name.isEmpty() ? m_suggestions.value(person.id) : QStringList();
     if (role == Qt::DisplayRole) {
         if (index.column() == 1 && !variants.isEmpty())
-            return variants.first();
+            return variants.first() + person.namesakeMark();
         return columnText(person, index.column());
     }
     if (role == Qt::ToolTipRole && variants.isEmpty() && person.language == kLangBelarusian) {
@@ -709,6 +709,14 @@ QString PersonModel::personKey(const Person& person)
     return {};
 }
 
+QString PersonModel::namesakeKey(const Person& person)
+{
+    const QString key = personKey(person);
+    if (key.isEmpty() || person.namesake <= 0)
+        return key;
+    return key + QStringLiteral("#") + QString::number(person.namesake);
+}
+
 void PersonModel::applyTopAwarded(int minimumAwards)
 {
     beginResetModel();
@@ -718,22 +726,30 @@ void PersonModel::applyTopAwarded(int minimumAwards)
     m_groups.clear();
     m_groupOfPerson.clear();
     const auto& people = m_catalog->people();
+    // порог — по всем записям имени: тёзки с номером остаются в «Топе» вместе,
+    // и номер можно поправить здесь же
+    QHash<QString, int> awardsOfName;
     QHash<QString, int> slotOfKey;
+    QHash<int, QString> nameOfSlot;
     QVector<Group> all;
     for (int i = 0; i < people.size(); ++i) {
-        const QString key = personKey(people.at(i));
-        if (key.isEmpty())
+        const QString name = personKey(people.at(i));
+        if (name.isEmpty())
             continue;
+        ++awardsOfName[name];
+        const QString key = namesakeKey(people.at(i));
         int slot = slotOfKey.value(key, -1);
         if (slot < 0) {
             slot = all.size();
             all.push_back(Group());
             slotOfKey.insert(key, slot);
+            nameOfSlot.insert(slot, name);
         }
         all[slot].people.push_back(i);
     }
-    for (Group& group : all) {
-        if (group.people.size() < minimumAwards)
+    for (int slot = 0; slot < all.size(); ++slot) {
+        Group& group = all[slot];
+        if (awardsOfName.value(nameOfSlot.value(slot)) < minimumAwards)
             continue;
         // ФИО из самого позднего указа: так человек записан сейчас
         const Person* latest = nullptr;

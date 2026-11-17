@@ -44,8 +44,13 @@ struct Person
     QDate ukaseDate;
     int posthumous = 0;
     int language = kLangRussian;
+    // полные тёзки: 0 — без номера, 1, 2, … показываются как [I], [II], …
+    int namesake = 0;
 
     bool needTranslation() const;
+    // « [II]» у тёзки, пусто без номера
+    QString namesakeMark() const;
+    static QString romanNumeral(int number);
     QString* field(TextField which);
     const QString* field(TextField which) const;
 };
@@ -210,6 +215,7 @@ private:
 
     QSqlDatabase m_db;
     QString m_path;
+    bool m_hasNamesake = false; // в старой базе, открытой только для чтения, поля нет
     QVector<Award> m_awards;
     QHash<int, int> m_awardById;
     QVector<Person> m_people;
