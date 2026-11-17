@@ -1007,7 +1007,7 @@ void TestDocumentParser::organizationIsAwardedItself()
     QVERIFY(fortress.Organization);
     QVERIFY(fortress.Name.empty());
     QCOMPARE(text(m_parser->GetPersonDescription(fortress, false)),
-             QStringLiteral("Дзяржаўную ўстанову «Мемарыяльны комплекс «Брэсцкая крэпасць-герой»"));
+             QStringLiteral("Дзяржаўная ўстанова «Мемарыяльны комплекс «Брэсцкая крэпасць-герой»"));
     // награждённая одной строкой организация — один человек награды, а не пустая награда
     QCOMPARE(int(m_parser->m_AwardsStat.size()), 1);
     QCOMPARE(m_parser->m_AwardsStat.front().TotalCount, 1);
@@ -1025,6 +1025,21 @@ void TestDocumentParser::organizationIsAwardedItself()
     QVERIFY(russian.Name.empty());
     QCOMPARE(text(m_parser->GetPersonDescription(russian, false)),
              QStringLiteral("Открытое акционерное общество «Молочный мир»"));
+
+    // 456/2020: учреждение без формы собственности
+    m_parser->ResetData();
+    parse({kUkazBy, QStringLiteral("9 снежня 2020 г. № 456"),
+           QStringLiteral("За значны ўклад у развіццё інжынерна-тэхнічнай адукацыі і ў сувязі са 100-годдзем з дня "
+                          "заснавання ўніверсітэта ўзнагародзіць Беларускі нацыянальны тэхнічны ўніверсітэт ордэнам "
+                          "Працоўнай Славы."),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QCOMPARE(int(m_parser->m_Persons.size()), 1);
+    PersonInfo& university = m_parser->m_Persons.front();
+    QCOMPARE(university.AwardId, 24);
+    QVERIFY(university.Organization);
+    QVERIFY(university.Name.empty());
+    QCOMPARE(text(m_parser->GetPersonDescription(university, false)),
+             QStringLiteral("Беларускі нацыянальны тэхнічны ўніверсітэт"));
 }
 
 // указы 386/2024, 298/2026 и 306/2026: организация — строка списка под наградой,
@@ -1069,6 +1084,26 @@ void TestDocumentParser::organizationInAwardList()
              QStringLiteral("Адкрытае акцыянернае таварыства «Планар»"));
     QCOMPARE(text(m_parser->GetPersonDescription(m_parser->m_Persons[1], false)),
              QStringLiteral("Адкрытае акцыянернае таварыства «ІНТЭГРАЛ» – кіруючая кампанія холдынга «ІНТЭГРАЛ»"));
+
+    // 394/2024: кааператыў без кавычек
+    m_parser->ResetData();
+    parse({kUkazBy, QStringLiteral("15 кастрычніка 2024 г. № 394"),
+           QStringLiteral("За значны ўклад у развіццё аграпрамысловага комплексу:"),
+           QStringLiteral("1. Узнагародзіць:"),
+           QStringLiteral("ордэнам Працоўнай Славы"),
+           QStringLiteral("вытворчы кааператыў імя В.І.КРЭМКО, Гродзенскі раён"),
+           QStringLiteral("ордэнам Пашаны"),
+           QStringLiteral("ГрыгорыкТаццяну Віктараўну"), QStringLiteral("–"),
+           QStringLiteral("аператара машыннага даення камунальнага сельскагаспадарчага ўнітарнага прадпрыемства «Галынка», Зэльвенскі раён"),
+           QStringLiteral("Прэзідэнт Рэспублікі Беларусь")});
+    QCOMPARE(int(m_parser->m_Persons.size()), 2);
+    PersonInfo& cooperative = m_parser->m_Persons[0];
+    QVERIFY(cooperative.Organization);
+    QCOMPARE(cooperative.AwardId, 24);
+    QCOMPARE(text(m_parser->GetPersonDescription(cooperative, false)),
+             QStringLiteral("Вытворчы кааператыў імя В.І.КРЭМКО, Гродзенскі раён"));
+    QVERIFY(!m_parser->m_Persons[1].Organization);
+    QCOMPARE(text(m_parser->m_Persons[1].Name), QStringLiteral("Грыгорык Таццяна Віктараўна"));
 }
 
 // родительный падеж — место работы человека; список после двоеточия тоже люди

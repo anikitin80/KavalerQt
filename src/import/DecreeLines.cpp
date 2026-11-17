@@ -523,6 +523,76 @@ bool takeLeadingPersonName(CNameConverter& names, std::wstring& text, LangType l
 	return false;
 }
 
+static bool endsWith(const std::wstring& word, const wchar_t* suffix)
+{
+	const size_t length = std::wcslen(suffix);
+	return word.size() > length && word.compare(word.size() - length, length, suffix) == 0;
+}
+
+// учреждение без формы собственности: «Беларускі нацыянальны тэхнічны
+// ўніверсітэт» — с заглавной, прилагательные и учрежденческое слово в конце;
+// у человека так не бывает
+static bool isInstitutionName(const std::wstring& text)
+{
+	if (text.empty() || !iswupper(text[0]) || text.find(L'«') != std::wstring::npos)
+		return false;
+	static const wchar_t* nouns[] = {
+		L"ўніверсітэт", L"універсітэт", L"інстытут", L"акадэмію", L"акадэмія", L"тэатр", L"музей",
+		L"университет", L"институт", L"академию", L"академия", L"театр",
+	};
+	std::vector<std::wstring> words;
+	size_t start = 0;
+	while (start < text.size()) {
+		const size_t space = text.find(L' ', start);
+		const size_t end = space == std::wstring::npos ? text.size() : space;
+		if (end > start)
+			words.push_back(ToLower(text.substr(start, end - start)));
+		start = end + 1;
+	}
+	if (words.size() < 2)
+		return false;
+	if (std::none_of(std::begin(nouns), std::end(nouns), [&](const wchar_t* noun) { return words.back() == noun; }))
+		return false;
+	static const wchar_t* adjectiveEnds[] = {L"і", L"ы", L"ую", L"ая", L"ый", L"ий", L"ой"};
+	return std::all_of(words.begin(), words.end() - 1, [](const std::wstring& word) {
+		return std::any_of(std::begin(adjectiveEnds), std::end(adjectiveEnds),
+						   [&](const wchar_t* end) { return endsWith(word, end); });
+	});
+}
+
+// «ўзнагародзіць дзяржаўную ўстанову «...»» — в личных данных именительный:
+// слова до названия в кавычках из винительного женского рода
+static void toNominative(std::wstring& text)
+{
+	static const std::pair<const wchar_t*, const wchar_t*> nouns[] = {
+		{L"ўстанову", L"ўстанова"}, {L"установу", L"установа"}, {L"акадэмію", L"акадэмія"},
+		{L"академию", L"академия"}, {L"арганізацыю", L"арганізацыя"}, {L"организацию", L"организация"},
+	};
+	const size_t quote = std::min(text.find(L'«'), text.size());
+	size_t start = 0;
+	while (start < quote) {
+		const size_t space = text.find(L' ', start);
+		const size_t end = std::min(space == std::wstring::npos ? text.size() : space, quote);
+		std::wstring word = text.substr(start, end - start);
+		const std::wstring lower = ToLower(word);
+		bool replaced = false;
+		for (const auto& [accusative, nominative] : nouns) {
+			if (lower == accusative) {
+				const bool capital = iswupper(word[0]);
+				word = nominative;
+				if (capital)
+					word[0] = towupper(word[0]);
+				replaced = true;
+				break;
+			}
+		}
+		if (!replaced && endsWith(lower, L"ую"))
+			word.replace(word.size() - 2, 2, L"ая");
+		text.replace(start, end - start, word);
+		start = end + 1;
+	}
+}
+
 // Организация в именительном или винительном: «узнагародзіць адкрытае
 // акцыянернае таварыства «...» ордэнам». Родительный («слесара адкрытага
 // таварыства») сюда не попадает: это место работы, его забирает takePersonName.
@@ -543,10 +613,12 @@ bool takeOrganisation(std::wstring& text, std::wstring& name)
 
 	static const wchar_t* heads[] = {
 		L"адкрытае ", L"закрытае ", L"рэспубліканскае ", L"камунальнае ",
-		L"дзяржаўнае ", L"дзяржаўную ўстанову", L"унітарнае ", L"вытворчае ",
-		L"навукова-вытворчае ", L"таварыства з ", L"калектыў ",
+		L"дзяржаўнае ", L"дзяржаўную ўстанову", L"дзяржаўная ўстанова", L"унітарнае ",
+		L"вытворчае ", L"вытворчы кааператыў", L"навукова-вытворчае ", L"таварыства з ",
+		L"калектыў ",
 		L"открытое ", L"закрытое ", L"республиканское ", L"коммунальное ",
-		L"государственное ", L"унитарное ", L"общество с ", L"коллектив ",
+		L"государственное ", L"унитарное ", L"производственный кооператив", L"общество с ",
+		L"коллектив ",
 	};
 	const std::wstring lower = ToLower(text);
 	bool organisation = false;
@@ -557,8 +629,9 @@ bool takeOrganisation(std::wstring& text, std::wstring& name)
 			break;
 		}
 	}
-	if (!organisation)
+	if (!organisation && !isInstitutionName(text))
 		return false;
+	toNominative(text);
 
 	// «..., Пінскі раён» в списке — место, не часть названия
 	std::wstring place;
