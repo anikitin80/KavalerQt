@@ -106,6 +106,7 @@ private:
     PersonModel* m_top = nullptr;     // «Топ награжденных»
     QTreeView* m_topView = nullptr;
     QLabel* m_topCount = nullptr;
+    QCheckBox* m_topNamesakeThreshold = nullptr;
 
     QCheckBox* m_statsByMonth = nullptr;
     QRadioButton* m_statsByAward = nullptr;

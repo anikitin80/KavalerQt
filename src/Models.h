@@ -31,8 +31,9 @@ public:
     // «Топ награжденных»: люди, награждённые не меньше minimumAwards раз, группой
     // на человека, под ней его награды. Человек — белорусское ФИО, если оно есть,
     // иначе русское; организации без имени не считаются.
-    void applyTopAwarded(int minimumAwards);
-    // ключ человека для applyTopAwarded, пусто у организации
+    // namesakeThreshold: порог проходит каждый тёзка сам; иначе — все записи ФИО вместе
+    void applyTopAwarded(int minimumAwards, bool namesakeThreshold = false);
+    // ключ человека для applyTopAwarded, пусто у организации; «ё» считается за «е»
     static QString personKey(const Person& person);
     // ключ человека с номером тёзки: тёзки с разными номерами — разные люди
     static QString namesakeKey(const QString& key, const Person& person);

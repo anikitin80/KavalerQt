@@ -425,9 +425,21 @@ QWidget* MainWindow::createTopTab()
             dialog.exec();
         }
     });
+    m_topNamesakeThreshold = new QCheckBox(QStringLiteral("Порог для каждого тёзки отдельно"));
+    m_topNamesakeThreshold->setToolTip(QStringLiteral(
+        "Тёзка с номером [I], [II] попадает в «Топ», только если сам награждён больше трёх раз.\n"
+        "Без галочки считаются все записи ФИО вместе: видно всех тёзок, номера можно поправить."));
+    m_topNamesakeThreshold->setChecked(QSettings().value(QStringLiteral("TopNamesakeThreshold"), false).toBool());
+    connect(m_topNamesakeThreshold, &QCheckBox::toggled, this, [this](bool checked) {
+        QSettings().setValue(QStringLiteral("TopNamesakeThreshold"), checked);
+        refreshTop();
+    });
+    auto* topFilters = new QHBoxLayout;
+    topFilters->addWidget(m_topCount, 1);
+    topFilters->addWidget(m_topNamesakeThreshold);
     auto* topPage = new QWidget;
     auto* topLayout = new QVBoxLayout(topPage);
-    topLayout->addWidget(m_topCount);
+    topLayout->addLayout(topFilters);
     topLayout->addWidget(m_topView);
     return topPage;
 }
@@ -437,7 +449,7 @@ void MainWindow::refreshTop()
     if (!m_catalog.isOpen())
         return;
     // «более 3 раз»: от четырёх награждений
-    m_top->applyTopAwarded(4);
+    m_top->applyTopAwarded(4, m_topNamesakeThreshold->isChecked());
     if (m_top->shownCount() <= 20000)
         m_topView->expandAll();
     m_topCount->setText(QStringLiteral("Награждённых больше трёх раз: %1, награждений у них: %2")

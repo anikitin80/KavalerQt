@@ -700,12 +700,16 @@ void PersonModel::apply(int awardId, int year, const QString& name, const QStrin
 
 QString PersonModel::personKey(const Person& person)
 {
+    // «ё» и «е» не различаются: указы пишут одного человека то «Кавалёў», то «Кавалеў»
+    const auto key = [](const QString& text, bool belarusian) {
+        return NormalizeCyrillicText(text, belarusian).toLower().replace(QChar(0x0451), QChar(0x0435));
+    };
     const QString nameBy = person.nameBy.simplified();
     if (!nameBy.isEmpty())
-        return QStringLiteral("by:") + NormalizeCyrillicText(nameBy, true).toLower();
+        return QStringLiteral("by:") + key(nameBy, true);
     const QString name = person.name.simplified();
     if (!name.isEmpty())
-        return QStringLiteral("ru:") + NormalizeCyrillicText(name, false).toLower();
+        return QStringLiteral("ru:") + key(name, false);
     return {};
 }
 
@@ -716,7 +720,7 @@ QString PersonModel::namesakeKey(const QString& key, const Person& person)
     return key + QStringLiteral("#") + QString::number(person.namesake);
 }
 
-void PersonModel::applyTopAwarded(int minimumAwards)
+void PersonModel::applyTopAwarded(int minimumAwards, bool namesakeThreshold)
 {
     beginResetModel();
     m_grouped = true;
@@ -726,7 +730,7 @@ void PersonModel::applyTopAwarded(int minimumAwards)
     m_groupOfPerson.clear();
     const auto& people = m_catalog->people();
     // порог — по всем записям имени: тёзки с номером остаются в «Топе» вместе,
-    // и номер можно поправить здесь же
+    // и номер можно поправить здесь же (или по каждому тёзке, namesakeThreshold)
     QHash<QString, int> awardsOfName;
     QHash<QString, int> slotOfKey;
     QHash<int, QString> nameOfSlot;
@@ -769,7 +773,8 @@ void PersonModel::applyTopAwarded(int minimumAwards)
     }
     for (int slot = 0; slot < all.size(); ++slot) {
         Group& group = all[slot];
-        if (awardsOfName.value(nameOfSlot.value(slot)) < minimumAwards)
+        const int awards = namesakeThreshold ? int(group.people.size()) : awardsOfName.value(nameOfSlot.value(slot));
+        if (awards < minimumAwards)
             continue;
         // ФИО из самого позднего указа: так человек записан сейчас
         const Person* latest = nullptr;
